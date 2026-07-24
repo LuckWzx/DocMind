@@ -2,7 +2,7 @@
 
 ## 基础信息
 
-- **Base URL**: `http://localhost:8082`
+- **Base URL**: `http://localhost:8083`
 - **API 版本**: v1
 - **Content-Type**: `application/json`
 
