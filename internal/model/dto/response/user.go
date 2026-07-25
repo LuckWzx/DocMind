@@ -16,8 +16,15 @@ type UserResponse struct {
 
 // LoginResponse 登录响应
 type LoginResponse struct {
-	Token string       `json:"token"`
-	User  UserResponse `json:"user"`
+	Token        string       `json:"token"`
+	RefreshToken string       `json:"refresh_token"`
+	User         UserResponse `json:"user"`
+}
+
+// RefreshTokenResponse 刷新 Token 响应
+type RefreshTokenResponse struct {
+	Token        string `json:"token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 // UserInfoResponse 用户信息响应

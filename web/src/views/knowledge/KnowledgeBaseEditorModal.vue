@@ -418,11 +418,6 @@
                 <div v-if="mode === 'edit' && kbId && currentSection === 'datasource'" class="section">
                   <DataSourceSettings :kb-id="kbId" @count="dsCount = $event" />
                 </div>
-
-                <!-- 共享设置（仅编辑模式） -->
-                <div v-if="mode === 'edit' && kbId && currentSection === 'share'" class="section">
-                  <KBShareSettings :kb-id="kbId" :can-share="canShareKB" />
-                </div>
               </div>
 
               <!-- 保存按钮 -->
@@ -465,7 +460,6 @@ import KBVectorStoreSettings from './settings/KBVectorStoreSettings.vue'
 import KBAdvancedSettings from './settings/KBAdvancedSettings.vue'
 import ModelSelector from '@/components/ModelSelector.vue'
 import GraphSettings from './settings/GraphSettings.vue'
-import KBShareSettings from './settings/KBShareSettings.vue'
 import DataSourceSettings from './settings/DataSourceSettings.vue'
 import { useI18n } from 'vue-i18n'
 

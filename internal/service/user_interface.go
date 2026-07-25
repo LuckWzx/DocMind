@@ -20,6 +20,10 @@ type UserService interface {
 	ChangePassword(id uint, req *request.ChangePasswordRequest) error
 	// GetUserResponse 获取用户响应
 	GetUserResponse(user *entity.User) *dto.UserResponse
+	// CheckUsernameExists 检查用户名是否存在
+	CheckUsernameExists(username string) (bool, error)
+	// CheckEmailExists 检查邮箱是否存在
+	CheckEmailExists(email string) (bool, error)
 	// ListUsers 分页获取用户列表
 	ListUsers(req *request.UserListRequest) (*response.PageResponse, error)
 }

@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(go mod init:*)",
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "Bash(npm run *)",
+      "Bash(git checkout *)"
     ]
   }
 }

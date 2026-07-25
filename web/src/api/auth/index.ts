@@ -207,8 +207,8 @@ export interface ModelInfo {
  */
 export async function login(data: LoginRequest): Promise<LoginResponse> {
   // Mock登录功能 - 用于开发环境
-  // 默认账号: admin@example.com / admin123
-  if (data.email === 'admin@example.com' && data.password === 'admin123') {
+  // 默认账号: admin@example.com / Ft123456
+  if (data.email === 'admin@example.com' && data.password === 'Ft123456') {
     return {
       success: true,
       user: {

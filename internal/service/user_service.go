@@ -5,9 +5,12 @@ import (
 	dto "cloudque/internal/model/dto/response"
 	"cloudque/internal/model/entity"
 	"cloudque/internal/repository"
-	"cloudque/pkg/response"
 	bizerrors "cloudque/pkg/errors"
+	"cloudque/pkg/response"
 	"golang.org/x/crypto/bcrypt"
+	"net"
+	"strings"
+	"unicode"
 )
 
 // userService 用户服务实现
@@ -22,8 +25,60 @@ func NewUserService(userRepo repository.UserRepository) UserService {
 	}
 }
 
+// validatePassword 校验密码复杂度：至少8位，包含大小写字母和数字
+func validatePassword(password string) error {
+	var hasUpper, hasLower, hasDigit bool
+	for _, ch := range password {
+		switch {
+		case unicode.IsUpper(ch):
+			hasUpper = true
+		case unicode.IsLower(ch):
+			hasLower = true
+		case unicode.IsDigit(ch):
+			hasDigit = true
+		}
+	}
+	if !hasUpper {
+		return bizerrors.New(bizerrors.CodeInvalidParam, "密码必须包含大写字母")
+	}
+	if !hasLower {
+		return bizerrors.New(bizerrors.CodeInvalidParam, "密码必须包含小写字母")
+	}
+	if !hasDigit {
+		return bizerrors.New(bizerrors.CodeInvalidParam, "密码必须包含数字")
+	}
+	return nil
+}
+
+// validateEmailDomain 校验邮箱域名是否有 MX 记录（能收邮件）
+func validateEmailDomain(email string) error {
+	// 提取域名（@ 后面的部分）
+	parts := strings.SplitN(email, "@", 2)
+	if len(parts) != 2 {
+		return bizerrors.New(bizerrors.CodeInvalidParam, "邮箱格式不正确")
+	}
+	domain := strings.ToLower(parts[1])
+
+	// 查询 MX 记录
+	mxRecords, err := net.LookupMX(domain)
+	if err != nil || len(mxRecords) == 0 {
+		return bizerrors.New(bizerrors.CodeInvalidParam, "邮箱域名不存在，请检查邮箱地址")
+	}
+	return nil
+}
+
 // Register 用户注册
 func (s *userService) Register(req *request.RegisterRequest) error {
+	// 校验密码复杂度
+	if err := validatePassword(req.Password); err != nil {
+		return err
+	}
+
+	// 校验邮箱域名是否存在
+	if err := validateEmailDomain(req.Email); err != nil {
+		return err
+	}
+
 	// 检查用户名是否存在
 	exists, err := s.userRepo.ExistsByUsername(req.Username)
 	if err != nil {
@@ -53,8 +108,8 @@ func (s *userService) Register(req *request.RegisterRequest) error {
 		Username: req.Username,
 		Password: string(hashedPassword),
 		Email:    req.Email,
-		Nickname: req.Nickname,
-		Status:   1, // 默认正常
+		Nickname: req.Username, // 默认使用用户名作为昵称
+		Status:   1,            // 正常状态
 	}
 
 	if err := s.userRepo.Create(user); err != nil {
@@ -161,4 +216,14 @@ func (s *userService) ListUsers(req *request.UserListRequest) (*response.PageRes
 	}
 
 	return response.NewPageResponse(list, total, page, size), nil
+}
+
+// CheckUsernameExists 检查用户名是否存在
+func (s *userService) CheckUsernameExists(username string) (bool, error) {
+	return s.userRepo.ExistsByUsername(username)
+}
+
+// CheckEmailExists 检查邮箱是否存在
+func (s *userService) CheckEmailExists(email string) (bool, error) {
+	return s.userRepo.ExistsByEmail(email)
 }

@@ -4,7 +4,6 @@ import { listKnowledgeBases, getKnowledgeBaseById } from '@/api/knowledge-base'
 import { listAgents, type CustomAgent } from '@/api/agent'
 import { listModels, type ModelConfig } from '@/api/model'
 import { listWebSearchProviders, type WebSearchProviderEntity } from '@/api/web-search-provider'
-import { useOrganizationStore } from '@/stores/organization'
 
 /** 空间级资源缓存 TTL */
 const CACHE_TTL_MS = 60_000
@@ -89,8 +88,6 @@ export const useChatResourcesStore = defineStore('chatResources', () => {
         const data = res?.data && Array.isArray(res.data) ? res.data : []
         rawKnowledgeBases.value = data
         loadedAt.value.knowledgeBases = Date.now()
-        const orgStore = useOrganizationStore()
-        await orgStore.fetchSharedKnowledgeBases({ force })
         return data
       } finally {
         if (kbAllGen === gen) kbAllInflight = null
@@ -111,17 +108,6 @@ export const useChatResourcesStore = defineStore('chatResources', () => {
     force = false,
   ): Promise<{ data: CustomAgent[]; disabled_own_agent_ids: string[] }> {
     const creator = params?.creator ?? 'all'
-    const orgStore = useOrganizationStore()
-
-    // 带 creator 过滤的列表不进缓存，但仍需刷新共享智能体（与全量路径保持一致）。
-    if (creator !== 'all') {
-      const [agentsRes] = await Promise.all([
-        listAgents({ creator }),
-        orgStore.fetchSharedAgents({ force }),
-      ])
-      const res = agentsRes as { data?: CustomAgent[]; disabled_own_agent_ids?: string[] }
-      return { data: res.data || [], disabled_own_agent_ids: res.disabled_own_agent_ids || [] }
-    }
 
     if (!force && isFresh('agents')) {
       return { data: agents.value, disabled_own_agent_ids: disabledOwnAgentIds.value }
@@ -131,10 +117,7 @@ export const useChatResourcesStore = defineStore('chatResources', () => {
     const gen = ++agentsAllGen
     agentsAllInflight = (async () => {
       try {
-        const [agentsRes] = await Promise.all([
-          listAgents(),
-          orgStore.fetchSharedAgents({ force }),
-        ])
+        const agentsRes = await listAgents()
         const res = agentsRes as { data?: CustomAgent[]; disabled_own_agent_ids?: string[] }
         const data = res.data || []
         agents.value = data
@@ -176,13 +159,11 @@ export const useChatResourcesStore = defineStore('chatResources', () => {
 
   /** 并行预取对话输入栏及列表页常用的空间级资源 */
   async function prefetchChatInput(force = false): Promise<void> {
-    const orgStore = useOrganizationStore()
     await Promise.all([
       ensureKnowledgeBases(force),
       ensureAgents(force),
       ensureModels(force),
       ensureWebSearchProviders(force),
-      orgStore.fetchOrganizations({ force }),
     ])
   }
 

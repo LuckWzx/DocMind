@@ -21,8 +21,9 @@ type AppConfig struct {
 
 // DatabaseConfig 数据库配置
 type DatabaseConfig struct {
-	MySQL MySQLConfig `mapstructure:"mysql"`
-	Redis RedisConfig `mapstructure:"redis"`
+	PostgreSQL PostgreSQLConfig `mapstructure:"postgresql"`
+	MySQL      MySQLConfig      `mapstructure:"mysql"`
+	Redis      RedisConfig      `mapstructure:"redis"`
 }
 
 // MySQLConfig MySQL 配置
@@ -34,6 +35,18 @@ type MySQLConfig struct {
 	Database     string `mapstructure:"database"`
 	MaxIdleConns int    `mapstructure:"max_idle_conns"`
 	MaxOpenConns int    `mapstructure:"max_open_conns"`
+}
+
+// PostgreSQLConfig PostgreSQL 配置
+type PostgreSQLConfig struct {
+	Host         string `mapstructure:"host"`
+	Port         int    `mapstructure:"port"`
+	Username     string `mapstructure:"username"`
+	Password     string `mapstructure:"password"`
+	Database     string `mapstructure:"database"`
+	MaxIdleConns int    `mapstructure:"max_idle_conns"`
+	MaxOpenConns int    `mapstructure:"max_open_conns"`
+	SSLMode      string `mapstructure:"sslmode"`
 }
 
 // RedisConfig Redis 配置
