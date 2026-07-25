@@ -25,11 +25,11 @@ import (
 
 // App 应用结构体
 type App struct {
-	cfg     *config.Config
-	mysqlDB *gorm.DB
-	redis   *redis.Client
-	router  *api.Router
-	server  *http.Server
+	cfg    *config.Config
+	pgDB   *gorm.DB
+	redis  *redis.Client
+	router *api.Router
+	server *http.Server
 }
 
 // NewApp 创建应用实例
@@ -95,16 +95,16 @@ func (a *App) initLogger() error {
 
 // initDatabase 初始化数据库
 func (a *App) initDatabase() error {
-	// 初始化 MySQL
-	mysqlDB, err := database.InitMySQL(&a.cfg.Database.MySQL)
+	// 初始化 PostgreSQL
+	pgDB, err := database.InitPostgreSQL(&a.cfg.Database.PostgreSQL)
 	if err != nil {
-		return fmt.Errorf("MySQL 初始化失败: %w", err)
+		return fmt.Errorf("PostgreSQL 初始化失败: %w", err)
 	}
-	a.mysqlDB = mysqlDB
+	a.pgDB = pgDB
 
 	// 自动迁移数据库表
 	logger.Info("开始数据库迁移...")
-	if err := a.mysqlDB.AutoMigrate(
+	if err := a.pgDB.AutoMigrate(
 		&entity.User{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
@@ -125,11 +125,12 @@ func (a *App) initDatabase() error {
 // initDependencies 初始化依赖注入
 func (a *App) initDependencies() {
 	// 创建 Repository
-	userRepo := repository.NewUserRepository(a.mysqlDB)
+	userRepo := repository.NewUserRepository(a.pgDB)
+	refreshTokenRepo := repository.NewRefreshTokenRepository(a.redis)
 
 	// 创建 Service
 	userSvc := service.NewUserService(userRepo)
-	authSvc := service.NewAuthService(userRepo, userSvc)
+	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, userSvc)
 
 	// 创建 Router
 	a.router = api.NewRouter(userSvc, authSvc)
@@ -192,7 +193,7 @@ func (a *App) gracefulShutdown() {
 	}
 
 	// 关闭数据库连接
-	_ = database.CloseMySQL()
+	_ = database.ClosePostgreSQL()
 	_ = database.CloseRedis()
 
 	// 同步日志

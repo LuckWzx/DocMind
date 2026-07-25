@@ -109,11 +109,6 @@
                     <WebSearchSettings />
                   </div>
 
-                  <!-- 消息管理 -->
-                  <div v-if="currentSection === 'chathistory'" class="section">
-                    <ChatHistorySettings />
-                  </div>
-
                   <!-- 向量数据库引擎 -->
                   <div v-if="currentSection === 'vectorstore'" class="section">
                     <VectorStoreSettings />
@@ -148,16 +143,6 @@
                      用户的基本信息不该跟 owner 权限绑定。 -->
                   <div v-if="currentSection === 'userprofile'" class="section">
                     <UserProfile />
-                  </div>
-
-                  <!-- 空间信息 -->
-                  <div v-if="currentSection === 'tenant'" class="section">
-                    <TenantInfo />
-                  </div>
-
-                  <!-- 成员管理 (#1303 PR 3) -->
-                  <div v-if="currentSection === 'members'" class="section">
-                    <TenantMembers />
                   </div>
 
                   <!-- 发布集成 -->
@@ -254,15 +239,12 @@ const SECTION_MIN_ROLE: Record<string, RoleKey> = {
   docmindcloud: 'admin',
   models: 'viewer',
   websearch: 'admin',
-  chathistory: 'admin',
   vectorstore: 'admin',
   parser: 'admin',
   storage: 'admin',
   mcp: 'admin',
   system: 'viewer',
   userprofile: 'viewer',
-  tenant: 'viewer',
-  members: 'viewer',
 }
 
 const SYSTEM_ADMIN_SECTIONS = new Set(['system-global', 'runtime-queues'])
@@ -328,7 +310,6 @@ const navItems = computed(() => {
     { key: 'docmindcloud', icon: '', label: 'DocMind Cloud' },
     { key: 'models', icon: 'control-platform', label: t('settings.modelManagement') },
     { key: 'websearch', icon: 'search', label: t('settings.webSearchConfig') },
-    { key: 'chathistory', icon: 'chat', label: t('chatHistorySettings.title') },
     { key: 'vectorstore', icon: 'data-base', label: t('settings.vectorStoreEngine') },
     { key: 'parser', icon: 'file-search', label: t('settings.parserEngine') },
     { key: 'storage', icon: 'cloud', label: t('settings.storageEngine') },
@@ -337,8 +318,6 @@ const navItems = computed(() => {
     { key: 'system-global', icon: 'server', label: t('settings.system') },
     { key: 'runtime-queues', icon: 'queue', label: t('settings.taskQueue') },
     { key: 'userprofile', icon: 'user', label: t('userProfile.title') },
-    { key: 'tenant', icon: 'user-circle', label: t('settings.tenantInfo') },
-    { key: 'members', icon: 'usergroup', label: t('tenantMember.title') },
     ...integrationItems,
   ]
   // currentTenantRole 为空表示「membership 还没加载」—— 比起渲染整套
@@ -353,20 +332,12 @@ const navItems = computed(() => {
 const navGroups = computed<NavGroup[]>(() => {
   const itemMap = new Map(navItems.value.map((item) => [item.key, item]))
   const pickItems = (keys: string[]) => keys.map((key) => itemMap.get(key)).filter(Boolean) as NavItem[]
-  // 分组：账户 → 空间 → 模型 → 发布集成 → 数据与扩展 → 系统管理 → 平台
-  // 关键调整：把个人偏好(general)和用户信息收进「账户」；
-  // 把空间内功能开关(chathistory)从「平台」挪到「空间」；
-  // 把检索引擎和外部集成合并为「数据与扩展」，避免两个 2~3 项的窄分组。
+  // 分组：账户 → 模型 → 发布集成 → 数据与扩展 → 系统管理 → 平台
   return [
     {
       key: 'account',
       label: t('settings.navGroups.account'),
       items: pickItems(['general', 'userprofile']),
-    },
-    {
-      key: 'workspace',
-      label: t('settings.navGroups.workspace'),
-      items: pickItems(['tenant', 'members', 'chathistory']),
     },
     {
       key: 'models_runtime',

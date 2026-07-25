@@ -2,13 +2,17 @@ package service
 
 import (
 	"cloudque/internal/model/dto/request"
-	dto "cloudque/internal/model/dto/response"
+	"cloudque/internal/model/dto/response"
 )
 
 // AuthService 认证服务接口
 type AuthService interface {
 	// Login 用户登录
-	Login(req *request.LoginRequest) (*dto.LoginResponse, error)
+	Login(req *request.LoginRequest) (*response.LoginResponse, error)
 	// RefreshToken 刷新 Token
-	RefreshToken(token string) (string, error)
+	RefreshToken(req *request.RefreshTokenRequest) (*response.RefreshTokenResponse, error)
+	// Logout 用户登出
+	Logout(userID uint) error
+	// GetUserFromToken 从 Token 获取用户信息
+	GetUserFromToken(userID uint) (*response.UserResponse, error)
 }

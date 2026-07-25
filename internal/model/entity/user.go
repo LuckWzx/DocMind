@@ -3,12 +3,12 @@ package entity
 // User 用户实体
 type User struct {
 	BaseEntity
-	Username string `gorm:"type:varchar(50);uniqueIndex;not null;comment:用户名" json:"username"`
-	Password string `gorm:"type:varchar(255);not null;comment:密码" json:"-"`
-	Email    string `gorm:"type:varchar(100);uniqueIndex;comment:邮箱" json:"email"`
-	Nickname string `gorm:"type:varchar(50);comment:昵称" json:"nickname"`
-	Avatar   string `gorm:"type:varchar(255);comment:头像" json:"avatar"`
-	Status   int    `gorm:"type:tinyint;default:1;comment:状态:1正常,2禁用" json:"status"`
+	Username string `gorm:"type:varchar(50);uniqueIndex;not null;column:username" json:"username"`
+	Password string `gorm:"type:varchar(255);not null;column:password" json:"-"`
+	Email    string `gorm:"type:varchar(100);uniqueIndex;column:email" json:"email"`
+	Nickname string `gorm:"type:varchar(50);column:nickname" json:"nickname"`
+	Avatar   string `gorm:"type:varchar(255);column:avatar" json:"avatar"`
+	Status   int    `gorm:"type:smallint;default:1;column:status" json:"status"` // 1:正常, 2:禁用
 }
 
 // TableName 指定表名

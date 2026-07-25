@@ -41,6 +41,9 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	// 从环境变量覆盖敏感配置
+	if val := os.Getenv("POSTGRES_PASSWORD"); val != "" {
+		config.Database.PostgreSQL.Password = val
+	}
 	if val := os.Getenv("MYSQL_PASSWORD"); val != "" {
 		config.Database.MySQL.Password = val
 	}

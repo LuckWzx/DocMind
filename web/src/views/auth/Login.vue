@@ -389,7 +389,8 @@ const formRules = computed(() => ({
     { required: true, message: t('auth.passwordRequired'), type: 'error' },
     { min: 8, message: t('auth.passwordMinLength'), type: 'error' },
     { max: 32, message: t('auth.passwordMaxLength'), type: 'error' },
-    { pattern: /[a-zA-Z]/, message: t('auth.passwordMustContainLetter'), type: 'error' },
+    { pattern: /[a-z]/, message: t('auth.passwordMustContainLowercase'), type: 'error' },
+    { pattern: /[A-Z]/, message: t('auth.passwordMustContainUppercase'), type: 'error' },
     { pattern: /\d/, message: t('auth.passwordMustContainNumber'), type: 'error' }
   ]
 }))
@@ -398,7 +399,7 @@ const formRules = computed(() => ({
 const registerRules = computed(() => ({
   username: [
     { required: true, message: t('auth.usernameRequired'), type: 'error' },
-    { min: 2, message: t('auth.usernameMinLength'), type: 'error' },
+    { min: 4, message: t('auth.usernameMinLength'), type: 'error' },
     { max: 20, message: t('auth.usernameMaxLength'), type: 'error' },
     {
       pattern: /^[a-zA-Z0-9_\u4e00-\u9fa5]+$/,
@@ -414,7 +415,8 @@ const registerRules = computed(() => ({
     { required: true, message: t('auth.passwordRequired'), type: 'error' },
     { min: 8, message: t('auth.passwordMinLength'), type: 'error' },
     { max: 32, message: t('auth.passwordMaxLength'), type: 'error' },
-    { pattern: /[a-zA-Z]/, message: t('auth.passwordMustContainLetter'), type: 'error' },
+    { pattern: /[a-z]/, message: t('auth.passwordMustContainLowercase'), type: 'error' },
+    { pattern: /[A-Z]/, message: t('auth.passwordMustContainUppercase'), type: 'error' },
     { pattern: /\d/, message: t('auth.passwordMustContainNumber'), type: 'error' }
   ],
   confirmPassword: [
