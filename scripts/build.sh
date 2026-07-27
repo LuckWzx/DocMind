@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# CloudQue 构建脚本
+# DocMind 构建脚本
 
 set -e
 
 echo "========================================"
-echo "CloudQue Build Script"
+echo "DocMind Build Script"
 echo "========================================"
 
 # 配置
-APP_NAME="cloudque-api"
+APP_NAME="docmind-api"
 BUILD_DIR="bin"
 VERSION=${VERSION:-"1.0.0"}
 BUILD_TIME=$(date +%Y-%m-%d\ %H:%M:%S)

@@ -114,6 +114,8 @@ func (a *App) initDatabase() error {
 		&entity.Tag{},
 		&entity.Model{},
 		&entity.WebSearchProvider{},
+		&entity.FAQ{},
+		&entity.VectorStore{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {

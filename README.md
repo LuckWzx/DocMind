@@ -4,31 +4,34 @@
 
 ## 📖 项目简介
 
-DocMind 是一个现代化的智能知识管理平台，提供文档理解、语义检索、自主推理等核心功能。项目采用前后端分离架构，前端基于 Vue 3 + TypeScript + Vite 构建。
+DocMind 是一个现代化的智能知识管理平台，提供文档理解、语义检索、自主推理等核心功能。项目采用前后端协同架构，当前仓库同时包含前端应用与 Go 后端服务。
 
 ## 🏗️ 项目结构
 
 ```
 DocMind/
-├── README.md                          # 项目说明文档
-├── web/                              # 前端项目（完整复刻WeKnora前端）
-│   ├── package.json                  # 项目配置
-│   ├── vite.config.ts               # Vite配置
-│   ├── index.html                   # 入口HTML
+├── cmd/                             # Go 服务启动入口
+├── configs/                         # 配置模板
+├── docs/                            # 架构、接口与阶段文档
+├── internal/                        # 后端业务代码
+├── migrations/                      # 数据库迁移脚本
+├── pkg/                             # 公共基础库
+├── scripts/                         # 构建与辅助脚本
+├── web/                             # Vue 3 前端项目
+│   ├── package.json                 # 前端依赖与脚本
+│   ├── index.html                   # 主入口 HTML
+│   ├── embed.html                   # 嵌入式聊天入口
 │   └── src/
-│       ├── main.ts                  # 入口文件
-│       ├── App.vue                  # 根组件
-│       ├── api/                     # API接口层（已预留Mock数据）
-│       ├── views/                   # 页面组件（159个Vue组件）
+│       ├── api/                     # 前端 API 封装
+│       ├── views/                   # 页面视图
 │       ├── components/              # 公共组件
-│       ├── stores/                  # Pinia状态管理
-│       ├── router/                  # Vue Router路由配置
-│       ├── types/                   # TypeScript类型定义
+│       ├── stores/                  # Pinia 状态管理
+│       ├── router/                  # Vue Router 路由
+│       ├── types/                   # TypeScript 类型定义
 │       ├── utils/                   # 工具函数
 │       ├── composables/             # 组合式函数
-│       ├── i18n/                    # 国际化配置
-│       └── assets/                  # 静态资源
-├── backend/                         # 后端项目（待开发）
+│       └── i18n/                    # 国际化配置
+├── go.mod                           # Go 模块定义
 └── README.md
 ```
 
@@ -58,24 +61,24 @@ npm run dev
 
 ### 接口预留方式
 
-项目采用 **Mock数据 + 接口定义** 的方式预留后端接口：
+项目当前采用 **真实接口优先 + 局部占位实现补齐** 的方式推进前后端协同开发：
 
-1. **类型定义**：在 `src/types/` 目录下定义完整的TypeScript接口
-2. **API层**：在 `src/api/` 目录下创建API函数，当前返回Mock数据
-3. **注释标记**：所有需要替换的地方都有 `// TODO: 替换为实际API调用` 注释
+1. **类型定义**：在 `src/types/` 目录下定义完整的 TypeScript 接口
+2. **API层**：在 `src/api/` 目录下封装统一请求，已逐步接入 `/api/v1/*` 后端接口
+3. **迭代方式**：已落地模块直接调用真实接口，未落地模块保留占位实现或临时 mock
 
 ### 如何对接后端
 
-当后端接口就绪后，只需修改对应的API文件：
+当前仓库已经包含 Go 后端服务骨架与部分基础接口（如认证、用户等）。对于尚未落地的业务模块，可继续在对应 API 文件中保留占位实现，待后端补齐后再切换到真实接口：
 
 ```typescript
-// 修改前（Mock数据）
+// 占位实现
 export async function listKnowledgeBases() {
   console.log('listKnowledgeBases')
   return Promise.resolve(mockKnowledgeBases)
 }
 
-// 修改后（实际API调用）
+// 接入真实接口
 export async function listKnowledgeBases() {
   return get('/v1/knowledge-bases')
 }
@@ -106,11 +109,12 @@ export async function listKnowledgeBases() {
 
 ### 项目特点
 
-✅ **完整的前端框架** - Vue 3 + TypeScript + Vite  
-✅ **159个Vue组件** - 完整复刻WeKnora前端  
+✅ **前后端同仓协作** - Vue 3 前端 + Go 后端
+✅ **完整的前端框架** - Vue 3 + TypeScript + Vite
+✅ **丰富的界面与业务模块** - 覆盖知识库、聊天、Agent、设置等核心页面
 ✅ **模块化API设计** - 按功能模块分离，易于维护  
 ✅ **完整的类型定义** - TypeScript接口，类型安全  
-✅ **Mock数据** - 开发阶段可独立运行  
+✅ **后端骨架已落地** - 已包含配置、日志、数据库、认证与用户模块
 ✅ **清晰的替换标记** - 所有TODO位置都有注释  
 ✅ **现代化UI** - TDesign组件库，美观易用  
 ✅ **国际化支持** - 多语言配置  
@@ -119,7 +123,7 @@ export async function listKnowledgeBases() {
 
 1. **API路径约定**：查看 `src/api/` 目录下的各个文件
 2. **请求/响应格式**：参考 `src/types/` 目录下的类型定义
-3. **替换Mock数据**：将API函数中的 `Promise.resolve(mockData)` 替换为实际的HTTP请求
+3. **补齐业务接口**：将占位实现逐步替换为实际的 HTTP 请求
 
 ## 📄 License
 

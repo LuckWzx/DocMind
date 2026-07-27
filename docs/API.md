@@ -61,7 +61,7 @@ GET /api/v1/health
 ```json
 {
   "status": "ok",
-  "message": "CloudQue API is running"
+  "message": "DocMind API is running"
 }
 ```
 

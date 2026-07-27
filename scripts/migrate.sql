@@ -1,4 +1,4 @@
--- CloudQue 数据库迁移脚本
+-- DocMind 数据库迁移脚本
 
 -- 创建数据库
 CREATE DATABASE IF NOT EXISTS cloudque DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
