@@ -3,8 +3,8 @@ package middleware
 import (
 	"strings"
 
-	"cloudque/pkg/jwt"
-	"cloudque/pkg/response"
+	"docmind/pkg/jwt"
+	"docmind/pkg/response"
 	"github.com/gin-gonic/gin"
 )
 

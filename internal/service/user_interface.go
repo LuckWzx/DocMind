@@ -1,11 +1,11 @@
 package service
 
 import (
-	"cloudque/internal/model/dto/request"
-	dto "cloudque/internal/model/dto/response"
-	"cloudque/pkg/response"
+	"docmind/internal/model/dto/request"
+	dto "docmind/internal/model/dto/response"
+	"docmind/pkg/response"
 
-	"cloudque/internal/model/entity"
+	"docmind/internal/model/entity"
 )
 
 // UserService 用户服务接口

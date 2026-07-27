@@ -3,8 +3,8 @@ package middleware
 import (
 	"runtime/debug"
 
-	"cloudque/pkg/logger"
-	"cloudque/pkg/response"
+	"docmind/pkg/logger"
+	"docmind/pkg/response"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )

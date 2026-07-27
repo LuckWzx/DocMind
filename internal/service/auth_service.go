@@ -3,11 +3,11 @@ package service
 import (
 	"time"
 
-	"cloudque/internal/model/dto/request"
-	"cloudque/internal/model/dto/response"
-	"cloudque/internal/repository"
-	bizerrors "cloudque/pkg/errors"
-	"cloudque/pkg/jwt"
+	"docmind/internal/model/dto/request"
+	"docmind/internal/model/dto/response"
+	"docmind/internal/repository"
+	bizerrors "docmind/pkg/errors"
+	"docmind/pkg/jwt"
 
 	"golang.org/x/crypto/bcrypt"
 )

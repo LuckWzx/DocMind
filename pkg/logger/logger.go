@@ -3,7 +3,7 @@ package logger
 import (
 	"os"
 
-	"cloudque/pkg/config"
+	"docmind/pkg/config"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"

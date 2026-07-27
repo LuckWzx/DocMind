@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"cloudque/pkg/config"
-	"cloudque/pkg/logger"
+	"docmind/pkg/config"
+	"docmind/pkg/logger"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )

@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"cloudque/internal/middleware"
+	"docmind/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )

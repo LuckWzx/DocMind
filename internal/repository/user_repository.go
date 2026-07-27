@@ -3,7 +3,7 @@ package repository
 import (
 	"errors"
 
-	"cloudque/internal/model/entity"
+	"docmind/internal/model/entity"
 
 	"gorm.io/gorm"
 )

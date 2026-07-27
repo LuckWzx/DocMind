@@ -1,8 +1,8 @@
 package service
 
 import (
-	"cloudque/internal/model/dto/request"
-	"cloudque/internal/model/dto/response"
+	"docmind/internal/model/dto/request"
+	"docmind/internal/model/dto/response"
 )
 
 // AuthService 认证服务接口

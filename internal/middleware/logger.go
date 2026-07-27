@@ -1,9 +1,11 @@
 package middleware
 
 import (
+	"strings"
 	"time"
 
-	"cloudque/pkg/logger"
+	"docmind/pkg/logger"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -11,6 +13,11 @@ import (
 // Logger 日志中间件
 func Logger() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 跳过 Swagger 静态资源请求，避免日志刷屏
+		if strings.HasPrefix(c.Request.URL.Path, "/swagger/") {
+			c.Next()
+			return
+		}
 		// 开始时间
 		start := time.Now()
 		path := c.Request.URL.Path

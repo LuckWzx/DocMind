@@ -1,12 +1,16 @@
 package api
 
 import (
-	"cloudque/internal/api/v1/auth"
-	"cloudque/internal/api/v1/user"
-	"cloudque/internal/middleware"
-	"cloudque/internal/service"
+	"docmind/internal/api/v1/auth"
+	"docmind/internal/api/v1/user"
+	"docmind/internal/middleware"
+	"docmind/internal/service"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+
+	_ "docmind/docs" // Swagger 文档
 )
 
 // Router 路由
@@ -37,9 +41,19 @@ func (r *Router) Setup(engine *gin.Engine) {
 	engine.GET("/api/v1/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status":  "ok",
-			"message": "CloudQue API is running",
+			"message": "DocMind API is running",
 		})
 	})
+
+	// Swagger 文档（仅非 production 环境启用）
+	if gin.Mode() != gin.ReleaseMode {
+		engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler,
+			ginSwagger.DefaultModelsExpandDepth(-1),
+			ginSwagger.DocExpansion("list"),
+			ginSwagger.DeepLinking(true),
+			ginSwagger.PersistAuthorization(true),
+		))
+	}
 
 	// API v1 路由组
 	v1 := engine.Group("/api/v1")

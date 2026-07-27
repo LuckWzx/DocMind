@@ -1,7 +1,7 @@
 package request
 
 import (
-	"cloudque/pkg/response"
+	"docmind/pkg/response"
 )
 
 // UpdateUserRequest 更新用户信息请求

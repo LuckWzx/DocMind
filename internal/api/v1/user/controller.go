@@ -1,10 +1,10 @@
 package user
 
 import (
-	"cloudque/internal/middleware"
-	"cloudque/internal/model/dto/request"
-	"cloudque/internal/service"
-	"cloudque/pkg/response"
+	"docmind/internal/middleware"
+	"docmind/internal/model/dto/request"
+	"docmind/internal/service"
+	"docmind/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )

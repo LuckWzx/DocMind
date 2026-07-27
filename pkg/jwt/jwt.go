@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"cloudque/pkg/config"
+	"docmind/pkg/config"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )

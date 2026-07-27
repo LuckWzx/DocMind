@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"cloudque/internal/model/entity"
+	"docmind/internal/model/entity"
 )
 
 // UserRepository 用户仓储接口

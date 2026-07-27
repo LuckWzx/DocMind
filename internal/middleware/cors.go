@@ -3,7 +3,7 @@ package middleware
 import (
 	"strings"
 
-	"cloudque/pkg/config"
+	"docmind/pkg/config"
 	"github.com/gin-gonic/gin"
 )
 

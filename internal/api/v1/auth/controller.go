@@ -1,10 +1,10 @@
 package auth
 
 import (
-	"cloudque/internal/middleware"
-	"cloudque/internal/model/dto/request"
-	"cloudque/internal/service"
-	"cloudque/pkg/response"
+	"docmind/internal/middleware"
+	"docmind/internal/model/dto/request"
+	"docmind/internal/service"
+	"docmind/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -54,7 +54,7 @@ func (ctrl *Controller) Register(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body request.LoginRequest true "登录信息"
-// @Success 200 {object} response.Response{data=response.LoginResponse}
+// @Success 200 {object} response.Response "登录成功，返回Token和用户信息"
 // @Router /api/v1/auth/login [post]
 func (ctrl *Controller) Login(c *gin.Context) {
 	var req request.LoginRequest
@@ -78,8 +78,8 @@ func (ctrl *Controller) Login(c *gin.Context) {
 // @Tags 认证
 // @Accept json
 // @Produce json
-// @Security BearerAuth
-// @Success 200 {object} response.Response{data=response.UserResponse}
+// @Security Bearer
+// @Success 200 {object} response.Response "返回当前用户信息"
 // @Router /api/v1/auth/me [get]
 func (ctrl *Controller) GetCurrentUser(c *gin.Context) {
 	userID := middleware.GetUserID(c)
@@ -104,7 +104,7 @@ func (ctrl *Controller) GetCurrentUser(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param request body request.RefreshTokenRequest true "Refresh Token"
-// @Success 200 {object} response.Response{data=response.RefreshTokenResponse}
+// @Success 200 {object} response.Response "返回新的Token"
 // @Router /api/v1/auth/refresh [post]
 func (ctrl *Controller) RefreshToken(c *gin.Context) {
 	var req request.RefreshTokenRequest
@@ -128,8 +128,8 @@ func (ctrl *Controller) RefreshToken(c *gin.Context) {
 // @Tags 认证
 // @Accept json
 // @Produce json
-// @Security BearerAuth
-// @Success 200 {object} response.Response
+// @Security Bearer
+// @Success 200 {object} response.Response "登出成功"
 // @Router /api/v1/auth/logout [post]
 func (ctrl *Controller) Logout(c *gin.Context) {
 	userID := middleware.GetUserID(c)

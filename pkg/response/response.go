@@ -3,7 +3,7 @@ package response
 import (
 	"math"
 
-	"cloudque/pkg/errors"
+	"docmind/pkg/errors"
 
 	"github.com/gin-gonic/gin"
 )

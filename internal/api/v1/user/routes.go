@@ -1,7 +1,7 @@
 package user
 
 import (
-	"cloudque/internal/middleware"
+	"docmind/internal/middleware"
 	"github.com/gin-gonic/gin"
 )
 
