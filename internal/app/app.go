@@ -106,6 +106,14 @@ func (a *App) initDatabase() error {
 	logger.Info("开始数据库迁移...")
 	if err := a.pgDB.AutoMigrate(
 		&entity.User{},
+		&entity.KnowledgeBase{},
+		&entity.Knowledge{},
+		&entity.Chunk{},
+		&entity.Session{},
+		&entity.Message{},
+		&entity.Tag{},
+		&entity.Model{},
+		&entity.WebSearchProvider{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {
