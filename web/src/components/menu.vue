@@ -52,7 +52,7 @@
         <!-- 折叠时右侧拖拽展开手柄 -->
         <div v-if="uiStore.sidebarCollapsed" class="sidebar-drag-handle" @mousedown="onDragHandleMouseDown" />
 
-        <!-- 上半部分：新对话吸顶 + 知识库/智能体/共享空间/历史会话随滚动一起滚走 -->
+        <!-- 上半部分：新对话吸顶 + 知识库/智能体/历史会话随滚动一起滚走 -->
         <div class="menu_top" ref="scrollContainer" @scroll="handleScroll">
             <!-- 全局搜索入口：点击打开命令面板（⌘K）。展开态移至顶部 logo_row 的图标按钮；
                  折叠态在此处保留为图标项 + 深色 tooltip。 -->
@@ -82,15 +82,11 @@
                         <div class="menu_item-box">
                             <div class="menu_icon">
                                 <img class="icon"
-                                    :src="getImgSrc(item.icon == 'zhishiku' ? knowledgeIcon : item.icon == 'agent' ? agentIcon : item.icon == 'organization' ? organizationIcon : item.icon == 'logout' ? logoutIcon : item.icon == 'setting' ? settingIcon : prefixIcon)"
+                                    :src="getImgSrc(item.icon == 'zhishiku' ? knowledgeIcon : item.icon == 'agent' ? agentIcon : item.icon == 'logout' ? logoutIcon : item.icon == 'setting' ? settingIcon : prefixIcon)"
                                     alt="">
                             </div>
                             <template v-if="!uiStore.sidebarCollapsed">
                                 <span class="menu_title" :title="item.title">{{ item.title }}</span>
-                                <span v-if="item.path === 'organizations' && orgStore.totalPendingJoinRequestCount > 0"
-                                    class="menu-pending-badge"
-                                    :title="t('organization.settings.pendingJoinRequestsBadge')">{{
-                                        orgStore.totalPendingJoinRequestCount }}</span>
                             </template>
                         </div>
                     </div>
@@ -245,7 +241,6 @@ import {
 import { logout as logoutApi } from '@/api/auth';
 import { useMenuStore } from '@/stores/menu';
 import { useAuthStore } from '@/stores/auth';
-import { useOrganizationStore } from '@/stores/organization';
 import { useUIStore } from '@/stores/ui';
 import { useCommandPaletteStore } from '@/stores/commandPalette';
 import { MessagePlugin, DialogPlugin, Icon as TIcon } from "tdesign-vue-next";
@@ -283,7 +278,6 @@ const platformLogo = (p: string): string => (p ? PLATFORM_LOGO[p] || '' : '');
 const { t } = useI18n();
 const usemenuStore = useMenuStore();
 const authStore = useAuthStore();
-const orgStore = useOrganizationStore();
 const uiStore = useUIStore();
 const commandPaletteStore = useCommandPaletteStore();
 
@@ -360,34 +354,12 @@ const batchDisplayCount = computed(() =>
     isAllBatchSelected.value ? total.value : batchSelectedIds.value.length
 )
 
-// 是否可以访问所有空间
-const canAccessAllTenants = computed(() => authStore.canAccessAllTenants);
-
 // 是否处于知识库详情页（不包括全局聊天）
 const isInKnowledgeBase = computed<boolean>(() => {
     return route.name === 'knowledgeBaseDetail' ||
         route.name === 'kbCreatChat' ||
         route.name === 'knowledgeBaseSettings';
 });
-
-// 是否在知识库列表页面
-const isInKnowledgeBaseList = computed<boolean>(() => {
-    return route.name === 'knowledgeBaseList';
-});
-
-// 是否在创建聊天页面
-const isInCreatChat = computed<boolean>(() => {
-    return route.name === 'globalCreatChat' || route.name === 'kbCreatChat';
-});
-
-// 是否在对话详情页
-const isInChatDetail = computed<boolean>(() => route.name === 'chat');
-
-// 是否在智能体列表页面
-const isInAgentList = computed<boolean>(() => route.name === 'agentList');
-
-// 是否在组织列表页面
-const isInOrganizationList = computed<boolean>(() => route.name === 'organizationList');
 
 // 统一的菜单项激活状态判断
 const isMenuItemActive = (itemPath: string): boolean => {
@@ -400,8 +372,6 @@ const isMenuItemActive = (itemPath: string): boolean => {
                 currentRoute === 'knowledgeBaseSettings';
         case 'agents':
             return currentRoute === 'agentList';
-        case 'organizations':
-            return currentRoute === 'organizationList';
         case 'creatChat':
             return currentRoute === 'kbCreatChat' || currentRoute === 'globalCreatChat';
         case 'settings':
@@ -430,22 +400,9 @@ const getIconActiveState = (itemPath: string) => {
 // 分离上下两部分菜单（使用 visibleMenuArr 以便 lite 模式过滤 logout）
 const topMenuItems = computed<MenuItem[]>(() => {
     return (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) =>
-        item.path === 'knowledge-bases' || item.path === 'agents' || item.path === 'organizations' || item.path === 'creatChat'
+        item.path === 'knowledge-bases' || item.path === 'agents' || item.path === 'creatChat'
     );
 });
-
-const bottomMenuItems = computed<MenuItem[]>(() => {
-    return (visibleMenuArr.value as unknown as MenuItem[]).filter((item: MenuItem) => {
-        if (item.path === 'knowledge-bases' || item.path === 'agents' || item.path === 'organizations' || item.path === 'creatChat') {
-            return false;
-        }
-        return true;
-    });
-});
-
-// 当前知识库信息
-const currentKbName = ref<string>('')
-const currentKbInfo = ref<any>(null)
 
 // 进行中的置顶/取消置顶请求，避免重复点击
 const pinningIds = ref<Set<string>>(new Set())
@@ -911,18 +868,8 @@ const checkScrollBottom = async () => {
 const handleScroll = debounce(checkScrollBottom, 200);
 
 async function loadCurrentKbInfo(kbId: string) {
-    if (!kbId || !isInKnowledgeBase.value) {
-        currentKbName.value = ''
-        currentKbInfo.value = null
-        return
-    }
-    const data = await chatResources.fetchKnowledgeBaseById(kbId)
-    if (data) {
-        currentKbName.value = data.name || ''
-        currentKbInfo.value = data
-    } else {
-        currentKbInfo.value = null
-    }
+    if (!kbId || !isInKnowledgeBase.value) return
+    await chatResources.fetchKnowledgeBaseById(kbId)
 }
 
 const loadSessionOriginMeta = async () => {
@@ -988,10 +935,6 @@ onMounted(async () => {
         ensureSessionInSidebar(initialChatId);
         await syncActiveBucketFromChat(initialChatId);
     }
-    // 若组织列表未加载则拉取一次，用于侧栏「待审批」角标
-    if (orgStore.organizations.length === 0) {
-        orgStore.fetchOrganizations();
-    }
 });
 
 onUnmounted(() => {
@@ -1028,7 +971,6 @@ let prefixIcon = ref('prefixIcon.svg');
 let logoutIcon = ref('logout.svg');
 let settingIcon = ref('setting.svg');
 let agentIcon = ref('agent.svg');
-let organizationIcon = ref('organization.svg');
 let pathPrefix = ref(route.name)
 const getIcon = (path: string) => {
     // 根据当前路由状态更新所有图标
@@ -1036,16 +978,11 @@ const getIcon = (path: string) => {
     const creatChatActiveState = getIconActiveState('creatChat');
     const settingsActiveState = getIconActiveState('settings');
     const agentsActiveState = route.name === 'agentList';
-    const organizationsActiveState = route.name === 'organizationList';
-
     // 知识库图标：只在知识库页面显示绿色
     knowledgeIcon.value = kbActiveState.isKbActive ? 'zhishiku-green.svg' : 'zhishiku.svg';
 
     // 智能体图标：只在智能体页面显示绿色
     agentIcon.value = agentsActiveState ? 'agent-green.svg' : 'agent.svg';
-
-    // 组织图标：只在组织页面显示绿色
-    organizationIcon.value = organizationsActiveState ? 'organization-green.svg' : 'organization.svg';
 
     // 对话图标：只在对话创建页面显示绿色，其他情况显示默认
     prefixIcon.value = creatChatActiveState.isCreatChatActive ? 'prefixIcon-green.svg' : 'prefixIcon.svg';
@@ -1068,9 +1005,6 @@ const handleMenuClick = async (path: string) => {
         }
     } else if (path === 'agents') {
         router.push('/platform/agents')
-    } else if (path === 'organizations') {
-        // 组织菜单项：跳转到组织列表
-        router.push('/platform/organizations')
     } else if (path === 'settings') {
         // 设置菜单项：打开设置弹窗并跳转路由
         uiStore.openSettings()
@@ -1078,11 +1012,6 @@ const handleMenuClick = async (path: string) => {
     } else {
         gotopage(path)
     }
-}
-
-// 处理退出登录确认
-const handleLogout = () => {
-    gotopage('logout')
 }
 
 const getCurrentKbId = async (): Promise<string | null> => {
@@ -1865,21 +1794,6 @@ const onDragHandleMouseDown = (e: MouseEvent) => {
         opacity: 0.6;
         letter-spacing: 0.5px;
     }
-}
-
-.menu-pending-badge {
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
-    margin-left: 6px;
-    border-radius: 9px;
-    background: rgba(250, 173, 20, 0.2);
-    color: var(--td-warning-color);
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 18px;
-    text-align: center;
-    flex-shrink: 0;
 }
 
 .menu_box {

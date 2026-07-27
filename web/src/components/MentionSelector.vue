@@ -472,17 +472,7 @@ function handleKbClick(kbId: string | undefined) {
 
 function handleOrgClick(orgName: string) {
   if (!orgName) return;
-  // 从共享知识库列表中找到对应的组织 ID
-  const sharedKb = orgStore.sharedKnowledgeBases.find(
-    (s: any) => s.org_name === orgName
-  );
-  if (sharedKb?.organization_id) {
-    // 跳转到组织列表页（目前组织详情页可能不存在，先跳转到列表页）
-    router.push('/platform/organizations');
-  } else {
-    // 如果找不到组织 ID，也跳转到组织列表页
-    router.push('/platform/organizations');
-  }
+  router.push('/platform/knowledge-bases');
 }
 
 const onScroll = (e: Event) => {

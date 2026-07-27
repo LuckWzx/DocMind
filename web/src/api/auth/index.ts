@@ -3,6 +3,84 @@ import i18n from '@/i18n'
 
 const t = (key: string) => i18n.global.t(key)
 
+interface BackendEnvelope<T> {
+  code: number
+  message: string
+  data?: T
+}
+
+interface BackendAuthUser {
+  id: string | number
+  username: string
+  email: string
+  nickname?: string
+  avatar?: string
+  status?: number
+  created_at?: string
+  updated_at?: string
+}
+
+interface BackendLoginData {
+  token: string
+  refresh_token: string
+  user: BackendAuthUser
+}
+
+interface BackendRefreshTokenData {
+  token: string
+  refresh_token: string
+}
+
+function isBackendSuccess<T>(response: BackendEnvelope<T> | any): response is BackendEnvelope<T> {
+  return Number(response?.code) === 0
+}
+
+function toPersonalWorkspace(user?: BackendAuthUser | null) {
+  const rawId = Number(user?.id)
+  const workspaceId = Number.isFinite(rawId) && rawId > 0 ? rawId : 1
+  const createdAt = user?.created_at || new Date().toISOString()
+  const updatedAt = user?.updated_at || createdAt
+  const workspaceOwner = user?.nickname || user?.username || 'DocMind'
+  return {
+    id: workspaceId,
+    name: `${workspaceOwner} 的空间`,
+    description: '用户独立空间',
+    status: 'active',
+    business: 'personal-space',
+    storage_quota: 0,
+    storage_used: 0,
+    created_at: createdAt,
+    updated_at: updatedAt,
+  }
+}
+
+function toFrontendAuthUser(user?: BackendAuthUser | null) {
+  const workspace = toPersonalWorkspace(user)
+  return {
+    id: String(user?.id || ''),
+    username: user?.username || '',
+    email: user?.email || '',
+    avatar: user?.avatar || '',
+    tenant_id: workspace.id,
+    can_access_all_tenants: false,
+    is_system_admin: false,
+    is_active: user?.status === 1,
+    created_at: user?.created_at || new Date().toISOString(),
+    updated_at: user?.updated_at || new Date().toISOString(),
+  }
+}
+
+function toPersonalMembership(user?: BackendAuthUser | null): MembershipInfo[] {
+  const workspace = toPersonalWorkspace(user)
+  return [
+    {
+      tenant_id: workspace.id,
+      tenant_name: workspace.name,
+      role: 'owner',
+    },
+  ]
+}
+
 // 用户登录接口
 export interface LoginRequest {
   email: string
@@ -206,43 +284,28 @@ export interface ModelInfo {
  * 用户登录
  */
 export async function login(data: LoginRequest): Promise<LoginResponse> {
-  // Mock登录功能 - 用于开发环境
-  // 默认账号: admin@example.com / Ft123456
-  if (data.email === 'admin@example.com' && data.password === 'Ft123456') {
+  try {
+    const response = await post<BackendEnvelope<BackendLoginData>>('/api/v1/auth/login', data)
+    if (!isBackendSuccess(response) || !response.data) {
+      return {
+        success: false,
+        message: response?.message || t('error.auth.loginFailed'),
+      }
+    }
+
+    const user = toFrontendAuthUser(response.data.user)
+    const tenant = toPersonalWorkspace(response.data.user)
+
     return {
       success: true,
-      user: {
-        id: '1',
-        username: 'Admin',
-        email: 'admin@example.com',
-        avatar: '',
-        tenant_id: 1,
-        can_access_all_tenants: true,
-        is_system_admin: true,
-        is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      tenant: {
-        id: 1,
-        name: 'DocMind',
-        description: '文档思维 - 智能知识管理系统',
-        status: 'active',
-        business: '知识管理',
-        storage_quota: 1024 * 1024 * 1024 * 10, // 10GB
-        storage_used: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      },
-      token: 'mock-token-' + Date.now(),
-      refresh_token: 'mock-refresh-token-' + Date.now()
+      message: response.message,
+      user,
+      tenant,
+      active_tenant: tenant,
+      memberships: toPersonalMembership(response.data.user),
+      token: response.data.token,
+      refresh_token: response.data.refresh_token,
     }
-  }
-
-  // 尝试调用后端API
-  try {
-    const response = await post('/api/v1/auth/login', data)
-    return response as unknown as LoginResponse
   } catch (error: any) {
     return {
       success: false,
@@ -310,8 +373,11 @@ export async function getAuthConfig(): Promise<AuthConfigResponse> {
  */
 export async function register(data: RegisterRequest): Promise<RegisterResponse> {
   try {
-    const response = await post('/api/v1/auth/register', data)
-    return response as unknown as RegisterResponse
+    const response = await post<BackendEnvelope<null>>('/api/v1/auth/register', data)
+    return {
+      success: isBackendSuccess(response),
+      message: response?.message || (isBackendSuccess(response) ? t('auth.registerSuccess') : t('error.auth.registerFailed')),
+    }
   } catch (error: any) {
     return {
       success: false,
@@ -357,8 +423,39 @@ export interface AuthCapabilities {
 
 export async function getCurrentUser(): Promise<{ success: boolean; data?: { user: UserInfo; tenant?: TenantInfo | null; memberships?: MembershipInfo[]; tenant_required?: boolean; capabilities?: AuthCapabilities }; message?: string }> {
   try {
-    const response = await get('/api/v1/auth/me')
-    return response as unknown as { success: boolean; data?: { user: UserInfo; tenant?: TenantInfo | null; memberships?: MembershipInfo[]; tenant_required?: boolean; capabilities?: AuthCapabilities }; message?: string }
+    const response = await get<BackendEnvelope<BackendAuthUser>>('/api/v1/auth/me')
+    if (!isBackendSuccess(response) || !response.data) {
+      return {
+        success: false,
+        message: response?.message || t('error.auth.getUserFailed'),
+      }
+    }
+
+    const tenant = toPersonalWorkspace(response.data)
+    return {
+      success: true,
+      message: response.message,
+      data: {
+        user: toFrontendAuthUser(response.data) as unknown as UserInfo,
+        tenant: {
+          id: String(tenant.id),
+          name: tenant.name,
+          description: tenant.description,
+          status: tenant.status,
+          business: tenant.business,
+          owner_id: String(response.data.id || ''),
+          storage_quota: tenant.storage_quota,
+          storage_used: tenant.storage_used,
+          created_at: tenant.created_at,
+          updated_at: tenant.updated_at,
+        },
+        tenant_required: false,
+        memberships: toPersonalMembership(response.data),
+        capabilities: {
+          can_create_tenant: false,
+        },
+      },
+    }
   } catch (error: any) {
     return {
       success: false,
@@ -405,23 +502,22 @@ export async function getCurrentTenant(): Promise<{ success: boolean; data?: Ten
  */
 export async function refreshToken(refreshToken: string): Promise<{ success: boolean; data?: { token: string; refreshToken: string }; message?: string }> {
   try {
-    const response: any = await post('/api/v1/auth/refresh', { refreshToken })
-    if (response && response.success) {
-      if (response.access_token || response.refresh_token) {
-        return {
-          success: true,
-          data: {
-            token: response.access_token,
-            refreshToken: response.refresh_token,
-          }
-        }
+    const response = await post<BackendEnvelope<BackendRefreshTokenData>>('/api/v1/auth/refresh', {
+      refresh_token: refreshToken,
+    })
+    if (isBackendSuccess(response) && response.data) {
+      return {
+        success: true,
+        data: {
+          token: response.data.token,
+          refreshToken: response.data.refresh_token,
+        },
       }
     }
 
-    // 其他情况直接返回原始消息
     return {
       success: false,
-      message: response?.message || t('error.auth.refreshTokenFailed')
+      message: response?.message || t('error.auth.refreshTokenFailed'),
     }
   } catch (error: any) {
     return {
@@ -436,9 +532,10 @@ export async function refreshToken(refreshToken: string): Promise<{ success: boo
  */
 export async function logout(): Promise<{ success: boolean; message?: string }> {
   try {
-    await post('/api/v1/auth/logout', {})
+    const response = await post<BackendEnvelope<null>>('/api/v1/auth/logout', {})
     return {
-      success: true
+      success: isBackendSuccess(response),
+      message: response?.message,
     }
   } catch (error: any) {
     return {

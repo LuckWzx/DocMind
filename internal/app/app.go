@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"docmind/internal/api"
-	"docmind/internal/model/entity"
 	"docmind/internal/repository"
 	"docmind/internal/service"
 	"docmind/pkg/config"
@@ -105,17 +104,17 @@ func (a *App) initDatabase() error {
 	// 自动迁移数据库表
 	logger.Info("开始数据库迁移...")
 	if err := a.pgDB.AutoMigrate(
-		&entity.User{},
-		&entity.KnowledgeBase{},
-		&entity.Knowledge{},
-		&entity.Chunk{},
-		&entity.Session{},
-		&entity.Message{},
-		&entity.Tag{},
-		&entity.Model{},
-		&entity.WebSearchProvider{},
-		&entity.FAQ{},
-		&entity.VectorStore{},
+	//&entity.User{},
+	//&entity.KnowledgeBase{},
+	//&entity.Knowledge{},
+	//&entity.Chunk{},
+	//&entity.Session{},
+	//&entity.Message{},
+	//&entity.Tag{},
+	//&entity.Model{},
+	//&entity.WebSearchProvider{},
+	//&entity.FAQ{},
+	//&entity.VectorStore{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {

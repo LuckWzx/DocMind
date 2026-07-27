@@ -268,12 +268,8 @@ function handleClose() {
 }
 
 // Navigate to organization settings
-function handleGoToOrgSettings(orgId: string) {
-  router.push({
-    path: '/platform/organizations',
-    query: { orgId }
-  })
-  // 关闭当前弹窗
+function handleGoToOrgSettings(_orgId: string) {
+  router.push('/platform/knowledge-bases')
   emit('update:visible', false)
 }
 </script>
