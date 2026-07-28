@@ -36,8 +36,6 @@
         <ApiIntegrationSettings />
       </div>
 
-      <ChromeExtensionLanding v-if="tab === 'chrome'" />
-      <ClawSkillLanding v-if="tab === 'claw'" />
     </div>
   </div>
 </template>
@@ -48,8 +46,6 @@ import { useRoute } from 'vue-router'
 import IMChannelPanel from '@/components/IMChannelPanel.vue'
 import AgentEmbedChannelPanel from '@/components/AgentEmbedChannelPanel.vue'
 import ApiIntegrationSettings from '@/views/integrations/ApiIntegrationSettings.vue'
-import ChromeExtensionLanding from '@/views/integrations/ChromeExtensionLanding.vue'
-import ClawSkillLanding from '@/views/integrations/ClawSkillLanding.vue'
 import type { IntegrationTab } from '@/config/integrations'
 
 const filterAgentId = ref('')
@@ -60,9 +56,7 @@ const props = defineProps<{
 
 const route = useRoute()
 
-const isLandingSection = computed(
-  () => props.tab === 'chrome' || props.tab === 'claw',
-)
+const isLandingSection = computed(() => false)
 
 function applyAgentFilterFromRoute() {
   filterAgentId.value = (route.query.agentId as string) || ''
