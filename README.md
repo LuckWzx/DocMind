@@ -4,9 +4,9 @@
 
 ## 📖 项目简介
 
-DocMind 是一个现代化的智能知识管理平台，提供文档解析、语义检索、自主推理等核心功能。项目采用前后端分离架构：
+DocMind 是一个现代化的智能知识管理平台，提供文档解析、语义检索、自主推理等核心功能。项目采用前后端分离架构，并引入 **Eino** 框架实现强大的智能体（Agent）编排能力：
 
-- **后端**：Go + Gin + GORM，PostgreSQL 存储，Swagger 文档，JWT 双 Token 认证
+- **后端**：Go + Gin + GORM，引入 **Eino** 框架作为 AI 编排引擎，支持复杂的 Agent 流程编排与 RAG 管道设计
 - **文档解析**：Python gRPC 微服务，支持 PDF / DOCX / Markdown / Excel / Web 等多格式
 - **前端**：Vue 3 + TypeScript + Vite，TDesign 组件库
 
@@ -185,6 +185,7 @@ export async function listKnowledgeBases() {
 
 **后端：**
 - **框架**: Gin（HTTP 路由）
+- **AI 编排**: **Eino**（Agent 引擎、RAG 管道、Graph 编排）
 - **ORM**: GORM（PostgreSQL）
 - **认证**: JWT（双 Token 机制）
 - **日志**: Zap
@@ -206,6 +207,7 @@ export async function listKnowledgeBases() {
 
 ### 项目特点
 
+✅ **Eino 智能体编排** — 基于 Eino 的 Graph 和 Chain 机制，实现灵活的 Agent 推理循环与工具调用  
 ✅ **Go 后端** — Gin + GORM 分层架构，Swagger 文档，JWT 双 Token  
 ✅ **文档解析服务** — Python gRPC 微服务，支持 PDF/DOCX/MD/Excel/Web  
 ✅ **10 张数据表** — AutoMigrate 自动迁移，PostgreSQL JSONB 支持  
