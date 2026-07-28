@@ -1,11 +1,6 @@
-export const CHROME_EXTENSION_URL =
-  'https://chromewebstore.google.com/detail/jpemjbopikggjlmikmclgbmkhhopjdgd?utm_source=item-share-cb'
+export type IntegrationTab = 'im' | 'embed' | 'api'
 
-export const CLAWHUB_SKILL_URL = 'https://clawhub.ai/lyingbug/docmind'
-
-export type IntegrationTab = 'im' | 'embed' | 'api' | 'chrome' | 'claw'
-
-export const INTEGRATION_TABS: IntegrationTab[] = ['im', 'embed', 'api', 'chrome', 'claw']
+export const INTEGRATION_TABS: IntegrationTab[] = ['im', 'embed', 'api']
 
 /** Aligns with Settings.vue SECTION_MIN_ROLE.api and router.go g.Owner() on /api-principal-config. */
 export type IntegrationTabRole = 'viewer' | 'contributor' | 'admin' | 'owner'
@@ -26,6 +21,4 @@ export const INTEGRATION_PREVIEW_ITEMS: Array<{
   { key: 'im', icon: { type: 'icon', name: 'chat-message' } },
   { key: 'embed', icon: { type: 'icon', name: 'code' } },
   { key: 'api', icon: { type: 'icon', name: 'secured' } },
-  { key: 'chrome', icon: { type: 'icon', name: 'extension' } },
-  { key: 'claw', icon: { type: 'emoji', value: '🦞' } },
 ]

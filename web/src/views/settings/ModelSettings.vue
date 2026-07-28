@@ -247,7 +247,7 @@ const sourceLabel = (type: ModelType) => {
   return t('modelSettings.source.remote')
 }
 
-// Maps a backend `provider` id (e.g. "openai", "aliyun", "docmindcloud")
+// Maps a backend `provider` id (e.g. "openai", "aliyun", "generic")
 // to its localized short label. Reuses the same i18n keys the editor's
 // provider dropdown uses, so the model card and the editor stay in sync
 // when a provider is renamed. Falls back to '' when the backend didn't
