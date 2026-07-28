@@ -57,7 +57,7 @@ type KnowledgeBase struct {
 	ExtractConfig         *ExtractConfig         `gorm:"type:json;comment:抽取配置" json:"extract_config"`
 	FAQConfig             *FAQConfig             `gorm:"type:json;comment:FAQ配置" json:"faq_config"`
 	StorageProviderConfig *StorageProviderConfig `gorm:"column:storage_provider_config;type:jsonb;comment:存储配置" json:"storage_provider_config"`
-	VectorStoreID         *string                `gorm:"type:varchar(36);comment:向量存储ID nil=使用默认" json:"vector_store_id"`
+	VectorStoreID         *uint                  `gorm:"index;comment:向量存储ID nil=使用默认" json:"vector_store_id"`
 	IndexingStrategy      IndexingStrategy       `gorm:"type:json;comment:索引策略" json:"indexing_strategy"`
 }
 

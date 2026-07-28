@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"docmind/internal/api"
-	"docmind/internal/model/entity"
 	"docmind/internal/repository"
 	"docmind/internal/service"
 	"docmind/pkg/config"
@@ -105,8 +104,18 @@ func (a *App) initDatabase() error {
 	// 自动迁移数据库表
 	logger.Info("开始数据库迁移...")
 	if err := a.pgDB.AutoMigrate(
-		&entity.Model{},
-		&entity.SystemSetting{},
+	//&entity.User{},
+	//&entity.KnowledgeBase{},
+	//&entity.Knowledge{},
+	//&entity.Chunk{},
+	//&entity.Session{},
+	//&entity.Message{},
+	//&entity.Tag{},
+	//&entity.Model{},
+	//&entity.WebSearchProvider{},
+	//&entity.FAQ{},
+	//&entity.VectorStore{},
+	//&entity.ChunkVector{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {
@@ -128,16 +137,19 @@ func (a *App) initDependencies() {
 	// 创建 Repository
 	userRepo := repository.NewUserRepository(a.pgDB)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(a.redis)
+	vectorStoreRepo := repository.NewVectorStoreRepository(a.pgDB)
 	modelRepo := repository.NewModelRepository(a.pgDB)
 	systemSettingRepo := repository.NewSystemSettingRepository(a.pgDB)
 
 	// 创建 Service
 	userSvc := service.NewUserService(userRepo)
 	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, userSvc)
+	vectorStoreSvc := service.NewVectorStoreService(vectorStoreRepo)
 	modelSvc := service.NewModelService(modelRepo, systemSettingRepo)
 
 	// 创建 Router
-	a.router = api.NewRouter(userSvc, authSvc, modelSvc)
+	a.router = api.NewRouter(userSvc, authSvc, vectorStoreSvc, modelSvc)
+
 }
 
 // initRouter 初始化路由

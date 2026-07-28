@@ -57,4 +57,6 @@ var (
 	ErrTokenExpired       = NewDefault(CodeTokenExpired)
 	ErrInvalidParam       = NewDefault(CodeInvalidParam)
 	ErrMissingParam       = NewDefault(CodeMissingParam)
+	ErrResourceNotFound   = NewDefault(CodeResourceNotFound)
+	ErrResourceExists     = NewDefault(CodeResourceAlreadyExists)
 )

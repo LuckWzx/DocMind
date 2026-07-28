@@ -5,6 +5,7 @@ import (
 	"docmind/internal/api/v1/initialization"
 	"docmind/internal/api/v1/models"
 	"docmind/internal/api/v1/user"
+	"docmind/internal/api/v1/vectorstore"
 	"docmind/internal/middleware"
 	"docmind/internal/service"
 
@@ -19,6 +20,7 @@ import (
 type Router struct {
 	userCtrl           *user.Controller
 	authCtrl           *auth.Controller
+	vectorStoreCtrl    *vectorstore.Controller
 	modelCtrl          *models.Controller
 	initializationCtrl *initialization.Controller
 }
@@ -27,11 +29,13 @@ type Router struct {
 func NewRouter(
 	userService service.UserService,
 	authService service.AuthService,
+	vectorStoreService service.VectorStoreService,
 	modelService service.ModelService,
 ) *Router {
 	return &Router{
 		userCtrl:           user.NewController(userService),
 		authCtrl:           auth.NewController(authService, userService),
+		vectorStoreCtrl:    vectorstore.NewController(vectorStoreService),
 		modelCtrl:          models.NewController(modelService),
 		initializationCtrl: initialization.NewController(modelService),
 	}
@@ -76,5 +80,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 		// 初始化 / 模型探测路由
 		r.initializationCtrl.RegisterRoutes(v1)
+
+		// 向量存储路由
+		r.vectorStoreCtrl.RegisterRoutes(v1)
 	}
 }

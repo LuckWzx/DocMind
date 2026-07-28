@@ -54,7 +54,7 @@ const DEV_PROXY_TARGET =
 
 function resolveVueOfficePptxEntry(): string {
   try {
-    const pkgDir = dirname(require.resolve('@vue-office/pptx/package.json'))
+    const pkgDir = dirname(require.resolve('@vue-office/pptx/vector-store.postman_collection.json'))
     const candidates = [
       resolve(pkgDir, 'lib/v3/index.js'),
       resolve(pkgDir, 'lib/index.js'),

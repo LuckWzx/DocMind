@@ -1,0 +1,1730 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "DocMind API 接口文档",
+    "description": "DocMind 智能知识管理系统 API 接口文档，支持导入 Apifox",
+    "version": "1.0.0",
+    "contact": {
+      "name": "DocMind Team"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3888",
+      "description": "本地开发服务器"
+    }
+  ],
+  "tags": [
+    {
+      "name": "认证管理",
+      "description": "用户登录、注册、Token管理等认证相关接口"
+    },
+    {
+      "name": "知识库管理",
+      "description": "知识库的增删改查、文件上传、标签管理等"
+    },
+    {
+      "name": "对话管理",
+      "description": "会话管理、消息发送、流式对话等"
+    },
+    {
+      "name": "智能体管理",
+      "description": "智能体的创建、配置、IM渠道管理等"
+    },
+    {
+      "name": "模型管理",
+      "description": "模型的配置、测试、凭证管理等"
+    },
+    {
+      "name": "空间管理",
+      "description": "工作空间的创建、成员管理、API Key管理等"
+    },
+    {
+      "name": "组织管理",
+      "description": "组织的创建、成员管理、知识库共享等"
+    },
+    {
+      "name": "Wiki管理",
+      "description": "Wiki页面的创建、编辑、图谱查询等"
+    },
+    {
+      "name": "数据源管理",
+      "description": "数据源的配置、同步、日志查询等"
+    },
+    {
+      "name": "系统管理",
+      "description": "系统信息、解析引擎、存储引擎、系统设置等"
+    }
+  ],
+  "paths": {
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": ["认证管理"],
+        "summary": "用户登录",
+        "description": "使用邮箱和密码进行登录，返回用户信息和Token",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              },
+              "example": {
+                "email": "admin@example.com",
+                "password": "admin123"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "tags": ["认证管理"],
+        "summary": "用户注册",
+        "description": "新用户注册账号",
+        "operationId": "register",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "注册成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": ["认证管理"],
+        "summary": "获取当前用户信息",
+        "description": "获取当前登录用户的详细信息",
+        "operationId": "getCurrentUser",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "user": { "$ref": "#/components/schemas/UserInfo" },
+                        "tenant": { "$ref": "#/components/schemas/TenantInfo" },
+                        "memberships": {
+                          "type": "array",
+                          "items": { "$ref": "#/components/schemas/MembershipInfo" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": ["认证管理"],
+        "summary": "用户登出",
+        "description": "退出当前登录状态",
+        "operationId": "logout",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "登出成功"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "tags": ["认证管理"],
+        "summary": "刷新Token",
+        "description": "使用refresh_token获取新的access_token",
+        "operationId": "refreshToken",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "刷新成功"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases": {
+      "get": {
+        "tags": ["知识库管理"],
+        "summary": "获取知识库列表",
+        "description": "获取当前空间的知识库列表",
+        "operationId": "listKnowledgeBases",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "按智能体ID筛选",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "creator",
+            "in": "query",
+            "description": "按创建者筛选：all=全部, mine=我的, others=他人",
+            "schema": {
+              "type": "string",
+              "enum": ["all", "mine", "others"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/KnowledgeBase" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["知识库管理"],
+        "summary": "创建知识库",
+        "description": "创建一个新的知识库",
+        "operationId": "createKnowledgeBase",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKnowledgeBaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/KnowledgeBase" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{id}": {
+      "get": {
+        "tags": ["知识库管理"],
+        "summary": "获取知识库详情",
+        "description": "获取指定知识库的详细信息",
+        "operationId": "getKnowledgeBaseById",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/KnowledgeBase" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["知识库管理"],
+        "summary": "更新知识库",
+        "description": "更新指定知识库的信息",
+        "operationId": "updateKnowledgeBase",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateKnowledgeBaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["知识库管理"],
+        "summary": "删除知识库",
+        "description": "删除指定的知识库",
+        "operationId": "deleteKnowledgeBase",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-bases/{kbId}/knowledge/file": {
+      "post": {
+        "tags": ["知识库管理"],
+        "summary": "上传知识文件",
+        "description": "上传文件到指定知识库",
+        "operationId": "uploadKnowledgeFile",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "kbId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "tag_ids": {
+                    "type": "string",
+                    "description": "标签ID列表，逗号分隔"
+                  },
+                  "process_config": {
+                    "type": "string",
+                    "description": "处理配置JSON字符串"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "上传成功"
+          }
+        }
+      }
+    },
+    "/api/v1/sessions": {
+      "get": {
+        "tags": ["对话管理"],
+        "summary": "获取会话列表",
+        "description": "获取当前用户的会话列表",
+        "operationId": "getSessionsList",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          }
+        }
+      },
+      "post": {
+        "tags": ["对话管理"],
+        "summary": "创建会话",
+        "description": "创建新的对话会话",
+        "operationId": "createSession",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}": {
+      "put": {
+        "tags": ["对话管理"],
+        "summary": "更新会话",
+        "description": "更新会话标题和描述",
+        "operationId": "updateSession",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["对话管理"],
+        "summary": "删除会话",
+        "description": "删除指定会话",
+        "operationId": "delSession",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge-chat/{session_id}": {
+      "post": {
+        "tags": ["对话管理"],
+        "summary": "知识库对话",
+        "description": "基于知识库进行流式对话",
+        "operationId": "knowledgeChat",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": { "type": "string", "description": "用户问题" }
+                },
+                "required": ["query"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "流式响应",
+            "content": {
+              "text/event-stream": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents": {
+      "get": {
+        "tags": ["智能体管理"],
+        "summary": "获取智能体列表",
+        "description": "获取当前空间的智能体列表，包含内置智能体",
+        "operationId": "listAgents",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "creator",
+            "in": "query",
+            "description": "按创建者筛选",
+            "schema": {
+              "type": "string",
+              "enum": ["all", "mine", "others"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Agent" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["智能体管理"],
+        "summary": "创建智能体",
+        "description": "创建新的智能体",
+        "operationId": "createAgent",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Agent" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{id}": {
+      "get": {
+        "tags": ["智能体管理"],
+        "summary": "获取智能体详情",
+        "description": "获取指定智能体的详细配置",
+        "operationId": "getAgentById",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Agent" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["智能体管理"],
+        "summary": "更新智能体",
+        "description": "更新智能体配置",
+        "operationId": "updateAgent",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["智能体管理"],
+        "summary": "删除智能体",
+        "description": "删除指定智能体",
+        "operationId": "deleteAgent",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/api/v1/models": {
+      "get": {
+        "tags": ["模型管理"],
+        "summary": "获取模型列表",
+        "description": "获取当前空间配置的模型列表",
+        "operationId": "listModels",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Model" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["模型管理"],
+        "summary": "创建模型",
+        "description": "添加新的模型配置",
+        "operationId": "createModel",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateModelRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Model" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models/{id}": {
+      "get": {
+        "tags": ["模型管理"],
+        "summary": "获取模型详情",
+        "description": "获取指定模型的详细配置",
+        "operationId": "getModel",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Model" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["模型管理"],
+        "summary": "更新模型",
+        "description": "更新模型配置",
+        "operationId": "updateModel",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateModelRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Model" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["模型管理"],
+        "summary": "删除模型",
+        "description": "删除指定模型",
+        "operationId": "deleteModel",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/api/v1/models/{id}/debug": {
+      "post": {
+        "tags": ["模型管理"],
+        "summary": "调试模型",
+        "description": "测试模型调用，返回调试信息",
+        "operationId": "debugModel",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "input": { "type": "string", "description": "测试输入" },
+                  "documents": { "type": "string", "description": "测试文档列表JSON" },
+                  "options": { "type": "string", "description": "调试选项JSON" },
+                  "file": { "type": "string", "format": "binary" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "调试结果"
+          }
+        }
+      }
+    },
+    "/api/v1/tenants": {
+      "get": {
+        "tags": ["空间管理"],
+        "summary": "获取所有空间列表",
+        "description": "获取所有可访问的工作空间",
+        "operationId": "listAllTenants",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          }
+        }
+      },
+      "post": {
+        "tags": ["空间管理"],
+        "summary": "创建工作空间",
+        "description": "创建新的工作空间",
+        "operationId": "createTenant",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{id}": {
+      "put": {
+        "tags": ["空间管理"],
+        "summary": "更新工作空间",
+        "description": "更新工作空间信息",
+        "operationId": "updateTenant",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["空间管理"],
+        "summary": "删除工作空间",
+        "description": "删除指定工作空间（仅Owner可操作）",
+        "operationId": "deleteTenant",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{id}/members": {
+      "get": {
+        "tags": ["空间管理"],
+        "summary": "获取空间成员列表",
+        "description": "分页获取空间成员",
+        "operationId": "listTenantMembers",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "搜索关键词（邮箱/用户名）",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          }
+        }
+      },
+      "post": {
+        "tags": ["空间管理"],
+        "summary": "邀请成员",
+        "description": "邀请用户加入空间",
+        "operationId": "addTenantMember",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string" },
+                  "role": {
+                    "type": "string",
+                    "enum": ["owner", "admin", "contributor", "viewer"]
+                  }
+                },
+                "required": ["email", "role"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "邀请成功"
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{id}/api-keys": {
+      "get": {
+        "tags": ["空间管理"],
+        "summary": "获取API Key列表",
+        "description": "获取空间的API Key列表",
+        "operationId": "listTenantAPIKeys",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          }
+        }
+      },
+      "post": {
+        "tags": ["空间管理"],
+        "summary": "创建API Key",
+        "description": "创建新的API Key",
+        "operationId": "createTenantAPIKey",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "full_access": { "type": "boolean" },
+                  "knowledge_base_ids": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "capabilities": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/api/v1/organizations": {
+      "get": {
+        "tags": ["组织管理"],
+        "summary": "获取我的组织列表",
+        "description": "获取当前用户所属的组织列表",
+        "operationId": "listMyOrganizations",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          }
+        }
+      },
+      "post": {
+        "tags": ["组织管理"],
+        "summary": "创建组织",
+        "description": "创建新的组织",
+        "operationId": "createOrganization",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "avatar": { "type": "string" },
+                  "invite_code_validity_days": { "type": "integer" },
+                  "member_limit": { "type": "integer" }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/api/v1/organizations/{id}": {
+      "get": {
+        "tags": ["组织管理"],
+        "summary": "获取组织详情",
+        "description": "获取指定组织的详细信息",
+        "operationId": "getOrganization",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          }
+        }
+      },
+      "put": {
+        "tags": ["组织管理"],
+        "summary": "更新组织",
+        "description": "更新组织信息",
+        "operationId": "updateOrganization",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "avatar": { "type": "string" },
+                  "require_approval": { "type": "boolean" },
+                  "searchable": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["组织管理"],
+        "summary": "删除组织",
+        "description": "删除指定组织",
+        "operationId": "deleteOrganization",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledgebase/{kbId}/wiki/pages": {
+      "get": {
+        "tags": ["Wiki管理"],
+        "summary": "获取Wiki页面列表",
+        "description": "获取指定知识库的Wiki页面列表",
+        "operationId": "listWikiPages",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "kbId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "page_type",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Wiki管理"],
+        "summary": "创建Wiki页面",
+        "description": "在知识库中创建新的Wiki页面",
+        "operationId": "createWikiPage",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "kbId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/WikiPage" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledgebase/{kbId}/wiki/graph": {
+      "get": {
+        "tags": ["Wiki管理"],
+        "summary": "获取Wiki图谱",
+        "description": "获取Wiki页面之间的链接图谱",
+        "operationId": "getWikiGraph",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "kbId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "description": "图谱模式：overview=概览, ego=以某节点为中心",
+            "schema": {
+              "type": "string",
+              "enum": ["overview", "ego"]
+            }
+          },
+          {
+            "name": "center",
+            "in": "query",
+            "description": "中心节点slug（ego模式时使用）",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "description": "图谱深度",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          }
+        }
+      }
+    },
+    "/api/v1/datasource": {
+      "get": {
+        "tags": ["数据源管理"],
+        "summary": "获取数据源列表",
+        "description": "获取指定知识库的数据源列表",
+        "operationId": "listDataSources",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          }
+        }
+      },
+      "post": {
+        "tags": ["数据源管理"],
+        "summary": "创建数据源",
+        "description": "创建新的数据源",
+        "operationId": "createDataSource",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "type": { "type": "string" },
+                  "knowledge_base_id": { "type": "string" },
+                  "config": { "type": "object" },
+                  "sync_schedule": { "type": "string" },
+                  "sync_mode": {
+                    "type": "string",
+                    "enum": ["incremental", "full"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功"
+          }
+        }
+      }
+    },
+    "/api/v1/system/info": {
+      "get": {
+        "tags": ["系统管理"],
+        "summary": "获取系统信息",
+        "description": "获取系统版本、构建时间等基本信息",
+        "operationId": "getSystemInfo",
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "version": { "type": "string" },
+                    "edition": { "type": "string" },
+                    "commit_id": { "type": "string" },
+                    "build_time": { "type": "string" },
+                    "go_version": { "type": "string" },
+                    "vector_store_engine": { "type": "string" },
+                    "db_version": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/parser-engines": {
+      "get": {
+        "tags": ["系统管理"],
+        "summary": "获取解析引擎列表",
+        "description": "获取可用的文档解析引擎",
+        "operationId": "getParserEngines",
+        "responses": {
+          "200": {
+            "description": "获取成功"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        },
+        "required": ["email", "password"]
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "user": { "$ref": "#/components/schemas/UserInfo" },
+          "tenant": { "$ref": "#/components/schemas/TenantInfo" },
+          "token": { "type": "string" },
+          "refresh_token": { "type": "string" }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "properties": {
+          "username": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        },
+        "required": ["username", "email", "password"]
+      },
+      "RegisterResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" }
+        }
+      },
+      "UserInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "username": { "type": "string" },
+          "email": { "type": "string" },
+          "avatar": { "type": "string" },
+          "tenant_id": { "type": "string" },
+          "can_access_all_tenants": { "type": "boolean" },
+          "is_system_admin": { "type": "boolean" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TenantInfo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "status": { "type": "string" },
+          "business": { "type": "string" },
+          "storage_quota": { "type": "integer" },
+          "storage_used": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "MembershipInfo": {
+        "type": "object",
+        "properties": {
+          "tenant_id": { "type": "integer" },
+          "tenant_name": { "type": "string" },
+          "role": { "type": "string" }
+        }
+      },
+      "KnowledgeBase": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "tenant_id": { "type": "string" },
+          "creator_id": { "type": "string" },
+          "creator_name": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["document", "faq"]
+          },
+          "document_count": { "type": "integer" },
+          "chunk_count": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateKnowledgeBaseRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["document", "faq"],
+            "default": "document"
+          },
+          "embedding_model_id": { "type": "string" },
+          "summary_model_id": { "type": "string" },
+          "vector_store_id": { "type": "integer" },
+          "storage_backend_id": { "type": "string" }
+        },
+        "required": ["name"]
+      },
+      "UpdateKnowledgeBaseRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "config": {
+            "type": "object",
+            "properties": {
+              "chunking_config": { "type": "object" },
+              "indexing_strategy": {
+                "type": "object",
+                "properties": {
+                  "vector_enabled": { "type": "boolean" },
+                  "keyword_enabled": { "type": "boolean" },
+                  "wiki_enabled": { "type": "boolean" },
+                  "graph_enabled": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Agent": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "avatar": { "type": "string" },
+          "is_builtin": { "type": "boolean" },
+          "tenant_id": { "type": "integer" },
+          "config": {
+            "type": "object",
+            "properties": {
+              "agent_mode": {
+                "type": "string",
+                "enum": ["quick-answer", "smart-reasoning"]
+              },
+              "system_prompt": { "type": "string" },
+              "model_id": { "type": "string" },
+              "temperature": { "type": "number" },
+              "max_completion_tokens": { "type": "integer" },
+              "kb_selection_mode": {
+                "type": "string",
+                "enum": ["all", "selected", "none"]
+              },
+              "knowledge_bases": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "web_search_enabled": { "type": "boolean" }
+            }
+          },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateAgentRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "avatar": { "type": "string" },
+          "config": {
+            "type": "object",
+            "properties": {
+              "agent_mode": {
+                "type": "string",
+                "enum": ["quick-answer", "smart-reasoning"]
+              },
+              "system_prompt": { "type": "string" },
+              "model_id": { "type": "string" },
+              "temperature": { "type": "number" }
+            }
+          }
+        },
+        "required": ["name"]
+      },
+      "UpdateAgentRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "avatar": { "type": "string" },
+          "config": { "type": "object" }
+        }
+      },
+      "Model": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "tenant_id": { "type": "integer" },
+          "name": { "type": "string" },
+          "display_name": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["KnowledgeQA", "Embedding", "Rerank", "VLLM", "ASR"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["local", "remote"]
+          },
+          "description": { "type": "string" },
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "base_url": { "type": "string" },
+              "provider": { "type": "string" },
+              "supports_vision": { "type": "boolean" }
+            }
+          },
+          "is_default": { "type": "boolean" },
+          "is_builtin": { "type": "boolean" },
+          "status": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateModelRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "display_name": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["KnowledgeQA", "Embedding", "Rerank", "VLLM", "ASR"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["local", "remote"]
+          },
+          "description": { "type": "string" },
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "base_url": { "type": "string" },
+              "api_key": { "type": "string" },
+              "provider": { "type": "string" }
+            }
+          }
+        },
+        "required": ["name", "type"]
+      },
+      "UpdateModelRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "display_name": { "type": "string" },
+          "description": { "type": "string" },
+          "parameters": { "type": "object" }
+        }
+      },
+      "WikiPage": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "tenant_id": { "type": "integer" },
+          "knowledge_base_id": { "type": "string" },
+          "slug": { "type": "string" },
+          "title": { "type": "string" },
+          "page_type": { "type": "string" },
+          "status": { "type": "string" },
+          "content": { "type": "string" },
+          "summary": { "type": "string" },
+          "aliases": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "parent_slug": { "type": "string" },
+          "category_path": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "depth": { "type": "integer" },
+          "sort_order": { "type": "integer" },
+          "source_refs": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "in_links": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "out_links": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "version": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}
