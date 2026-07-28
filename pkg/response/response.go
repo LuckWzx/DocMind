@@ -10,6 +10,7 @@ import (
 
 // Response 统一响应结构
 type Response struct {
+	Success bool        `json:"success"`
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
@@ -18,6 +19,7 @@ type Response struct {
 // Success 成功响应
 func Success(c *gin.Context, data interface{}) {
 	c.JSON(200, Response{
+		Success: true,
 		Code:    errors.CodeSuccess,
 		Message: errors.GetMessage(errors.CodeSuccess),
 		Data:    data,
@@ -27,6 +29,7 @@ func Success(c *gin.Context, data interface{}) {
 // SuccessWithMessage 成功响应（自定义消息）
 func SuccessWithMessage(c *gin.Context, message string, data interface{}) {
 	c.JSON(200, Response{
+		Success: true,
 		Code:    errors.CodeSuccess,
 		Message: message,
 		Data:    data,
@@ -36,6 +39,7 @@ func SuccessWithMessage(c *gin.Context, message string, data interface{}) {
 // Error 错误响应
 func Error(c *gin.Context, code int, message string) {
 	c.JSON(200, Response{
+		Success: false,
 		Code:    code,
 		Message: message,
 	})
@@ -44,6 +48,7 @@ func Error(c *gin.Context, code int, message string) {
 // ErrorWithData 错误响应（带数据）
 func ErrorWithData(c *gin.Context, code int, message string, data interface{}) {
 	c.JSON(200, Response{
+		Success: false,
 		Code:    code,
 		Message: message,
 		Data:    data,
@@ -54,6 +59,7 @@ func ErrorWithData(c *gin.Context, code int, message string, data interface{}) {
 func BizError(c *gin.Context, err error) {
 	if bizErr, ok := err.(*errors.BizError); ok {
 		c.JSON(200, Response{
+			Success: false,
 			Code:    bizErr.Code,
 			Message: bizErr.Message,
 		})

@@ -9,7 +9,7 @@
 在 `internal/model/entity/` 创建新的实体文件：
 
 ```go
-// internal/model/entity/product.go
+// internal/models/entity/product.go
 package entity
 
 type Product struct {
@@ -30,7 +30,7 @@ func (Product) TableName() string {
 在 `internal/model/dto/request/` 和 `internal/model/dto/response/` 创建请求和响应结构：
 
 ```go
-// internal/model/dto/request/product.go
+// internal/models/dto/request/product.go
 package request
 
 type CreateProductRequest struct {
@@ -49,7 +49,7 @@ type UpdateProductRequest struct {
 ```
 
 ```go
-// internal/model/dto/response/product.go
+// internal/models/dto/response/product.go
 package response
 
 type ProductResponse struct {

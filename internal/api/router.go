@@ -2,6 +2,8 @@ package api
 
 import (
 	"docmind/internal/api/v1/auth"
+	"docmind/internal/api/v1/initialization"
+	"docmind/internal/api/v1/models"
 	"docmind/internal/api/v1/user"
 	"docmind/internal/middleware"
 	"docmind/internal/service"
@@ -15,18 +17,23 @@ import (
 
 // Router 路由
 type Router struct {
-	userCtrl *user.Controller
-	authCtrl *auth.Controller
+	userCtrl           *user.Controller
+	authCtrl           *auth.Controller
+	modelCtrl          *models.Controller
+	initializationCtrl *initialization.Controller
 }
 
 // NewRouter 创建路由
 func NewRouter(
 	userService service.UserService,
 	authService service.AuthService,
+	modelService service.ModelService,
 ) *Router {
 	return &Router{
-		userCtrl: user.NewController(userService),
-		authCtrl: auth.NewController(authService, userService),
+		userCtrl:           user.NewController(userService),
+		authCtrl:           auth.NewController(authService, userService),
+		modelCtrl:          models.NewController(modelService),
+		initializationCtrl: initialization.NewController(modelService),
 	}
 }
 
@@ -63,5 +70,11 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 		// 用户路由
 		r.userCtrl.RegisterRoutes(v1)
+
+		// 模型管理路由
+		r.modelCtrl.RegisterRoutes(v1)
+
+		// 初始化 / 模型探测路由
+		r.initializationCtrl.RegisterRoutes(v1)
 	}
 }
