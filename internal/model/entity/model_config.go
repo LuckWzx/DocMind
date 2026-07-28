@@ -72,6 +72,7 @@ func (p *ModelParameters) Scan(value interface{}) error {
 // Model 系统可用的 AI 模型配置
 type Model struct {
 	BaseEntity
+	UserID      uint            `gorm:"index;default:0;not null;comment:所属用户ID" json:"user_id"`
 	Name        string          `gorm:"type:varchar(255);not null;comment:模型名称" json:"name"`
 	DisplayName string          `gorm:"type:varchar(255);default:'';comment:展示名称" json:"display_name"`
 	Type        string          `gorm:"type:varchar(32);not null;comment:模型类型" json:"type"`

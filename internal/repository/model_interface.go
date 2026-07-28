@@ -7,7 +7,8 @@ type ModelRepository interface {
 	Create(model *entity.Model) error
 	Update(model *entity.Model) error
 	Delete(id uint) error
+	FindByUserID(id uint, userID uint) (*entity.Model, error)
 	FindByID(id uint) (*entity.Model, error)
-	FindByName(name string) (*entity.Model, error)
-	List(modelType string) ([]*entity.Model, error)
+	FindByName(name string, userID uint) (*entity.Model, error)
+	List(modelType string, userID uint) ([]*entity.Model, error)
 }

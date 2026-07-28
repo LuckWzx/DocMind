@@ -63,12 +63,12 @@ func NewModelService(
 	}
 }
 
-func (s *modelService) CreateModel(request *req.UpsertModelRequest) (*dto.ModelResponse, error) {
+func (s *modelService) CreateModel(userID uint, request *req.UpsertModelRequest) (*dto.ModelResponse, error) {
 	if err := validateModelRequest(request); err != nil {
 		return nil, err
 	}
 
-	existing, err := s.modelRepo.FindByName(strings.TrimSpace(request.Name))
+	existing, err := s.modelRepo.FindByName(strings.TrimSpace(request.Name), userID)
 	if err != nil {
 		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询模型失败", err)
 	}
@@ -77,6 +77,7 @@ func (s *modelService) CreateModel(request *req.UpsertModelRequest) (*dto.ModelR
 	}
 
 	model := &entity.Model{
+		UserID:      userID,
 		Name:        strings.TrimSpace(request.Name),
 		DisplayName: strings.TrimSpace(request.DisplayName),
 		Type:        request.Type,
@@ -93,8 +94,8 @@ func (s *modelService) CreateModel(request *req.UpsertModelRequest) (*dto.ModelR
 	return s.buildModelResponse(model), nil
 }
 
-func (s *modelService) ListModels(modelType string) ([]*dto.ModelResponse, error) {
-	models, err := s.modelRepo.List(modelType)
+func (s *modelService) ListModels(userID uint, modelType string) ([]*dto.ModelResponse, error) {
+	models, err := s.modelRepo.List(modelType, userID)
 	if err != nil {
 		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询模型列表失败", err)
 	}
@@ -106,8 +107,8 @@ func (s *modelService) ListModels(modelType string) ([]*dto.ModelResponse, error
 	return result, nil
 }
 
-func (s *modelService) GetModel(id uint) (*dto.ModelResponse, error) {
-	model, err := s.modelRepo.FindByID(id)
+func (s *modelService) GetModel(userID uint, id uint) (*dto.ModelResponse, error) {
+	model, err := s.modelRepo.FindByUserID(id, userID)
 	if err != nil {
 		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询模型失败", err)
 	}
@@ -117,12 +118,12 @@ func (s *modelService) GetModel(id uint) (*dto.ModelResponse, error) {
 	return s.buildModelResponse(model), nil
 }
 
-func (s *modelService) UpdateModel(id uint, request *req.UpsertModelRequest) (*dto.ModelResponse, error) {
+func (s *modelService) UpdateModel(userID uint, id uint, request *req.UpsertModelRequest) (*dto.ModelResponse, error) {
 	if err := validateModelRequest(request); err != nil {
 		return nil, err
 	}
 
-	model, err := s.modelRepo.FindByID(id)
+	model, err := s.modelRepo.FindByUserID(id, userID)
 	if err != nil {
 		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询模型失败", err)
 	}
@@ -131,7 +132,7 @@ func (s *modelService) UpdateModel(id uint, request *req.UpsertModelRequest) (*d
 	}
 
 	if strings.TrimSpace(request.Name) != model.Name {
-		existing, err := s.modelRepo.FindByName(strings.TrimSpace(request.Name))
+		existing, err := s.modelRepo.FindByName(strings.TrimSpace(request.Name), userID)
 		if err != nil {
 			return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询模型失败", err)
 		}
@@ -155,8 +156,8 @@ func (s *modelService) UpdateModel(id uint, request *req.UpsertModelRequest) (*d
 	return s.buildModelResponse(model), nil
 }
 
-func (s *modelService) DeleteModel(id uint) error {
-	model, err := s.modelRepo.FindByID(id)
+func (s *modelService) DeleteModel(userID uint, id uint) error {
+	model, err := s.modelRepo.FindByUserID(id, userID)
 	if err != nil {
 		return pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询模型失败", err)
 	}
@@ -172,8 +173,8 @@ func (s *modelService) DeleteModel(id uint) error {
 	return nil
 }
 
-func (s *modelService) PutModelCredentials(id uint, request *req.PutModelCredentialsRequest) (*dto.ModelCredentialsResponse, error) {
-	model, err := s.modelRepo.FindByID(id)
+func (s *modelService) PutModelCredentials(userID uint, id uint, request *req.PutModelCredentialsRequest) (*dto.ModelCredentialsResponse, error) {
+	model, err := s.modelRepo.FindByUserID(id, userID)
 	if err != nil {
 		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询模型失败", err)
 	}
@@ -193,8 +194,8 @@ func (s *modelService) PutModelCredentials(id uint, request *req.PutModelCredent
 	return buildCredentialResponse(model.Parameters), nil
 }
 
-func (s *modelService) DeleteModelCredentialField(id uint, field string) (*dto.ModelCredentialsResponse, error) {
-	model, err := s.modelRepo.FindByID(id)
+func (s *modelService) DeleteModelCredentialField(userID uint, id uint, field string) (*dto.ModelCredentialsResponse, error) {
+	model, err := s.modelRepo.FindByUserID(id, userID)
 	if err != nil {
 		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询模型失败", err)
 	}
@@ -229,8 +230,6 @@ func (s *modelService) ListProviders(modelType string) []*dto.ModelProviderOptio
 		{Value: "openrouter", Label: "OpenRouter", Description: "OpenRouter 聚合接口", DefaultURLs: map[string]string{"chat": "https://openrouter.ai/api/v1", "embedding": "https://openrouter.ai/api/v1"}, ModelTypes: []string{"chat", "embedding"}},
 		{Value: "nvidia", Label: "NVIDIA", Description: "NVIDIA API", DefaultURLs: map[string]string{"chat": "https://integrate.api.nvidia.com/v1", "embedding": "https://integrate.api.nvidia.com/v1", "rerank": "https://ai.api.nvidia.com/v1/retrieval/nvidia/reranking", "vllm": "https://integrate.api.nvidia.com/v1"}, ModelTypes: []string{"chat", "embedding", "rerank", "vllm"}},
 		{Value: "novita", Label: "Novita", Description: "Novita AI", DefaultURLs: map[string]string{"chat": "https://api.novita.ai/openai/v1", "embedding": "https://api.novita.ai/openai/v1", "vllm": "https://api.novita.ai/openai/v1"}, ModelTypes: []string{"chat", "embedding", "vllm"}},
-		{Value: "lkeap", Label: "腾讯云 LKEAP", Description: "腾讯云 LKEAP Rerank", DefaultURLs: map[string]string{"rerank": "https://lkeap.tencentcloudapi.com"}, ModelTypes: []string{"rerank"}},
-		{Value: "docmindcloud", Label: "DocMind Cloud", Description: "DocMind Cloud 原子能力", DefaultURLs: map[string]string{"chat": "https://docmind.weixin.qq.com", "embedding": "https://docmind.weixin.qq.com", "rerank": "https://docmind.weixin.qq.com", "vllm": "https://docmind.weixin.qq.com"}, ModelTypes: []string{"chat", "embedding", "rerank", "vllm"}},
 		{Value: "generic", Label: "自定义", Description: "自定义 OpenAI 兼容接口", DefaultURLs: map[string]string{}, ModelTypes: []string{"chat", "embedding", "rerank", "vllm", "asr"}},
 	}
 
@@ -539,8 +538,8 @@ func (s *modelService) ListOllamaDownloadTasks() ([]*dto.DownloadTaskResponse, e
 	return result, nil
 }
 
-func (s *modelService) DebugModel(id uint, input string, documents []string, options map[string]interface{}, fileHeader *multipart.FileHeader) (*dto.ModelDebugResult, error) {
-	model, err := s.modelRepo.FindByID(id)
+func (s *modelService) DebugModel(userID uint, id uint, input string, documents []string, options map[string]interface{}, fileHeader *multipart.FileHeader) (*dto.ModelDebugResult, error) {
+	model, err := s.modelRepo.FindByUserID(id, userID)
 	if err != nil {
 		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询模型失败", err)
 	}
@@ -925,14 +924,14 @@ func (s *modelService) runOllamaDownload(task *ollamaDownloadTask) {
 		"stream": true,
 	}
 	raw, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, appendPath(s.ollamaBaseURL(), "pull"), bytes.NewReader(raw))
+	req1, err := http.NewRequestWithContext(context.Background(), http.MethodPost, appendPath(s.ollamaBaseURL(), "pull"), bytes.NewReader(raw))
 	if err != nil {
 		s.failTask(task.ID, err)
 		return
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("Content-Type", "application/json")
 
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.httpClient.Do(req1)
 	if err != nil {
 		s.failTask(task.ID, err)
 		return

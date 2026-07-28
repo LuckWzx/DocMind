@@ -9,13 +9,13 @@ import (
 
 // ModelService 模型管理服务接口
 type ModelService interface {
-	CreateModel(request *req.UpsertModelRequest) (*dto.ModelResponse, error)
-	ListModels(modelType string) ([]*dto.ModelResponse, error)
-	GetModel(id uint) (*dto.ModelResponse, error)
-	UpdateModel(id uint, request *req.UpsertModelRequest) (*dto.ModelResponse, error)
-	DeleteModel(id uint) error
-	PutModelCredentials(id uint, request *req.PutModelCredentialsRequest) (*dto.ModelCredentialsResponse, error)
-	DeleteModelCredentialField(id uint, field string) (*dto.ModelCredentialsResponse, error)
+	CreateModel(userID uint, request *req.UpsertModelRequest) (*dto.ModelResponse, error)
+	ListModels(userID uint, modelType string) ([]*dto.ModelResponse, error)
+	GetModel(userID uint, id uint) (*dto.ModelResponse, error)
+	UpdateModel(userID uint, id uint, request *req.UpsertModelRequest) (*dto.ModelResponse, error)
+	DeleteModel(userID uint, id uint) error
+	PutModelCredentials(userID uint, id uint, request *req.PutModelCredentialsRequest) (*dto.ModelCredentialsResponse, error)
+	DeleteModelCredentialField(userID uint, id uint, field string) (*dto.ModelCredentialsResponse, error)
 	ListProviders(modelType string) []*dto.ModelProviderOptionResponse
 	SaveDocMindCloudCredentials(appID, appSecret string) error
 	GetDocMindCloudStatus() (*dto.DocMindCloudStatusResponse, error)
@@ -30,5 +30,5 @@ type ModelService interface {
 	DownloadOllamaModel(modelName string) (*dto.DownloadTaskResponse, error)
 	GetOllamaDownloadProgress(taskID string) (*dto.DownloadTaskResponse, error)
 	ListOllamaDownloadTasks() ([]*dto.DownloadTaskResponse, error)
-	DebugModel(id uint, input string, documents []string, options map[string]interface{}, fileHeader *multipart.FileHeader) (*dto.ModelDebugResult, error)
+	DebugModel(userID uint, id uint, input string, documents []string, options map[string]interface{}, fileHeader *multipart.FileHeader) (*dto.ModelDebugResult, error)
 }

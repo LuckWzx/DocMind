@@ -1,6 +1,7 @@
 package models
 
 import (
+	"docmind/internal/middleware"
 	"encoding/json"
 	"strconv"
 
@@ -23,7 +24,8 @@ func NewController(modelService service.ModelService) *Controller {
 
 func (ctrl *Controller) ListModels(c *gin.Context) {
 	modelType := c.Query("type")
-	data, err := ctrl.modelService.ListModels(modelType)
+	userID := middleware.GetUserID(c)
+	data, err := ctrl.modelService.ListModels(userID, modelType)
 	if err != nil {
 		response.BizError(c, err)
 		return
@@ -37,7 +39,8 @@ func (ctrl *Controller) CreateModel(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	data, err := ctrl.modelService.CreateModel(&request)
+	userID := middleware.GetUserID(c)
+	data, err := ctrl.modelService.CreateModel(userID, &request)
 	if err != nil {
 		response.BizError(c, err)
 		return
@@ -50,7 +53,8 @@ func (ctrl *Controller) GetModel(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := ctrl.modelService.GetModel(id)
+	userID := middleware.GetUserID(c)
+	data, err := ctrl.modelService.GetModel(userID, id)
 	if err != nil {
 		response.BizError(c, err)
 		return
@@ -68,7 +72,8 @@ func (ctrl *Controller) UpdateModel(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	data, err := ctrl.modelService.UpdateModel(id, &request)
+	userID := middleware.GetUserID(c)
+	data, err := ctrl.modelService.UpdateModel(userID, id, &request)
 	if err != nil {
 		response.BizError(c, err)
 		return
@@ -81,7 +86,8 @@ func (ctrl *Controller) DeleteModel(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := ctrl.modelService.DeleteModel(id); err != nil {
+	userID := middleware.GetUserID(c)
+	if err := ctrl.modelService.DeleteModel(userID, id); err != nil {
 		response.BizError(c, err)
 		return
 	}
@@ -103,7 +109,8 @@ func (ctrl *Controller) PutModelCredentials(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	data, err := ctrl.modelService.PutModelCredentials(id, &request)
+	userID := middleware.GetUserID(c)
+	data, err := ctrl.modelService.PutModelCredentials(userID, id, &request)
 	if err != nil {
 		response.BizError(c, err)
 		return
@@ -116,7 +123,8 @@ func (ctrl *Controller) DeleteModelCredentialField(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := ctrl.modelService.DeleteModelCredentialField(id, c.Param("field"))
+	userID := middleware.GetUserID(c)
+	data, err := ctrl.modelService.DeleteModelCredentialField(userID, id, c.Param("field"))
 	if err != nil {
 		response.BizError(c, err)
 		return
@@ -151,7 +159,8 @@ func (ctrl *Controller) DebugModel(c *gin.Context) {
 	}
 
 	fileHeader, _ := c.FormFile("file")
-	data, err := ctrl.modelService.DebugModel(id, input, documents, options, fileHeader)
+	userID := middleware.GetUserID(c)
+	data, err := ctrl.modelService.DebugModel(userID, id, input, documents, options, fileHeader)
 	if err != nil {
 		response.BizError(c, err)
 		return
