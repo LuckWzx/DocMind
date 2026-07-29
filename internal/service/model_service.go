@@ -724,6 +724,45 @@ func (s *modelService) debugEmbeddingModel(model *entity.Model, input string) ([
 	return extractEmbeddingVector(body), body, nil
 }
 
+// EmbedText 调用指定 embedding 模型生成向量
+func (s *modelService) EmbedText(modelRef string, input string) ([]float32, error) {
+	modelRef = strings.TrimSpace(modelRef)
+	if modelRef == "" {
+		return nil, pkgerrors.New(pkgerrors.CodeInvalidParam, "embedding_model_id 不能为空")
+	}
+
+	var (
+		model *entity.Model
+		err   error
+	)
+
+	if id, parseErr := strconv.ParseUint(modelRef, 10, 64); parseErr == nil {
+		model, err = s.modelRepo.FindByID(uint(id))
+	} else {
+		model, err = s.modelRepo.FindByName(modelRef)
+	}
+	if err != nil {
+		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询 embedding 模型失败", err)
+	}
+	if model == nil {
+		return nil, pkgerrors.New(pkgerrors.CodeResourceNotFound, "embedding 模型不存在")
+	}
+	if model.Type != entity.ModelTypeEmbedding {
+		return nil, pkgerrors.New(pkgerrors.CodeInvalidParam, "指定模型不是 embedding 类型")
+	}
+
+	vector, _, err := s.debugEmbeddingModel(model, input)
+	if err != nil {
+		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "调用 embedding 模型失败", err)
+	}
+
+	result := make([]float32, 0, len(vector))
+	for _, value := range vector {
+		result = append(result, float32(value))
+	}
+	return result, nil
+}
+
 func (s *modelService) debugRerankModel(model *entity.Model, query string, documents []string) (map[string]interface{}, int, error) {
 	if strings.TrimSpace(query) == "" {
 		return map[string]interface{}{}, 0, fmt.Errorf("query 不能为空")

@@ -1,6 +1,7 @@
 package vectorstore
 
 import (
+	"io"
 	"strconv"
 
 	"docmind/internal/middleware"
@@ -209,6 +210,85 @@ func (ctrl *Controller) TestConnection(c *gin.Context) {
 		return
 	}
 	response.SuccessWithMessage(c, "连接测试通过", nil)
+}
+
+// Search 执行向量检索
+// @Summary 向量检索
+// @Description 使用指定向量存储执行文本向量检索
+// @Tags 向量存储
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param id path int true "向量存储ID"
+// @Param request body request.VectorSearchRequest true "向量检索请求"
+// @Success 200 {object} response.Response
+// @Router /api/v1/vector-stores/{id}/search [post]
+func (ctrl *Controller) Search(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == 0 {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
+
+	id, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+
+	var req request.VectorSearchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	results, err := ctrl.vectorStoreService.Search(c.Request.Context(), userID, id, &req)
+	if err != nil {
+		response.BizError(c, err)
+		return
+	}
+	response.Success(c, results)
+}
+
+// IndexKnowledgeBase 建立知识库向量索引
+// @Summary 建立知识库向量索引
+// @Description 读取知识库下的 chunk，生成 embedding 并写入向量存储
+// @Tags 向量存储
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param id path int true "向量存储ID"
+// @Param knowledge_base_id path int true "知识库ID"
+// @Param request body request.IndexKnowledgeBaseRequest false "索引请求"
+// @Success 200 {object} response.Response
+// @Router /api/v1/vector-stores/{id}/knowledge-bases/{knowledge_base_id}/index [post]
+func (ctrl *Controller) IndexKnowledgeBase(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == 0 {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
+
+	id, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+	knowledgeBaseID, ok := parseUintParam(c, "knowledge_base_id")
+	if !ok {
+		return
+	}
+
+	var req request.IndexKnowledgeBaseRequest
+	if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	result, err := ctrl.vectorStoreService.IndexKnowledgeBase(c.Request.Context(), userID, id, knowledgeBaseID, &req)
+	if err != nil {
+		response.BizError(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 func parseUintParam(c *gin.Context, name string) (uint, bool) {

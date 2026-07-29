@@ -37,6 +37,7 @@ type VectorSearchResult struct {
 	ChunkID         uint    `json:"chunk_id"`
 	KnowledgeID     uint    `json:"knowledge_id"`
 	KnowledgeBaseID uint    `json:"knowledge_base_id"`
+	Content         string  `json:"content"`
 	Score           float64 `json:"score"`
 }
 
@@ -55,5 +56,7 @@ type VectorStoreService interface {
 	Delete(userID, id uint) error
 	List(userID uint, req *request.VectorStoreListRequest) (*response.PageResponse, error)
 	TestConnection(userID, id uint) error
+	Search(ctx context.Context, userID, id uint, req *request.VectorSearchRequest) ([]*dto.VectorSearchResultResponse, error)
+	IndexKnowledgeBase(ctx context.Context, userID, id, knowledgeBaseID uint, req *request.IndexKnowledgeBaseRequest) (*dto.IndexKnowledgeBaseResponse, error)
 	GetEntityByID(userID, id uint) (*entity.VectorStore, error)
 }
