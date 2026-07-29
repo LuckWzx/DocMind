@@ -4,6 +4,7 @@ import (
 	"docmind/internal/api/v1/auth"
 	"docmind/internal/api/v1/chunker"
 	"docmind/internal/api/v1/initialization"
+	"docmind/internal/api/v1/knowledgebase"
 	"docmind/internal/api/v1/models"
 	"docmind/internal/api/v1/user"
 	"docmind/internal/api/v1/vectorstore"
@@ -22,6 +23,7 @@ type Router struct {
 	userCtrl           *user.Controller
 	authCtrl           *auth.Controller
 	chunkerCtrl        *chunker.Controller
+	knowledgeBaseCtrl  *knowledgebase.Controller
 	vectorStoreCtrl    *vectorstore.Controller
 	modelCtrl          *models.Controller
 	initializationCtrl *initialization.Controller
@@ -32,6 +34,7 @@ func NewRouter(
 	userService service.UserService,
 	authService service.AuthService,
 	chunkerService service.ChunkerService,
+	knowledgeService service.KnowledgeService,
 	vectorStoreService service.VectorStoreService,
 	modelService service.ModelService,
 ) *Router {
@@ -39,6 +42,7 @@ func NewRouter(
 		userCtrl:           user.NewController(userService),
 		authCtrl:           auth.NewController(authService, userService),
 		chunkerCtrl:        chunker.NewController(chunkerService),
+		knowledgeBaseCtrl:  knowledgebase.NewController(knowledgeService),
 		vectorStoreCtrl:    vectorstore.NewController(vectorStoreService),
 		modelCtrl:          models.NewController(modelService),
 		initializationCtrl: initialization.NewController(modelService),
@@ -87,6 +91,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 		// 分块预览路由
 		r.chunkerCtrl.RegisterRoutes(v1)
+
+		// 知识库文件导入路由
+		r.knowledgeBaseCtrl.RegisterRoutes(v1)
 
 		// 向量存储路由
 		r.vectorStoreCtrl.RegisterRoutes(v1)

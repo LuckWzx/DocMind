@@ -4,11 +4,13 @@ import "time"
 
 // Config 应用配置结构体
 type Config struct {
-	App      AppConfig      `mapstructure:"app"`
-	Database DatabaseConfig `mapstructure:"database"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
-	Log      LogConfig      `mapstructure:"log"`
-	CORS     CORSConfig     `mapstructure:"cors"`
+	App       AppConfig       `mapstructure:"app"`
+	Database  DatabaseConfig  `mapstructure:"database"`
+	JWT       JWTConfig       `mapstructure:"jwt"`
+	Log       LogConfig       `mapstructure:"log"`
+	CORS      CORSConfig      `mapstructure:"cors"`
+	DocReader DocReaderConfig `mapstructure:"docreader"`
+	Storage   StorageConfig   `mapstructure:"storage"`
 }
 
 // AppConfig 应用配置
@@ -83,4 +85,14 @@ type CORSConfig struct {
 	ExposeHeaders    []string `mapstructure:"expose_headers"`
 	AllowCredentials bool     `mapstructure:"allow_credentials"`
 	MaxAge           int      `mapstructure:"max_age"`
+}
+
+// DocReaderConfig DocReader gRPC 配置
+type DocReaderConfig struct {
+	Addr string `mapstructure:"addr"`
+}
+
+// StorageConfig 本地文件存储配置
+type StorageConfig struct {
+	LocalRoot string `mapstructure:"local_root"`
 }

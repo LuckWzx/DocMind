@@ -15,6 +15,14 @@ func NewChunkRepository(db *gorm.DB) ChunkRepository {
 	return &chunkRepository{db: db}
 }
 
+// CreateBatch 批量创建分块
+func (r *chunkRepository) CreateBatch(chunks []*entity.Chunk) error {
+	if len(chunks) == 0 {
+		return nil
+	}
+	return r.db.Create(&chunks).Error
+}
+
 // ListByKnowledgeBase 查询知识库下的分块
 func (r *chunkRepository) ListByKnowledgeBase(knowledgeBaseID uint, chunkIDs []uint) ([]*entity.Chunk, error) {
 	var chunks []*entity.Chunk

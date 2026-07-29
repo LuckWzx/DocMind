@@ -58,3 +58,11 @@ cors:
     - Content-Length
   allow_credentials: true
   max_age: 120
+
+# DocReader 配置
+docreader:
+  addr: 127.0.0.1:50051
+
+# 本地存储配置
+storage:
+  local_root: data/files

@@ -53,6 +53,12 @@ func Load(configPath string) (*Config, error) {
 	if val := os.Getenv("JWT_SECRET"); val != "" {
 		config.JWT.Secret = val
 	}
+	if val := os.Getenv("DOCREADER_ADDR"); val != "" {
+		config.DocReader.Addr = val
+	}
+	if val := os.Getenv("STORAGE_LOCAL_ROOT"); val != "" {
+		config.Storage.LocalRoot = val
+	}
 
 	globalConfig = config
 	return config, nil

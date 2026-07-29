@@ -25,6 +25,7 @@ DocMind/
 │   │   ├── router.go                 # 路由注册
 │   │   └── v1/                       # API v1
 │   │       ├── auth/                 # 认证模块
+│   │       ├── knowledgebase/        # 知识库模块
 │   │       └── user/                 # 用户模块
 │   ├── app/                          # 应用生命周期管理
 │   │   └── app.go                    # 初始化、依赖注入、AutoMigrate
@@ -36,7 +37,9 @@ DocMind/
 │   ├── model/                        # 数据模型
 │   │   ├── dto/                      # 数据传输对象
 │   │   │   ├── request/              # 请求 DTO
+│   │   │   │   └── knowledge_base.go # 知识库请求 DTO
 │   │   │   └── response/             # 响应 DTO
+│   │   │       └── knowledge_base.go # 知识库响应 DTO
 │   │   └── entity/                   # 数据库实体（GORM）
 │   │       ├── base.go               # BaseEntity（自增主键+软删除）
 │   │       ├── user.go               # 用户
@@ -54,12 +57,16 @@ DocMind/
 │   │   ├── user_interface.go         # 用户仓库接口
 │   │   ├── user_repository.go        # 用户仓库实现
 │   │   ├── refresh_token_interface.go
-│   │   └── refresh_token_repository.go
+│   │   ├── refresh_token_repository.go
+│   │   ├── knowledge_base_interface.go
+│   │   └── knowledge_base_repository.go
 │   └── service/                      # 业务逻辑层
 │       ├── auth_interface.go         # 认证服务接口
 │       ├── auth_service.go           # 认证服务实现
 │       ├── user_interface.go         # 用户服务接口
-│       └── user_service.go           # 用户服务实现
+│       ├── user_service.go           # 用户服务实现
+│       ├── knowledge_base_interface.go
+│       └── knowledge_base_service.go
 ├── pkg/                              # 公共工具包
 │   ├── config/                       # 配置加载
 │   ├── database/                     # 数据库驱动（PostgreSQL / MySQL / Redis）
@@ -175,7 +182,7 @@ export async function listKnowledgeBases() {
 
 | 模块 | 功能 | 文件路径 |
 |------|------|----------|
-| **知识库** | CRUD、文件上传、标签管理 | `src/api/knowledge-base/index.ts` |
+| **知识库** | 后端 CRUD 已实现（创建/列表/详情/更新/删除/置顶），前端 Mock 预留 | `internal/api/v1/knowledgebase/` |
 | **聊天** | 会话管理、消息收发、流式响应 | `src/api/chat/index.ts` |
 | **Agent** | 创建、编辑、配置 | `src/api/agent/index.ts` |
 | **模型** | LLM提供商配置、模型管理 | `src/api/model/index.ts` |
