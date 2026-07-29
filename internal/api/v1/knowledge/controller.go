@@ -1,4 +1,4 @@
-package knowledgebase
+package knowledge
 
 import (
 	"net/http"
