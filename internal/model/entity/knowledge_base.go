@@ -6,12 +6,26 @@ import "database/sql/driver"
 // KnowledgeBase 配置依赖
 // ============================================================================
 
+// ParserEngineRule 文件解析引擎规则
+type ParserEngineRule struct {
+	FileTypes []string `json:"file_types"`
+	Engine    string   `json:"engine"`
+}
+
 // ChunkingConfig 分块策略配置
 type ChunkingConfig struct {
-	ChunkSize    int      `json:"chunk_size"`
-	ChunkOverlap int      `json:"chunk_overlap"`
-	Separators   []string `json:"separators"`
-	EnableMM     bool     `json:"enable_mm"` // 是否开启多模态
+	ChunkSize                 int                `json:"chunk_size"`
+	ChunkOverlap              int                `json:"chunk_overlap"`
+	Separators                []string           `json:"separators"`
+	ParserEngineRules         []ParserEngineRule `json:"parser_engine_rules,omitempty"`
+	EnableParentChild         bool               `json:"enable_parent_child"`
+	ParentChunkSize           int                `json:"parent_chunk_size,omitempty"`
+	ChildChunkSize            int                `json:"child_chunk_size,omitempty"`
+	Strategy                  string             `json:"strategy,omitempty"`
+	TokenLimit                int                `json:"token_limit,omitempty"`
+	Languages                 []string           `json:"languages,omitempty"`
+	TableMetadataInstructions string             `json:"table_metadata_instructions,omitempty"`
+	EnableMM                  bool               `json:"enable_mm"` // 是否开启多模态
 }
 
 func (c *ChunkingConfig) Scan(value interface{}) error {

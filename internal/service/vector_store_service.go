@@ -180,7 +180,7 @@ func (s *vectorStoreService) Search(ctx context.Context, userID, id uint, req *r
 	}
 	defer cleanup()
 
-	vector, err := s.modelService.EmbedText(req.EmbeddingModelID, req.Query)
+	vector, err := s.modelService.EmbedText(userID, req.EmbeddingModelID, req.Query)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +260,7 @@ func (s *vectorStoreService) IndexKnowledgeBase(ctx context.Context, userID, id,
 			continue
 		}
 
-		vector, err := s.modelService.EmbedText(modelRef, embeddingContent)
+		vector, err := s.modelService.EmbedText(userID, modelRef, embeddingContent)
 		if err != nil {
 			return nil, err
 		}

@@ -724,7 +724,7 @@ func (s *modelService) debugEmbeddingModel(model *entity.Model, input string) ([
 }
 
 // EmbedText 调用指定 embedding 模型生成向量
-func (s *modelService) EmbedText(modelRef string, input string) ([]float32, error) {
+func (s *modelService) EmbedText(userID uint, modelRef string, input string) ([]float32, error) {
 	modelRef = strings.TrimSpace(modelRef)
 	if modelRef == "" {
 		return nil, pkgerrors.New(pkgerrors.CodeInvalidParam, "embedding_model_id 不能为空")
@@ -736,9 +736,9 @@ func (s *modelService) EmbedText(modelRef string, input string) ([]float32, erro
 	)
 
 	if id, parseErr := strconv.ParseUint(modelRef, 10, 64); parseErr == nil {
-		model, err = s.modelRepo.FindByID(uint(id))
+		model, err = s.modelRepo.FindByUserID(uint(id), userID)
 	} else {
-		model, err = s.modelRepo.FindByName(modelRef)
+		model, err = s.modelRepo.FindByName(modelRef, userID)
 	}
 	if err != nil {
 		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询 embedding 模型失败", err)

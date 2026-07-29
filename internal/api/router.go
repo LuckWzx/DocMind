@@ -2,6 +2,7 @@ package api
 
 import (
 	"docmind/internal/api/v1/auth"
+	"docmind/internal/api/v1/chunker"
 	"docmind/internal/api/v1/initialization"
 	"docmind/internal/api/v1/models"
 	"docmind/internal/api/v1/user"
@@ -20,6 +21,7 @@ import (
 type Router struct {
 	userCtrl           *user.Controller
 	authCtrl           *auth.Controller
+	chunkerCtrl        *chunker.Controller
 	vectorStoreCtrl    *vectorstore.Controller
 	modelCtrl          *models.Controller
 	initializationCtrl *initialization.Controller
@@ -29,12 +31,14 @@ type Router struct {
 func NewRouter(
 	userService service.UserService,
 	authService service.AuthService,
+	chunkerService service.ChunkerService,
 	vectorStoreService service.VectorStoreService,
 	modelService service.ModelService,
 ) *Router {
 	return &Router{
 		userCtrl:           user.NewController(userService),
 		authCtrl:           auth.NewController(authService, userService),
+		chunkerCtrl:        chunker.NewController(chunkerService),
 		vectorStoreCtrl:    vectorstore.NewController(vectorStoreService),
 		modelCtrl:          models.NewController(modelService),
 		initializationCtrl: initialization.NewController(modelService),
@@ -80,6 +84,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 		// 初始化 / 模型探测路由
 		r.initializationCtrl.RegisterRoutes(v1)
+
+		// 分块预览路由
+		r.chunkerCtrl.RegisterRoutes(v1)
 
 		// 向量存储路由
 		r.vectorStoreCtrl.RegisterRoutes(v1)

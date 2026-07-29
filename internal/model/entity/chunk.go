@@ -10,6 +10,10 @@ const (
 	ChunkTypeText = "text"
 	// ChunkTypeMarkdown Markdown 分块
 	ChunkTypeMarkdown = "markdown"
+	// ChunkTypeMarkdownParent Markdown 父块，主要用于回溯更大上下文
+	ChunkTypeMarkdownParent = "markdown_parent"
+	// ChunkTypeMarkdownChild Markdown 子块，主要用于向量检索
+	ChunkTypeMarkdownChild = "markdown_child"
 )
 
 // ============================================================================
@@ -41,6 +45,8 @@ type ChunkMetadata struct {
 	SourceFormat     string   `json:"source_format,omitempty"`
 	SourceParser     string   `json:"source_parser,omitempty"`
 	EmbeddingVersion string   `json:"embedding_version,omitempty"`
+	IsParent         bool     `json:"is_parent,omitempty"`
+	ParentLocalIndex int      `json:"parent_local_index,omitempty"`
 }
 
 // ContextSummary 返回适合参与 embedding 的上下文标题

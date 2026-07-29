@@ -154,10 +154,11 @@ func (a *App) initDependencies() {
 	userSvc := service.NewUserService(userRepo)
 	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, userSvc)
 	modelSvc := service.NewModelService(modelRepo, systemSettingRepo)
+	chunkerSvc := service.NewChunkerService()
 	vectorStoreSvc := service.NewVectorStoreService(vectorStoreRepo, knowledgeBaseRepo, chunkRepo, modelSvc, a.pgDB, a.cfg)
 
 	// 创建 Router
-	a.router = api.NewRouter(userSvc, authSvc, vectorStoreSvc, modelSvc)
+	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, vectorStoreSvc, modelSvc)
 
 }
 
