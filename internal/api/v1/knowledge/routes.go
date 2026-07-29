@@ -1,4 +1,4 @@
-package knowledgebase
+package knowledge
 
 import (
 	"github.com/gin-gonic/gin"
