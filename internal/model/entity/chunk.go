@@ -20,12 +20,6 @@ const (
 // Chunk 配置依赖
 // ============================================================================
 
-// ImageProcessingConfig 图片处理配置
-type ImageProcessingConfig struct {
-	EnableOCR     bool `json:"enable_ocr"`
-	EnableCaption bool `json:"enable_caption"`
-}
-
 // FAQChunkMetadata FAQ 条目的元数据，存入 Chunk.Metadata 列
 type FAQChunkMetadata struct {
 	StandardQuestion  string   `json:"standard_question"`
