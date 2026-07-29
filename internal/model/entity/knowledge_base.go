@@ -1,5 +1,7 @@
 package entity
 
+import "database/sql/driver"
+
 // ============================================================================
 // KnowledgeBase 配置依赖
 // ============================================================================
@@ -12,11 +14,27 @@ type ChunkingConfig struct {
 	EnableMM     bool     `json:"enable_mm"` // 是否开启多模态
 }
 
+func (c *ChunkingConfig) Scan(value interface{}) error {
+	return scanJSONStruct(value, c)
+}
+
+func (c ChunkingConfig) Value() (driver.Value, error) {
+	return jsonStructValue(c)
+}
+
 // ExtractConfig 知识抽取配置
 type ExtractConfig struct {
 	Enabled bool   `json:"enabled"`
 	Prompt  string `json:"prompt,omitempty"`
 	ModelID string `json:"model_id,omitempty"`
+}
+
+func (c *ExtractConfig) Scan(value interface{}) error {
+	return scanJSONStruct(value, c)
+}
+
+func (c ExtractConfig) Value() (driver.Value, error) {
+	return jsonStructValue(c)
 }
 
 // FAQConfig FAQ 知识库配置
@@ -25,12 +43,28 @@ type FAQConfig struct {
 	FAQIndexMode         string `json:"faq_index_mode"`          // question_only / question_answer
 }
 
+func (c *FAQConfig) Scan(value interface{}) error {
+	return scanJSONStruct(value, c)
+}
+
+func (c FAQConfig) Value() (driver.Value, error) {
+	return jsonStructValue(c)
+}
+
 // IndexingStrategy 索引策略
 type IndexingStrategy struct {
 	ChunkSize      int    `json:"chunk_size"`
 	ChunkOverlap   int    `json:"chunk_overlap"`
 	EmbeddingModel string `json:"embedding_model,omitempty"`
 	VectorStore    string `json:"vector_store,omitempty"`
+}
+
+func (c *IndexingStrategy) Scan(value interface{}) error {
+	return scanJSONStruct(value, c)
+}
+
+func (c IndexingStrategy) Value() (driver.Value, error) {
+	return jsonStructValue(c)
 }
 
 // StorageProviderConfig 存储提供方配置
@@ -42,6 +76,14 @@ type StorageProviderConfig struct {
 	SecretKey  string            `json:"secret_key,omitempty"`
 	Region     string            `json:"region,omitempty"`
 	Extra      map[string]string `json:"extra,omitempty"`
+}
+
+func (c *StorageProviderConfig) Scan(value interface{}) error {
+	return scanJSONStruct(value, c)
+}
+
+func (c StorageProviderConfig) Value() (driver.Value, error) {
+	return jsonStructValue(c)
 }
 
 // KnowledgeBase 知识库，知识条目的容器

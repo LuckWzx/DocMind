@@ -102,6 +102,10 @@ func (a *App) initDatabase() error {
 	}
 	a.pgDB = pgDB
 
+	if err := a.pgDB.Exec("CREATE EXTENSION IF NOT EXISTS vector").Error; err != nil {
+		logger.Warn("启用 pgvector 扩展失败", zap.Error(err))
+	}
+
 	// 自动迁移数据库表
 	logger.Info("开始数据库迁移...")
 	if err := a.pgDB.AutoMigrate(
@@ -143,12 +147,14 @@ func (a *App) initDependencies() {
 	vectorStoreRepo := repository.NewVectorStoreRepository(a.pgDB)
 	modelRepo := repository.NewModelRepository(a.pgDB)
 	systemSettingRepo := repository.NewSystemSettingRepository(a.pgDB)
+	knowledgeBaseRepo := repository.NewKnowledgeBaseRepository(a.pgDB)
+	chunkRepo := repository.NewChunkRepository(a.pgDB)
 
 	// 创建 Service
 	userSvc := service.NewUserService(userRepo)
 	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, userSvc)
-	vectorStoreSvc := service.NewVectorStoreService(vectorStoreRepo)
 	modelSvc := service.NewModelService(modelRepo, systemSettingRepo)
+	vectorStoreSvc := service.NewVectorStoreService(vectorStoreRepo, knowledgeBaseRepo, chunkRepo, modelSvc, a.pgDB, a.cfg)
 
 	// 创建 Router
 	a.router = api.NewRouter(userSvc, authSvc, vectorStoreSvc, modelSvc)

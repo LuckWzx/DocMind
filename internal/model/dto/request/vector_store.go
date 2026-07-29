@@ -23,3 +23,19 @@ type UpdateVectorStoreRequest struct {
 	IndexConfig      string `json:"index_config"`
 	Status           *int   `json:"status" binding:"omitempty,oneof=1 2"`
 }
+
+// VectorSearchRequest 向量检索请求
+type VectorSearchRequest struct {
+	EmbeddingModelID string  `json:"embedding_model_id" binding:"required"`
+	Query            string  `json:"query" binding:"required"`
+	KnowledgeBaseIDs []uint  `json:"knowledge_base_ids"`
+	KnowledgeIDs     []uint  `json:"knowledge_ids"`
+	TopK             int     `json:"top_k" binding:"omitempty,min=1,max=100"`
+	Threshold        float64 `json:"threshold" binding:"omitempty,min=0,max=1"`
+	ExcludeChunkIDs  []uint  `json:"exclude_chunk_ids"`
+}
+
+// IndexKnowledgeBaseRequest 知识库向量化索引请求
+type IndexKnowledgeBaseRequest struct {
+	ChunkIDs []uint `json:"chunk_ids"`
+}

@@ -17,5 +17,7 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 		vectorStoreGroup.PUT("/:id", ctrl.Update)
 		vectorStoreGroup.DELETE("/:id", ctrl.Delete)
 		vectorStoreGroup.POST("/:id/test-connection", ctrl.TestConnection)
+		vectorStoreGroup.POST("/:id/search", ctrl.Search)
+		vectorStoreGroup.POST("/:id/knowledge-bases/:knowledge_base_id/index", ctrl.IndexKnowledgeBase)
 	}
 }

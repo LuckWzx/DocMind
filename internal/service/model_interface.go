@@ -31,4 +31,5 @@ type ModelService interface {
 	GetOllamaDownloadProgress(taskID string) (*dto.DownloadTaskResponse, error)
 	ListOllamaDownloadTasks() ([]*dto.DownloadTaskResponse, error)
 	DebugModel(userID uint, id uint, input string, documents []string, options map[string]interface{}, fileHeader *multipart.FileHeader) (*dto.ModelDebugResult, error)
+	EmbedText(modelRef string, input string) ([]float32, error)
 }
