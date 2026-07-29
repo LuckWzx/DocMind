@@ -152,13 +152,11 @@ const availableTagsList = computed(() => {
 });
 
 function toggleTag(tagId: string) {
-  const next = new Set(selectedSet.value);
-  if (next.has(tagId)) {
-    next.delete(tagId);
-  } else {
-    next.add(tagId);
+  if (selectedSet.value.has(tagId)) {
+    selectedSet.value = new Set();
+    return;
   }
-  selectedSet.value = next;
+  selectedSet.value = new Set([tagId]);
 }
 
 function clearAll() {
@@ -172,9 +170,7 @@ async function handleCreateTag() {
   try {
     const res: any = await createKnowledgeBaseTag(props.kbId, { name });
     const newTag = res?.data || res;
-    const next = new Set(selectedSet.value);
-    next.add(newTag.id);
-    selectedSet.value = next;
+    selectedSet.value = new Set([newTag.id]);
     searchQuery.value = '';
     emit('tag-created');
     MessagePlugin.success(t('knowledgeBase.tagCreateSuccess'));
@@ -190,9 +186,7 @@ async function handleAddNewTag() {
   if (!name) return;
   const exists = props.tagList.find((t) => t.name === name);
   if (exists) {
-    const next = new Set(selectedSet.value);
-    next.add(exists.id);
-    selectedSet.value = next;
+    selectedSet.value = new Set([exists.id]);
     newTagName.value = '';
     return;
   }
@@ -200,9 +194,7 @@ async function handleAddNewTag() {
   try {
     const res: any = await createKnowledgeBaseTag(props.kbId, { name });
     const newTag = res?.data || res;
-    const next = new Set(selectedSet.value);
-    next.add(newTag.id);
-    selectedSet.value = next;
+    selectedSet.value = new Set([newTag.id]);
     newTagName.value = '';
     emit('tag-created');
     MessagePlugin.success(t('knowledgeBase.tagCreateSuccess'));

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"strings"
 
 	"docmind/internal/model/entity"
 
@@ -12,30 +13,62 @@ type knowledgeRepository struct {
 	db *gorm.DB
 }
 
-// NewKnowledgeRepository 创建知识条目仓储
 func NewKnowledgeRepository(db *gorm.DB) KnowledgeRepository {
 	return &knowledgeRepository{db: db}
 }
 
-// Create 创建知识条目
-func (r *knowledgeRepository) Create(knowledge *entity.Knowledge) error {
-	return r.db.Create(knowledge).Error
+func (r *knowledgeRepository) Create(item *entity.Knowledge) error {
+	return r.db.Create(item).Error
 }
 
-// Update 更新知识条目
-func (r *knowledgeRepository) Update(knowledge *entity.Knowledge) error {
-	return r.db.Save(knowledge).Error
-}
-
-// FindByID 根据 ID 查询知识条目
 func (r *knowledgeRepository) FindByID(id uint) (*entity.Knowledge, error) {
-	var knowledge entity.Knowledge
-	err := r.db.First(&knowledge, id).Error
+	var item entity.Knowledge
+	err := r.db.First(&item, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &knowledge, nil
+	return &item, nil
+}
+
+func (r *knowledgeRepository) List(filter KnowledgeListFilter) ([]*entity.Knowledge, int64, error) {
+	query := r.db.Model(&entity.Knowledge{}).Where("knowledge_base_id = ?", filter.KnowledgeBaseID)
+	if len(filter.TagIDs) > 0 {
+		query = query.Where("tag_id IN ?", filter.TagIDs)
+	}
+	if keyword := strings.TrimSpace(filter.Keyword); keyword != "" {
+		query = query.Where("title ILIKE ? OR file_name ILIKE ? OR description ILIKE ?", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+	}
+	if filter.FileType != "" {
+		query = query.Where("file_type = ?", filter.FileType)
+	}
+	if filter.ParseStatus != "" {
+		query = query.Where("parse_status = ?", filter.ParseStatus)
+	}
+	if filter.Source != "" {
+		query = query.Where("source = ?", filter.Source)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var items []*entity.Knowledge
+	err := query.Order("updated_at DESC").Offset(filter.Offset).Limit(filter.Limit).Find(&items).Error
+	return items, total, err
+}
+
+func (r *knowledgeRepository) Update(item *entity.Knowledge) error {
+	return r.db.Save(item).Error
+}
+
+func (r *knowledgeRepository) Delete(id uint) error {
+	return r.db.Delete(&entity.Knowledge{}, id).Error
+}
+
+func (r *knowledgeRepository) DeleteByKnowledgeBase(knowledgeBaseID uint) error {
+	return r.db.Where("knowledge_base_id = ?", knowledgeBaseID).Delete(&entity.Knowledge{}).Error
 }

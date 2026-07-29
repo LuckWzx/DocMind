@@ -71,6 +71,10 @@ type IndexingStrategy struct {
 	ChunkOverlap   int    `json:"chunk_overlap"`
 	EmbeddingModel string `json:"embedding_model,omitempty"`
 	VectorStore    string `json:"vector_store,omitempty"`
+	VectorEnabled  bool   `json:"vector_enabled"`
+	KeywordEnabled bool   `json:"keyword_enabled"`
+	WikiEnabled    bool   `json:"wiki_enabled"`
+	GraphEnabled   bool   `json:"graph_enabled"`
 }
 
 func (c *IndexingStrategy) Scan(value interface{}) error {
