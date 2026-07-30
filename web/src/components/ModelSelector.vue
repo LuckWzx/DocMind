@@ -81,28 +81,22 @@ const modelDisplayName = (model: ModelConfig) => {
   return displayName || model.name
 }
 
-// 监听 allModels 变化，自动过滤当前类型的模型
-watch(() => props.allModels, (newModels) => {
-  if (newModels && Array.isArray(newModels)) {
-    models.value = newModels.filter(m => m.type === props.modelType)
-  }
-}, { immediate: true })
-
-const selectedModel = computed(() => {
-  if (!props.selectedModelId) return null
-  return models.value.find(m => m.id === props.selectedModelId)
-})
-
 // 加载模型列表（仅在未提供 allModels 时调用）
+// 注意：此函数必须在 watch 之前定义，因为 watch 使用了 immediate: true
 const loadModels = async () => {
-  // 如果外部提供了 allModels，则不需要加载
-  if (props.allModels) {
+  // 如果外部提供了 allModels 且非空，则不需要加载
+  if (props.allModels && Array.isArray(props.allModels) && props.allModels.length > 0) {
     return
   }
-  
+
   loading.value = true
   try {
     const result = await listModels()
+    // 再次检查 allModels prop，如果父组件已经提供了数据则优先使用 prop
+    // 避免 API 回调覆盖 watch 中已从 prop 设置好的 models 列表
+    if (props.allModels && Array.isArray(props.allModels) && props.allModels.length > 0) {
+      return
+    }
     // 前端按类型筛选模型
     if (result && Array.isArray(result)) {
       models.value = result.filter(m => m.type === props.modelType)
@@ -117,6 +111,21 @@ const loadModels = async () => {
     loading.value = false
   }
 }
+
+const selectedModel = computed(() => {
+  if (!props.selectedModelId) return null
+  return models.value.find(m => m.id === props.selectedModelId)
+})
+
+// 监听 allModels 变化，自动过滤当前类型的模型
+watch(() => props.allModels, (newModels) => {
+  if (newModels && Array.isArray(newModels) && newModels.length > 0) {
+    models.value = newModels.filter(m => m.type === props.modelType)
+  } else if (newModels && Array.isArray(newModels)) {
+    // allModels 为空数组时，自己加载
+    loadModels()
+  }
+}, { immediate: true })
 
 // 处理模型选择变化
 const handleModelChange = (value: string) => {
@@ -134,8 +143,9 @@ defineExpose({
 })
 
 onMounted(() => {
-  // 只有在没有提供 allModels 时才加载
-  if (!props.allModels) {
+  // watch 的 immediate: true 已经处理了初始加载
+  // 这里仅作为备用，确保 models 被填充
+  if (models.value.length === 0) {
     loadModels()
   }
 })

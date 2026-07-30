@@ -1,10 +1,13 @@
 package api
 
 import (
+	"docmind/internal/api/v1/agent"
 	"docmind/internal/api/v1/auth"
+	"docmind/internal/api/v1/chat"
 	"docmind/internal/api/v1/chunker"
 	"docmind/internal/api/v1/initialization"
 	"docmind/internal/api/v1/knowledge"
+	"docmind/internal/api/v1/knowledgebase"
 	"docmind/internal/api/v1/models"
 	"docmind/internal/api/v1/user"
 	"docmind/internal/api/v1/vectorstore"
@@ -28,6 +31,8 @@ type Router struct {
 	knowledgeBaseCtrl  *knowledgebase.Controller
 	modelCtrl          *models.Controller
 	initializationCtrl *initialization.Controller
+	chatCtrl           *chat.Controller
+	agentCtrl          *agent.Controller
 }
 
 // NewRouter 创建路由
@@ -35,11 +40,14 @@ func NewRouter(
 	userService service.UserService,
 	authService service.AuthService,
 	chunkerService service.ChunkerService,
+	knowledgeService service.KnowledgeService,
 	vectorStoreService service.VectorStoreService,
 	modelService service.ModelService,
 	knowledgeBaseService service.KnowledgeBaseService,
 	faqService service.FAQService,
 	tagService service.TagService,
+	chatService service.ChatService,
+	agentService service.AgentService,
 ) *Router {
 	return &Router{
 		userCtrl:           user.NewController(userService),
@@ -50,6 +58,8 @@ func NewRouter(
 		knowledgeBaseCtrl:  knowledgebase.NewController(knowledgeBaseService, faqService, tagService),
 		modelCtrl:          models.NewController(modelService),
 		initializationCtrl: initialization.NewController(modelService),
+		chatCtrl:           chat.NewController(chatService),
+		agentCtrl:          agent.NewController(agentService),
 	}
 }
 
@@ -96,13 +106,19 @@ func (r *Router) Setup(engine *gin.Engine) {
 		// 分块预览路由
 		r.chunkerCtrl.RegisterRoutes(v1)
 
-		// 知识库文件导入路由
-		r.knowledgeCtrl.RegisterRoutes(v1)
+		// 知识库文件导入路由（已合并到 knowledgebase 控制器）
+		// r.knowledgeCtrl.RegisterRoutes(v1)
 
 		// 向量存储路由
 		r.vectorStoreCtrl.RegisterRoutes(v1)
 
 		// 知识库管理路由
 		r.knowledgeBaseCtrl.RegisterRoutes(v1)
+
+		// 会话与对话路由
+		r.chatCtrl.RegisterRoutes(v1)
+
+		// 智能体路由
+		r.agentCtrl.RegisterRoutes(v1)
 	}
 }

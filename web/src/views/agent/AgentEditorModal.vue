@@ -3262,8 +3262,9 @@ watch(() => uiStore.showSettingsModal, async (visible, prevVisible) => {
         chatResources.ensureModels(true),
         editorResources.ensureStorageEngine(true),
       ]);
-      if (chatResources.allModels.length > 0) {
-        allModels.value = chatResources.allModels;
+      const modelsList = chatResources.allModels;
+      if (Array.isArray(modelsList) && modelsList.length > 0) {
+        allModels.value = [...modelsList];
       }
       if (editorResources.storageStatus.length > 0) {
         storageEngineStatus.value = editorResources.storageStatus;
@@ -3330,8 +3331,9 @@ const loadDependencies = async () => {
       editorResources.prefetchAgentEditorDeps(),
     ]);
 
-    if (chatResources.allModels.length > 0) {
-      allModels.value = chatResources.allModels;
+    const modelsList2 = chatResources.allModels;
+    if (Array.isArray(modelsList2) && modelsList2.length > 0) {
+      allModels.value = [...modelsList2];
     }
 
     const myKbs = chatResources.rawKnowledgeBases.map((kb: any) => mapKbToOption(kb, false));

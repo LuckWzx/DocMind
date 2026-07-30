@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
-	"docmind/internal/model/entity"
+	docreaderclient "docmind/pkg/docreader/client"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -25,11 +27,13 @@ import (
 
 // App 应用结构体
 type App struct {
-	cfg    *config.Config
-	pgDB   *gorm.DB
-	redis  *redis.Client
-	router *api.Router
-	server *http.Server
+	cfg             *config.Config
+	pgDB            *gorm.DB
+	redis           *redis.Client
+	docReaderClient *docreaderclient.Client
+	docReaderCmd    *exec.Cmd
+	router          *api.Router
+	server          *http.Server
 }
 
 // NewApp 创建应用实例
@@ -93,6 +97,47 @@ func (a *App) initLogger() error {
 	return nil
 }
 
+// startDocReader 自动启动 DocReader Python gRPC 微服务
+func (a *App) startDocReader() {
+	// 获取项目根目录
+	workDir, err := os.Getwd()
+	if err != nil {
+		logger.Warn("获取工作目录失败，无法启动 DocReader", zap.Error(err))
+		return
+	}
+	docReaderDir := filepath.Join(workDir, "pkg", "docreader")
+	venvPython := filepath.Join(docReaderDir, ".venv", "Scripts", "python.exe")
+
+	// 检查 .venv 中的 python 是否存在，否则用系统 python
+	pythonBin := "python"
+	if _, err := os.Stat(venvPython); err == nil {
+		pythonBin = venvPython
+	}
+
+	cmd := exec.Command(pythonBin, "main.py")
+	cmd.Dir = docReaderDir
+	// 设置 PYTHONPATH 使 docreader 包可被发现
+	cmd.Env = append(os.Environ(),
+		"OCR_BACKEND=no_ocr",
+		"PYTHONPATH="+filepath.Join(workDir, "pkg"),
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	logger.Info("启动 DocReader 微服务...",
+		zap.String("python", pythonBin),
+		zap.String("dir", docReaderDir),
+	)
+
+	if err := cmd.Start(); err != nil {
+		logger.Warn("DocReader 微服务启动失败，文件解析不可用", zap.Error(err))
+		return
+	}
+
+	a.docReaderCmd = cmd
+	logger.Info("DocReader 微服务已启动", zap.Int("pid", cmd.Process.Pid))
+}
+
 // initDatabase 初始化数据库
 func (a *App) initDatabase() error {
 	// 初始化 PostgreSQL
@@ -109,14 +154,17 @@ func (a *App) initDatabase() error {
 	// 自动迁移数据库表
 	logger.Info("开始数据库迁移...")
 	if err := a.pgDB.AutoMigrate(
-		&entity.KnowledgeBase{},
-		&entity.Knowledge{},
-		&entity.Chunk{},
-		&entity.Tag{},
-		&entity.FAQ{},
-		&entity.VectorStore{},
-		&entity.ChunkVector{},
-		&entity.Model{},
+	//&entity.KnowledgeBase{},
+	//&entity.Knowledge{},
+	//&entity.Chunk{},
+	//&entity.Tag{},
+	//&entity.FAQ{},
+	//&entity.VectorStore{},
+	//&entity.ChunkVector{},
+	//&entity.Model{},
+	//&entity.Session{},
+	//&entity.Message{},
+	//&entity.Agent{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {
@@ -135,6 +183,39 @@ func (a *App) initDatabase() error {
 
 // initDependencies 初始化依赖注入
 func (a *App) initDependencies() {
+
+	// 自动启动 DocReader Python 微服务
+	a.startDocReader()
+
+	var docReaderCli *docreaderclient.Client
+	if addr := a.cfg.DocReader.Addr; addr != "" {
+		// 等待 Python 服务就绪，最多重试 5 次
+		var client *docreaderclient.Client
+		var err error
+		for i := 0; i < 5; i++ {
+			if i > 0 {
+				time.Sleep(1 * time.Second)
+			}
+			client, err = docreaderclient.NewClient(addr)
+			if err == nil {
+				break
+			}
+			logger.Info("等待 DocReader 服务就绪...",
+				zap.Int("attempt", i+1),
+				zap.Error(err),
+			)
+		}
+		if err != nil {
+			logger.Warn("DocReader 初始化失败，知识文件解析接口将不可用",
+				zap.String("addr", addr),
+				zap.Error(err),
+			)
+		} else {
+			docReaderCli = client
+		}
+	}
+	a.docReaderClient = docReaderCli
+
 	// 创建 Repository
 	userRepo := repository.NewUserRepository(a.pgDB)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(a.redis)
@@ -157,9 +238,25 @@ func (a *App) initDependencies() {
 	knowledgeBaseSvc := service.NewKnowledgeBaseService(a.pgDB, knowledgeBaseRepo, knowledgeRepo, faqRepo, tagRepo, vectorStoreRepo, pipelineGateway)
 	faqSvc := service.NewFAQService(a.pgDB, knowledgeBaseRepo, faqRepo)
 	tagSvc := service.NewTagService(a.pgDB, knowledgeBaseRepo, tagRepo, faqRepo)
+	knowledgeSvc := service.NewKnowledgeService(knowledgeRepo, knowledgeBaseRepo, chunkRepo, a.docReaderClient, a.cfg)
+
+	// 会话与对话相关
+	sessionRepo := repository.NewSessionRepository(a.pgDB)
+	messageRepo := repository.NewMessageRepository(a.pgDB)
+	chatModelFactory := service.NewChatModelFactory(modelRepo)
+	embedderFactory := service.NewEmbedderFactory(modelRepo)
+	chatSvc := service.NewChatService(sessionRepo, messageRepo, chatModelFactory, embedderFactory, knowledgeBaseRepo, vectorStoreRepo, a.pgDB)
+
+	// 智能体
+	agentRepo := repository.NewAgentRepository(a.pgDB)
+	agentSvc := service.NewAgentService(agentRepo)
+	// 确保内置智能体存在
+	if err := service.SeedBuiltinAgents(agentRepo); err != nil {
+		logger.Warn("创建内置智能体失败", zap.Error(err))
+	}
 
 	// 创建 Router
-	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc)
+	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc)
 
 }
 
@@ -176,13 +273,13 @@ func (a *App) initServer() {
 	// 注册路由
 	a.router.Setup(engine)
 
-	// 创建 HTTP 服务器
+	// 创建 HTTP 服务器（SSE 流式响应需要较长超时）
 	a.server = &http.Server{
 		Addr:           fmt.Sprintf(":%d", a.cfg.App.Port),
 		Handler:        engine,
 		ReadTimeout:    60 * time.Second,
-		WriteTimeout:   60 * time.Second,
-		MaxHeaderBytes: 1 << 20, // 1 MB
+		WriteTimeout:   300 * time.Second, // 5 分钟，SSE 流式响应需要
+		MaxHeaderBytes: 1 << 20,           // 1 MB
 	}
 }
 
