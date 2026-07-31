@@ -59,7 +59,9 @@ func (a *App) Initialize() error {
 	}
 
 	// 4. 初始化依赖
-	a.initDependencies()
+	if err := a.initDependencies(); err != nil {
+		return err
+	}
 
 	// 5. 初始化路由
 	a.initRouter()
@@ -182,7 +184,7 @@ func (a *App) initDatabase() error {
 }
 
 // initDependencies 初始化依赖注入
-func (a *App) initDependencies() {
+func (a *App) initDependencies() error {
 
 	// 自动启动 DocReader Python 微服务
 	a.startDocReader()
@@ -245,10 +247,13 @@ func (a *App) initDependencies() {
 	messageRepo := repository.NewMessageRepository(a.pgDB)
 	chatModelFactory := service.NewChatModelFactory(modelRepo)
 	embedderFactory := service.NewEmbedderFactory(modelRepo)
-	chatSvc := service.NewChatService(sessionRepo, messageRepo, chatModelFactory, embedderFactory, knowledgeBaseRepo, vectorStoreRepo, a.pgDB)
+	agentRepo := repository.NewAgentRepository(a.pgDB)
+	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, chatModelFactory, embedderFactory, knowledgeBaseRepo, vectorStoreRepo, agentRepo, a.pgDB)
+	if err != nil {
+		return fmt.Errorf("创建 ChatService 失败: %w", err)
+	}
 
 	// 智能体
-	agentRepo := repository.NewAgentRepository(a.pgDB)
 	agentSvc := service.NewAgentService(agentRepo)
 	// 确保内置智能体存在
 	if err := service.SeedBuiltinAgents(agentRepo); err != nil {
@@ -258,6 +263,7 @@ func (a *App) initDependencies() {
 	// 创建 Router
 	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc)
 
+	return nil
 }
 
 // initRouter 初始化路由

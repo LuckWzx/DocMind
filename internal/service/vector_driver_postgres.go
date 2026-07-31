@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"docmind/internal/model/entity"
+	"docmind/internal/pipeline"
 
 	pgvector "github.com/pgvector/pgvector-go"
 	"gorm.io/gorm"
@@ -112,6 +113,49 @@ func (d *postgresVectorDriver) Search(ctx context.Context, params VectorSearchPa
 		return nil, err
 	}
 	return results, nil
+}
+
+// EnsureSchema 导出方法，供 pipeline 调用
+func (d *postgresVectorDriver) EnsureSchema(ctx context.Context) error {
+	return d.ensureSchema(ctx)
+}
+
+// pipelineVectorDriverAdapter 适配 pipeline.PipelineVectorDriver 接口
+type pipelineVectorDriverAdapter struct {
+	inner *postgresVectorDriver
+}
+
+func (a *pipelineVectorDriverAdapter) EnsureSchema(ctx context.Context) error {
+	return a.inner.EnsureSchema(ctx)
+}
+
+func (a *pipelineVectorDriverAdapter) Search(ctx context.Context, params pipeline.PipelineVectorSearchParams) ([]pipeline.PipelineVectorSearchResult, error) {
+	return a.inner.SearchWithPipelineParams(ctx, params)
+}
+
+// SearchWithPipelineParams 适配 pipeline 的检索参数格式
+func (d *postgresVectorDriver) SearchWithPipelineParams(ctx context.Context, params pipeline.PipelineVectorSearchParams) ([]pipeline.PipelineVectorSearchResult, error) {
+	rawParams := VectorSearchParams{
+		UserID:           params.UserID,
+		VectorStoreID:    params.VectorStoreID,
+		KnowledgeBaseIDs: params.KnowledgeBaseIDs,
+		QueryVector:      params.QueryVector,
+		TopK:             params.TopK,
+		Threshold:        params.Threshold,
+	}
+	results, err := d.Search(ctx, rawParams)
+	if err != nil {
+		return nil, err
+	}
+	pipelineResults := make([]pipeline.PipelineVectorSearchResult, 0, len(results))
+	for _, r := range results {
+		pipelineResults = append(pipelineResults, pipeline.PipelineVectorSearchResult{
+			ChunkID:     r.ChunkID,
+			KnowledgeID: r.KnowledgeID,
+			Score:       r.Score,
+		})
+	}
+	return pipelineResults, nil
 }
 
 func (d *postgresVectorDriver) ensureSchema(ctx context.Context) error {

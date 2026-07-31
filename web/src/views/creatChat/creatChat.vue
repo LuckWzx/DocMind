@@ -194,11 +194,14 @@ async function createNewSession(value: string, modelId: string, mentionedItems: 
     const selectedFiles = settingsStore.settings.selectedFiles || [];
 
     // 构建 session 数据，包含 Agent 配置
-    const sessionData: any = {};
+    const sessionData: any = {
+        source: 'web',  // 标记为 web 来源，侧栏才能正确显示
+    };
 
     // 添加 Agent 配置（知识库信息在 agent_config 中）
     sessionData.agent_config = {
         enabled: true,
+        model_id: modelId || '',  // 传递模型 ID
         max_iterations: settingsStore.agentConfig.maxIterations,
         temperature: settingsStore.agentConfig.temperature,
         knowledge_bases: selectedKbs,  // 所有选中的知识库

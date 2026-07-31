@@ -558,26 +558,9 @@ const {
         }
         const lastMessage = messagesList[messagesList.length - 1];
         if (lastMessage && !lastMessage.is_completed) {
-            isReplying.value = true;
-            if (lastMessage.role === 'assistant') {
-                currentAssistantMessageId.value = lastMessage.id;
-                console.log('[Continue Stream] Set assistant message ID:', lastMessage.id);
-            }
-            // Only IM-originated replies (channel === 'im') get the quiet poll-to-recover
-            // path: their answer is generated on the IM side and never streams through
-            // this server, so continue-stream always 404s even though the reply *is*
-            // coming. Web/api replies keep the original behaviour (a real failure to
-            // resume the stream still surfaces as an error) — we don't touch them.
-            isAttachingImStream.value = lastMessage.channel === 'im';
-            await startStream({
-                session_id: session_id.value,
-                query: lastMessage.id,
-                method: 'GET',
-                url: '/api/v1/sessions/continue-stream',
-            });
-            // On success the stream resumed normally; on failure the error watcher
-            // already took over (quiet recovery for IM), so only clear the flag here.
-            if (!error.value) isAttachingImStream.value = false;
+            // continue-stream API 尚未实现，直接将未完成的消息标记为已完成
+            lastMessage.is_completed = true;
+            isReplying.value = false;
         }
     },
     onAgentQuery: (data, existingMessage) => {

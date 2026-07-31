@@ -46,27 +46,19 @@ func (f *ChatModelFactory) CreateChatModel(ctx context.Context, modelID string) 
 	return openai.NewChatModel(ctx, cfg)
 }
 
-// resolveModel 根据模型 ID（可以是数字 ID 字符串或模型名称）查找模型记录
+// resolveModel 根据模型 ID 查找模型记录
 func (f *ChatModelFactory) resolveModel(modelID string) (*entity.Model, error) {
-	// 尝试按数字 ID 查找
-	if id, err := strconv.ParseUint(modelID, 10, 64); err == nil {
-		model, err := f.modelRepo.FindByID(uint(id))
-		if err != nil {
-			return nil, fmt.Errorf("查询模型失败: %w", err)
-		}
-		if model != nil {
-			return model, nil
-		}
-	}
-	// 尝试按名称查找（使用 userID=0 查全局模型）
-	models, err := f.modelRepo.List(entity.ModelTypeKnowledgeQA, 0)
+	// 按数字 ID 查找
+	id, err := strconv.ParseUint(modelID, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("查询模型列表失败: %w", err)
+		return nil, fmt.Errorf("无效的模型 ID: %s", modelID)
 	}
-	for _, m := range models {
-		if m.Name == modelID || m.DisplayName == modelID {
-			return m, nil
-		}
+	model, err := f.modelRepo.FindByID(uint(id))
+	if err != nil {
+		return nil, fmt.Errorf("查询模型失败: %w", err)
 	}
-	return nil, fmt.Errorf("未找到模型: %s", modelID)
+	if model == nil {
+		return nil, fmt.Errorf("未找到模型: %s", modelID)
+	}
+	return model, nil
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"docmind/internal/model/entity"
+	"docmind/internal/pipeline"
 	"docmind/internal/repository"
 	bizerrors "docmind/pkg/errors"
 
@@ -34,7 +35,10 @@ type chatService struct {
 	embedderFactory *EmbedderFactory
 	kbRepo          repository.KnowledgeBaseRepository
 	vectorStoreRepo repository.VectorStoreRepository
+	agentRepo       repository.AgentRepository
 	primaryDB       *gorm.DB
+	ragPipeline     *pipeline.Pipeline
+	pipelineDeps    *pipeline.PipelineDeps
 }
 
 // NewChatService 创建对话服务
@@ -45,8 +49,35 @@ func NewChatService(
 	embedderFactory *EmbedderFactory,
 	kbRepo repository.KnowledgeBaseRepository,
 	vectorStoreRepo repository.VectorStoreRepository,
+	agentRepo repository.AgentRepository,
 	primaryDB *gorm.DB,
-) ChatService {
+) (ChatService, error) {
+	// 构建 Pipeline 依赖
+	pipelineDeps := &pipeline.PipelineDeps{
+		EmbedderFactory: &pipelineEmbedderFactoryAdapter{factory: embedderFactory},
+		KBRepo:          kbRepo,
+		VectorStoreRepo: vectorStoreRepo,
+		PrimaryDB:       primaryDB,
+		CreateDriver: func(store interface{}) (pipeline.PipelineVectorDriver, func(), error) {
+			vs, ok := store.(*entity.VectorStore)
+			if !ok {
+				return nil, func() {}, fmt.Errorf("无效的向量存储类型")
+			}
+			db, cleanup, err := resolvePostgresDB(primaryDB, vs)
+			if err != nil {
+				return nil, func() {}, err
+			}
+			driver := newPostgresVectorDriver(db, vs)
+			return &pipelineVectorDriverAdapter{inner: driver}, cleanup, nil
+		},
+	}
+
+	// 创建 RAG Pipeline
+	ragPipeline, err := pipeline.NewPipeline(pipelineDeps)
+	if err != nil {
+		return nil, fmt.Errorf("创建 RAG Pipeline 失败: %w", err)
+	}
+
 	return &chatService{
 		sessionRepo:     sessionRepo,
 		messageRepo:     messageRepo,
@@ -54,8 +85,20 @@ func NewChatService(
 		embedderFactory: embedderFactory,
 		kbRepo:          kbRepo,
 		vectorStoreRepo: vectorStoreRepo,
+		agentRepo:       agentRepo,
 		primaryDB:       primaryDB,
-	}
+		ragPipeline:     ragPipeline,
+		pipelineDeps:    pipelineDeps,
+	}, nil
+}
+
+// pipelineEmbedderFactoryAdapter 适配 pipeline.PipelineEmbedderFactory 接口
+type pipelineEmbedderFactoryAdapter struct {
+	factory *EmbedderFactory
+}
+
+func (a *pipelineEmbedderFactoryAdapter) CreateEmbedder(ctx context.Context, modelID string) (pipeline.PipelineEmbedder, error) {
+	return a.factory.CreatePipelineEmbedder(ctx, modelID)
 }
 
 // KnowledgeChat 单步 RAG 对话
@@ -81,35 +124,36 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 	s.sessionRepo.IncrementMessageCount(sessionID)
 	s.sessionRepo.UpdateLastMessage(sessionID, req.Query)
 
-	// 3. 获取 Embedding 模型并生成查询向量
-	kbIDs := s.resolveKBIDs(session, req.KnowledgeBaseIDs)
-	queryVector, embedderID, err := s.embedQuery(ctx, kbIDs, req.Query)
-	if err != nil {
-		return nil, nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "向量化查询失败", err)
-	}
-	_ = embedderID
+	// 3. 从 Agent 解析配置
+	agentConfig := s.resolveAgentConfig(session, req)
 
-	// 4. 向量检索
-	searchResults, err := s.vectorSearch(ctx, kbIDs, queryVector)
-	if err != nil {
-		return nil, nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "向量检索失败", err)
+	// 4. 创建 Pipeline 上下文
+	pipelineCtx := &pipeline.Context{
+		Query:       req.Query,
+		SessionID:   sessionID,
+		UserID:      userID,
+		AgentConfig: agentConfig,
+		ModelRepo:   s.modelFactory.modelRepo,
 	}
 
-	// 5. 拼接 Prompt
-	messages := s.buildPrompt(session, req.Query, searchResults)
-
-	// 6. 获取 ChatModel 并流式调用
-	chatModel, err := s.modelFactory.CreateChatModel(ctx, s.resolveChatModelID(session))
+	// 5. 执行 Pipeline
+	result, err := s.ragPipeline.Run(ctx, pipelineCtx)
 	if err != nil {
-		return nil, nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "创建 ChatModel 失败", err)
+		return nil, nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "Pipeline 执行失败", err)
 	}
 
-	stream, err := chatModel.Stream(ctx, messages)
-	if err != nil {
-		return nil, nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "调用 LLM 失败", err)
+	// 6. 转换搜索结果
+	var searchResults []VectorSearchResult
+	for _, r := range result.RerankedResults {
+		searchResults = append(searchResults, VectorSearchResult{
+			ChunkID:     r.ChunkID,
+			Content:     r.Content,
+			Score:       r.Score,
+			KnowledgeID: r.KnowledgeID,
+		})
 	}
 
-	return stream, searchResults, nil
+	return result.Stream, searchResults, nil
 }
 
 // resolveKBIDs 确定使用的知识库 ID 列表
@@ -125,10 +169,54 @@ func (s *chatService) resolveKBIDs(session *entity.Session, reqKBIDs []string) [
 
 // resolveChatModelID 确定使用的 Chat 模型 ID
 func (s *chatService) resolveChatModelID(session *entity.Session) string {
+	// 优先使用 Session 中智能体配置的 model_id
+	if session.AgentConfig != nil && session.AgentConfig.ModelID != "" {
+		return session.AgentConfig.ModelID
+	}
+	// 其次使用 Session 的 summary_model_id
 	if session.SummaryModelID != "" {
 		return session.SummaryModelID
 	}
 	return "default"
+}
+
+// resolveAgentConfig 从 Agent 动态解析配置
+func (s *chatService) resolveAgentConfig(session *entity.Session, req *KnowledgeChatRequest) *pipeline.AgentConfig {
+	config := &pipeline.AgentConfig{
+		ModelID:            "default",
+		KnowledgeBaseIDs:   req.KnowledgeBaseIDs,
+		SystemPrompt:       knowledgeQASystemPrompt,
+		Temperature:        defaultTemperature,
+		MaxTokens:          2048,
+		EnableQueryRewrite: false,
+		EmbeddingTopK:      defaultTopK,
+		VectorThreshold:    0.5,
+		RerankTopK:         defaultTopK,
+	}
+
+	// 如果 Session 关联了 Agent，从 Agent 配置中解析
+	if session.AgentID != "" {
+		agent, err := s.agentRepo.FindByIDStr(session.AgentID)
+		if err == nil && agent != nil {
+			if agent.Config.ModelID != "" {
+				config.ModelID = agent.Config.ModelID
+			}
+			if len(agent.Config.KnowledgeBases) > 0 {
+				config.KnowledgeBaseIDs = agent.Config.KnowledgeBases
+			}
+			if agent.Config.SystemPrompt != "" {
+				config.SystemPrompt = agent.Config.SystemPrompt
+			}
+			if agent.Config.Temperature != nil {
+				config.Temperature = *agent.Config.Temperature
+			}
+			if agent.Config.MaxCompletionTokens != nil {
+				config.MaxTokens = *agent.Config.MaxCompletionTokens
+			}
+		}
+	}
+
+	return config
 }
 
 // embedQuery 使用 Embedder 将查询文本转为向量，同时返回使用的模型 ID
@@ -270,6 +358,9 @@ func (s *chatService) CreateSession(ctx context.Context, userID uint, req *Creat
 		Source:           req.Source,
 		KnowledgeBaseIDs: req.KnowledgeBaseIDs,
 		AgentEnabled:     req.AgentEnabled,
+	}
+	if req.AgentConfig != nil {
+		session.AgentConfig = req.AgentConfig
 	}
 	if session.Source == "" {
 		session.Source = "web"

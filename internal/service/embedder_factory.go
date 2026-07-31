@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"docmind/internal/model/entity"
+	"docmind/internal/pipeline"
 	"docmind/internal/repository"
 
 	"github.com/cloudwego/eino-ext/components/embedding/openai"
@@ -41,6 +42,32 @@ func (f *EmbedderFactory) CreateEmbedder(ctx context.Context, modelID string) (e
 	}
 
 	return openai.NewEmbedder(ctx, cfg)
+}
+
+// CreatePipelineEmbedder 适配 pipeline.PipelineEmbedderFactory 接口
+// 将 einoembedding.Embedder（返回 [][]float64）适配为 PipelineEmbedder（返回 []float64，单条文本）
+func (f *EmbedderFactory) CreatePipelineEmbedder(ctx context.Context, modelID string) (pipeline.PipelineEmbedder, error) {
+	embedder, err := f.CreateEmbedder(ctx, modelID)
+	if err != nil {
+		return nil, err
+	}
+	return &pipelineEmbedderAdapter{inner: embedder}, nil
+}
+
+// pipelineEmbedderAdapter 适配器：将 eino Embedder 适配为 pipeline.PipelineEmbedder
+type pipelineEmbedderAdapter struct {
+	inner einoembedding.Embedder
+}
+
+func (a *pipelineEmbedderAdapter) EmbedStrings(ctx context.Context, texts []string) ([]float64, error) {
+	results, err := a.inner.EmbedStrings(ctx, texts)
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("Embedding 返回空结果")
+	}
+	return results[0], nil
 }
 
 // resolveModel 根据模型 ID 查找 Embedding 模型记录

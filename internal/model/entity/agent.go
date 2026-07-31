@@ -7,29 +7,100 @@ import (
 // AgentConfig 智能体配置（JSON 存储，字段对齐前端 CustomAgentConfig）
 type AgentConfig struct {
 	// 基础设置
-	AgentMode    string `json:"agent_mode"` // quick-answer / smart-reasoning
-	SystemPrompt string `json:"system_prompt"`
+	AgentMode       string `json:"agent_mode"` // quick-answer / smart-reasoning
+	SystemPrompt    string `json:"system_prompt"`
+	ContextTemplate string `json:"context_template,omitempty"`
 
 	// 模型设置
 	ModelID             string   `json:"model_id"`
 	RerankModelID       string   `json:"rerank_model_id"`
 	Temperature         *float64 `json:"temperature,omitempty"`
 	MaxCompletionTokens *int     `json:"max_completion_tokens,omitempty"`
+	Thinking            *bool    `json:"thinking,omitempty"`
+	CitationEnabled     *bool    `json:"citation_enabled,omitempty"`
+
+	// Agent 模式设置
+	MaxIterations     *int     `json:"max_iterations,omitempty"`
+	LLMCallTimeout    *int     `json:"llm_call_timeout,omitempty"`
+	AllowedTools      []string `json:"allowed_tools,omitempty"`
+	ReflectionEnabled *bool    `json:"reflection_enabled,omitempty"`
+
+	// MCP 服务设置
+	MCPSelectionMode   string   `json:"mcp_selection_mode,omitempty"`
+	MCPServices        []string `json:"mcp_services,omitempty"`
+	MCPAuthWaitTimeout *int     `json:"mcp_auth_wait_timeout,omitempty"`
+
+	// Skills 设置
+	SkillsSelectionMode string   `json:"skills_selection_mode,omitempty"`
+	SelectedSkills      []string `json:"selected_skills,omitempty"`
 
 	// 知识库设置
-	KnowledgeBases []string `json:"knowledge_bases"`
+	KBSelectionMode             string   `json:"kb_selection_mode,omitempty"`
+	KnowledgeBases              []string `json:"knowledge_bases"`
+	RetrieveKBOnlyWhenMentioned *bool    `json:"retrieve_kb_only_when_mentioned,omitempty"`
+
+	// Agent 类型预设
+	AgentType      string `json:"agent_type,omitempty"`
+	SystemPromptID string `json:"system_prompt_id,omitempty"`
+
+	// 图片上传/多模态设置
+	ImageUploadEnabled            *bool  `json:"image_upload_enabled,omitempty"`
+	VLMModelID                    string `json:"vlm_model_id,omitempty"`
+	ImageStorageProvider          string `json:"image_storage_provider,omitempty"`
+	AudioUploadEnabled            *bool  `json:"audio_upload_enabled,omitempty"`
+	ASRModelID                    string `json:"asr_model_id,omitempty"`
+	AttachmentImageUnderstanding  *bool  `json:"attachment_image_understanding,omitempty"`
+	AttachmentOCRMaxPages         *int   `json:"attachment_ocr_max_pages,omitempty"`
+	AttachmentParseWaitTimeoutSec *int   `json:"attachment_parse_wait_timeout_sec,omitempty"`
+
+	// 聊天附件解析引擎策略
+	ChatParserEngineRules []interface{} `json:"chat_parser_engine_rules,omitempty"`
+
+	// 文件类型限制
+	SupportedFileTypes []string `json:"supported_file_types,omitempty"`
 
 	// 检索策略
-	EmbeddingTopK   int     `json:"embedding_top_k"`
-	VectorThreshold float64 `json:"vector_threshold"`
-	RerankTopK      int     `json:"rerank_top_k"`
+	EnableQueryExpansion *bool    `json:"enable_query_expansion,omitempty"`
+	EmbeddingTopK        int      `json:"embedding_top_k"`
+	KeywordThreshold     *float64 `json:"keyword_threshold,omitempty"`
+	VectorThreshold      float64  `json:"vector_threshold"`
+	RerankTopK           int      `json:"rerank_top_k"`
+	RerankThreshold      *float64 `json:"rerank_threshold,omitempty"`
 
-	// 多轮对话
-	MultiTurnEnabled bool `json:"multi_turn_enabled"`
-	HistoryTurns     int  `json:"history_turns"`
+	// FAQ 策略
+	FAQPriorityEnabled       *bool    `json:"faq_priority_enabled,omitempty"`
+	FAQDirectAnswerThreshold *float64 `json:"faq_direct_answer_threshold,omitempty"`
+	FAQScoreBoost            *float64 `json:"faq_score_boost,omitempty"`
 
-	// 网络搜索
-	WebSearchEnabled bool `json:"web_search_enabled"`
+	// 网络搜索设置
+	WebSearchEnabled    *bool  `json:"web_search_enabled,omitempty"`
+	WebSearchProviderID string `json:"web_search_provider_id,omitempty"`
+	WebSearchMaxResults *int   `json:"web_search_max_results,omitempty"`
+	WebFetchEnabled     *bool  `json:"web_fetch_enabled,omitempty"`
+	WebFetchTopN        *int   `json:"web_fetch_top_n,omitempty"`
+
+	// 多轮对话设置
+	MultiTurnEnabled       *bool  `json:"multi_turn_enabled,omitempty"`
+	HistoryTurns           int    `json:"history_turns"`
+	EnableRewrite          *bool  `json:"enable_rewrite,omitempty"`
+	QueryUnderstandModelID string `json:"query_understand_model_id,omitempty"`
+	RewritePromptSystem    string `json:"rewrite_prompt_system,omitempty"`
+	RewritePromptUser      string `json:"rewrite_prompt_user,omitempty"`
+
+	// 兜底策略
+	FallbackStrategy string `json:"fallback_strategy,omitempty"`
+	FallbackResponse string `json:"fallback_response,omitempty"`
+	FallbackPrompt   string `json:"fallback_prompt,omitempty"`
+
+	// 问题推荐
+	QuestionSuggestions interface{} `json:"question_suggestions,omitempty"`
+
+	// 意图提示词
+	IntentPrompts interface{} `json:"intent_prompts,omitempty"`
+
+	// 其他
+	WelcomeMessage      string `json:"welcome_message,omitempty"`
+	DataAnalysisEnabled *bool  `json:"data_analysis_enabled,omitempty"`
 }
 
 // Scan 实现 sql.Scanner

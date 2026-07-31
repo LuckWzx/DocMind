@@ -77,7 +77,14 @@ func (s *agentService) Update(idStr string, userID uint, name, description, avat
 		return nil, bizerrors.New(bizerrors.CodeResourceNotFound, "智能体不存在")
 	}
 	if agent.IsBuiltin {
-		return nil, bizerrors.New(bizerrors.CodeInvalidParam, "内置智能体不可编辑")
+		// 内置智能体允许更新配置，但不允许修改 id_str
+		if config != nil {
+			agent.Config = *config
+		}
+		if err := s.agentRepo.Update(agent); err != nil {
+			return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "更新智能体失败", err)
+		}
+		return agent, nil
 	}
 	if agent.UserID != userID {
 		return nil, bizerrors.New(bizerrors.CodeForbidden, "无权操作")
@@ -139,6 +146,7 @@ func (s *agentService) Copy(idStr string, userID uint) (*entity.Agent, error) {
 func SeedBuiltinAgents(agentRepo repository.AgentRepository) error {
 	defaultTemp := 0.7
 	defaultMaxTokens := 2048
+	defaultFalse := false
 
 	quickAnswer := &entity.Agent{
 		UserID:      0,
@@ -154,7 +162,7 @@ func SeedBuiltinAgents(agentRepo repository.AgentRepository) error {
 			EmbeddingTopK:       5,
 			VectorThreshold:     0.5,
 			RerankTopK:          5,
-			MultiTurnEnabled:    false,
+			MultiTurnEnabled:    &defaultFalse,
 			HistoryTurns:        0,
 		},
 	}

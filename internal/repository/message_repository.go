@@ -47,7 +47,8 @@ func (r *messageRepository) ListBySession(sessionID uint, limit int, beforeTime 
 	if beforeTime != nil {
 		query = query.Where("created_at < ?", *beforeTime)
 	}
-	err := query.Order("created_at DESC").Limit(limit).Find(&messages).Error
+	// 按时间正序排列（最早的在前，最新的在后）
+	err := query.Order("created_at ASC").Limit(limit).Find(&messages).Error
 	return messages, err
 }
 

@@ -714,9 +714,11 @@ const probeChannelBucketCounts = async (keys: string[], token: number) => {
             try {
                 const res: any = await getSessionsList(1, 1, bucket.apiSource);
                 if (token !== bucketRequestToken) return;
+                // 后端返回 { success, data: { list, total, page, size, total_page } }
+                const total = res?.data?.total ?? res?.total ?? 0;
                 sessionBuckets.value = {
                     ...sessionBuckets.value,
-                    [key]: applyBucketCountProbe(bucket, res?.total ?? 0),
+                    [key]: applyBucketCountProbe(bucket, total),
                 };
             } catch {
                 if (token !== bucketRequestToken) return;
@@ -743,11 +745,13 @@ const loadBucketPage = async (key: string, page?: number, token?: number) => {
     try {
         const res: any = await getSessionsList(nextPage, SIDEBAR_BUCKET_PAGE_SIZE, bucket.apiSource);
         if (activeToken !== bucketRequestToken) return;
-        const rows = (res?.data || []).map((item: any) => mapSessionRow(item));
+        // 后端返回 { success, data: { list, total, page, size, total_page } }
+        const rows = (res?.data?.list || res?.data || []).map((item: any) => mapSessionRow(item));
+        const total = res?.data?.total ?? res?.total ?? rows.length;
         const current = sessionBuckets.value[key];
         sessionBuckets.value = {
             ...sessionBuckets.value,
-            [key]: mergeBucketPage(current, rows, res?.total ?? rows.length, nextPage),
+            [key]: mergeBucketPage(current, rows, total, nextPage),
         };
         syncMenuStoreFromBuckets();
         await refreshSessionListScrollability();

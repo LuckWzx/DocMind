@@ -30,7 +30,10 @@ func NewController(chatService service.ChatService) *Controller {
 
 type sseEvent struct {
 	ResponseType string      `json:"response_type"`
-	Answer       string      `json:"answer,omitempty"`
+	Content      string      `json:"content,omitempty"`    // 消息内容（前端读取此字段）
+	ID           string      `json:"id,omitempty"`         // 消息 ID
+	Done         bool        `json:"done,omitempty"`       // 流是否结束
+	SessionID    string      `json:"session_id,omitempty"` // 会话 ID
 	References   []reference `json:"references,omitempty"`
 	ErrorMessage string      `json:"error_message,omitempty"`
 }
@@ -285,7 +288,7 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 	if err != nil {
 		writeSSEEvent(c.Writer, sseEvent{
 			ResponseType: "error",
-			ErrorMessage: err.Error(),
+			Content:      err.Error(),
 		})
 		c.Writer.Flush()
 		return
@@ -319,7 +322,7 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 		if err != nil {
 			writeSSEEvent(c.Writer, sseEvent{
 				ResponseType: "error",
-				ErrorMessage: fmt.Sprintf("流式读取失败: %v", err),
+				Content:      fmt.Sprintf("流式读取失败: %v", err),
 			})
 			c.Writer.Flush()
 			return
@@ -328,7 +331,7 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 			fullContent += chunk.Content
 			writeSSEEvent(c.Writer, sseEvent{
 				ResponseType: "answer",
-				Answer:       chunk.Content,
+				Content:      chunk.Content,
 			})
 			c.Writer.Flush()
 		}
@@ -340,7 +343,11 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 	}
 
 	// 发送完成事件
-	writeSSEEvent(c.Writer, sseEvent{ResponseType: "complete"})
+	writeSSEEvent(c.Writer, sseEvent{
+		ResponseType: "complete",
+		Done:         true,
+		SessionID:    strconv.FormatUint(uint64(sessionID), 10),
+	})
 	c.Writer.Flush()
 }
 

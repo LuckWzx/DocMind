@@ -46,10 +46,11 @@ type KnowledgeChatRequest struct {
 
 // CreateSessionRequest 创建会话请求
 type CreateSessionRequest struct {
-	Title            string   `json:"title"`
-	Source           string   `json:"source"`
-	KnowledgeBaseIDs []string `json:"knowledge_base_ids"`
-	AgentEnabled     bool     `json:"agent_enabled"`
+	Title            string              `json:"title"`
+	Source           string              `json:"source"`
+	KnowledgeBaseIDs []string            `json:"knowledge_base_ids"`
+	AgentEnabled     bool                `json:"agent_enabled"`
+	AgentConfig      *entity.AgentConfig `json:"agent_config,omitempty"`
 }
 
 // UpdateSessionRequest 更新会话请求

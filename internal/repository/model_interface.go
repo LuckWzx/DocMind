@@ -11,4 +11,5 @@ type ModelRepository interface {
 	FindByID(id uint) (*entity.Model, error)
 	FindByName(name string, userID uint) (*entity.Model, error)
 	List(modelType string, userID uint) ([]*entity.Model, error)
+	ListAll(modelType string) ([]*entity.Model, error)
 }

@@ -41,6 +41,7 @@ type Session struct {
 	Description      string       `gorm:"type:text;comment:会话描述" json:"description"`
 	Source           string       `gorm:"type:varchar(32);default:'web';comment:来源 web/im/embed/api" json:"source"`
 	Pinned           bool         `gorm:"default:false;comment:是否置顶" json:"pinned"`
+	AgentID          string       `gorm:"type:varchar(128);index;comment:关联的Agent ID" json:"agent_id,omitempty"`
 	KnowledgeBaseIDs StringSlice  `gorm:"type:json;comment:关联的知识库ID列表" json:"knowledge_base_ids"`
 	AgentEnabled     bool         `gorm:"default:false;comment:是否启用Agent模式" json:"agent_enabled"`
 	AgentConfig      *AgentConfig `gorm:"type:json;comment:Agent配置" json:"agent_config,omitempty"`

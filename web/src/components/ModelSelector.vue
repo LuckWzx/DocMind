@@ -25,7 +25,7 @@
           <t-tag v-if="model.is_default" size="small" theme="success">{{ $t('model.defaultTag') }}</t-tag>
         </div>
       </t-option>
-      
+
       <!-- 添加模型选项（在底部） -->
       <t-option
         v-if="!disabled"
@@ -42,9 +42,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import { listModels, type ModelConfig } from '@/api/model'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { ref, computed, watch } from 'vue'
+import { type ModelConfig } from '@/api/model'
 import { useI18n } from 'vue-i18n'
 
 interface Props {
@@ -53,7 +52,7 @@ interface Props {
   disabled?: boolean
   placeholder?: string
   status?: 'default' | 'success' | 'warning' | 'error'
-  // 可选：外部传入的所有模型列表，如果提供则不调用API
+  // 外部传入的所有模型列表
   allModels?: ModelConfig[]
 }
 
@@ -81,49 +80,13 @@ const modelDisplayName = (model: ModelConfig) => {
   return displayName || model.name
 }
 
-// 加载模型列表（仅在未提供 allModels 时调用）
-// 注意：此函数必须在 watch 之前定义，因为 watch 使用了 immediate: true
-const loadModels = async () => {
-  // 如果外部提供了 allModels 且非空，则不需要加载
-  if (props.allModels && Array.isArray(props.allModels) && props.allModels.length > 0) {
-    return
-  }
-
-  loading.value = true
-  try {
-    const result = await listModels()
-    // 再次检查 allModels prop，如果父组件已经提供了数据则优先使用 prop
-    // 避免 API 回调覆盖 watch 中已从 prop 设置好的 models 列表
-    if (props.allModels && Array.isArray(props.allModels) && props.allModels.length > 0) {
-      return
-    }
-    // 前端按类型筛选模型
-    if (result && Array.isArray(result)) {
-      models.value = result.filter(m => m.type === props.modelType)
-    } else {
-      models.value = []
-    }
-  } catch (error) {
-    console.error(t('model.loadFailed'), error)
-    MessagePlugin.error(t('model.loadFailed'))
-    models.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
-const selectedModel = computed(() => {
-  if (!props.selectedModelId) return null
-  return models.value.find(m => m.id === props.selectedModelId)
-})
-
-// 监听 allModels 变化，自动过滤当前类型的模型
+// 直接从 allModels prop 过滤当前类型的模型
+// 不再自己调用 API，完全依赖父组件提供的数据
 watch(() => props.allModels, (newModels) => {
-  if (newModels && Array.isArray(newModels) && newModels.length > 0) {
+  if (newModels && Array.isArray(newModels)) {
     models.value = newModels.filter(m => m.type === props.modelType)
-  } else if (newModels && Array.isArray(newModels)) {
-    // allModels 为空数组时，自己加载
-    loadModels()
+  } else {
+    models.value = []
   }
 }, { immediate: true })
 
@@ -137,16 +100,13 @@ const handleModelChange = (value: string) => {
   emit('update:selectedModelId', value)
 }
 
-// 暴露刷新方法给父组件
+// 暴露刷新方法给父组件（保持接口兼容，但实际不再需要）
 defineExpose({
-  refresh: loadModels
-})
-
-onMounted(() => {
-  // watch 的 immediate: true 已经处理了初始加载
-  // 这里仅作为备用，确保 models 被填充
-  if (models.value.length === 0) {
-    loadModels()
+  refresh: () => {
+    // 重新从 prop 过滤
+    if (props.allModels && Array.isArray(props.allModels)) {
+      models.value = props.allModels.filter(m => m.type === props.modelType)
+    }
   }
 })
 </script>
@@ -160,17 +120,17 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  
+
   .model-icon {
     font-size: 14px;
     color: var(--td-brand-color);
   }
-  
+
   .add-icon {
     font-size: 14px;
     color: var(--td-brand-color);
   }
-  
+
   .model-name {
     flex: 0 1 auto;
     min-width: 0;
@@ -189,7 +149,7 @@ onMounted(() => {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  
+
   &.add {
     .model-name {
       color: var(--td-brand-color);

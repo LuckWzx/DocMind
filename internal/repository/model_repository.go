@@ -76,3 +76,16 @@ func (r *modelRepository) List(modelType string, userID uint) ([]*entity.Model, 
 	}
 	return models, nil
 }
+
+// ListAll 查询所有用户的模型（不按 user_id 过滤）
+func (r *modelRepository) ListAll(modelType string) ([]*entity.Model, error) {
+	var models []*entity.Model
+	query := r.db.Order("created_at DESC")
+	if modelType != "" {
+		query = query.Where("type = ?", modelType)
+	}
+	if err := query.Find(&models).Error; err != nil {
+		return nil, err
+	}
+	return models, nil
+}

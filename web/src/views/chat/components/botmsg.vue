@@ -414,8 +414,10 @@ onBeforeUnmount(() => {
     font-size: 16px;
     // padding: 10px 12px;
     margin-right: auto;
+    margin-left: 0;
     max-width: 100%;
     box-sizing: border-box;
+    align-self: flex-start;
 }
 
 .botanswer_laoding_gif {

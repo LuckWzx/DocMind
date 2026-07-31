@@ -3324,8 +3324,10 @@ const applyPromptTemplateDefaults = (cfg: PromptTemplatesConfig | null) => {
 // 加载依赖数据（复用空间级缓存，避免重复请求）
 const loadDependencies = async () => {
   try {
-    await Promise.all([
-      chatResources.ensureModels(),
+    // 使用 allSettled 确保单个请求失败不影响其他请求
+    // 强制刷新模型列表，确保获取最新数据
+    await Promise.allSettled([
+      chatResources.ensureModels(true),
       chatResources.ensureKnowledgeBases(),
       chatResources.ensureWebSearchProviders(),
       editorResources.prefetchAgentEditorDeps(),
@@ -4272,7 +4274,7 @@ const handleSave = async () => {
       MessagePlugin.success(t('agent.messages.created'));
       emit('success', created);
     } else {
-      await updateAgent(formData.value.id, formData.value);
+      await updateAgent(formData.value.id_str || String(formData.value.id), formData.value);
       MessagePlugin.success(t('agent.messages.updated'));
       emit('success');
     }
