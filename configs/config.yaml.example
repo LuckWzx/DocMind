@@ -66,3 +66,13 @@ docreader:
 # 本地存储配置
 storage:
   local_root: data/files
+
+# MinIO 配置
+minio:
+  endpoint: ""          # MinIO 服务地址
+  base_url: ""
+  access_key_id: ""         # Access Key
+  access_key_secret: ""     # Secret Key
+  bucket_name: ""           # Bucket 名称
+  path_prefix: "knowledge/images"      # 文档图片对象前缀
+  use_ssl: false                      # 是否使用 SSL

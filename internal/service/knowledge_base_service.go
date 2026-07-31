@@ -67,6 +67,7 @@ func (s *knowledgeBaseService) List(userID uint) ([]*dto.KnowledgeBaseResponse, 
 
 func (s *knowledgeBaseService) Create(userID uint, request *req.CreateKnowledgeBaseRequest) (*dto.KnowledgeBaseResponse, error) {
 	kb := &entity.KnowledgeBase{
+		UserID:           userID,
 		Name:             strings.TrimSpace(request.Name),
 		Description:      strings.TrimSpace(request.Description),
 		Type:             normalizeKBType(request.Type),

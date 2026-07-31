@@ -44,20 +44,19 @@ func (r *knowledgeBaseRepository) FindByID(id uint) (*entity.KnowledgeBase, erro
 
 func (r *knowledgeBaseRepository) FindByUserID(userID, id uint) (*entity.KnowledgeBase, error) {
 	var kb entity.KnowledgeBase
-	err := r.db.Where("id = ?", id).First(&kb).Error
+	err := r.db.Where("id = ? AND user_id = ?", id, userID).First(&kb).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	_ = userID
 	return &kb, nil
 }
 
 func (r *knowledgeBaseRepository) ListByUser(userID uint) ([]*entity.KnowledgeBase, error) {
 	var items []*entity.KnowledgeBase
-	err := r.db.Order("is_pinned DESC").Order("updated_at DESC").Find(&items).Error
-	_ = userID
+	err := r.db.Where("user_id = ?", userID).
+		Order("is_pinned DESC").Order("updated_at DESC").Find(&items).Error
 	return items, err
 }

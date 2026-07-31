@@ -236,11 +236,16 @@ func (a *App) initDependencies() error {
 	modelSvc := service.NewModelService(modelRepo, systemSettingRepo)
 	chunkerSvc := service.NewChunkerService()
 	vectorStoreSvc := service.NewVectorStoreService(vectorStoreRepo, knowledgeBaseRepo, chunkRepo, modelSvc, a.pgDB, a.cfg)
+	imageStorageSvc, err := service.NewImageStorageService(a.cfg.MinIO)
+	if err != nil {
+		logger.Warn("图片存储服务初始化失败，文档图片将保留原始引用", zap.Error(err))
+		imageStorageSvc = service.NewNoopImageStorageService()
+	}
 	pipelineGateway := service.NewKnowledgePipelineGatewayMock()
 	knowledgeBaseSvc := service.NewKnowledgeBaseService(a.pgDB, knowledgeBaseRepo, knowledgeRepo, faqRepo, tagRepo, vectorStoreRepo, pipelineGateway)
 	faqSvc := service.NewFAQService(a.pgDB, knowledgeBaseRepo, faqRepo)
 	tagSvc := service.NewTagService(a.pgDB, knowledgeBaseRepo, tagRepo, faqRepo)
-	knowledgeSvc := service.NewKnowledgeService(knowledgeRepo, knowledgeBaseRepo, chunkRepo, a.docReaderClient, a.cfg)
+	knowledgeSvc := service.NewKnowledgeService(knowledgeRepo, knowledgeBaseRepo, chunkRepo, a.docReaderClient, imageStorageSvc, a.cfg)
 
 	// 会话与对话相关
 	sessionRepo := repository.NewSessionRepository(a.pgDB)

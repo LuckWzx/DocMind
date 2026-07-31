@@ -107,6 +107,7 @@ func (c StorageProviderConfig) Value() (driver.Value, error) {
 // KnowledgeBase 知识库，知识条目的容器
 type KnowledgeBase struct {
 	BaseEntity
+	UserID                uint                   `gorm:"index;not null;comment:所属用户ID" json:"user_id"`
 	Name                  string                 `gorm:"type:varchar(255);not null;comment:知识库名称" json:"name"`
 	Type                  string                 `gorm:"type:varchar(32);default:'document';comment:类型 document/faq" json:"type"`
 	Description           string                 `gorm:"type:text;comment:知识库描述" json:"description"`

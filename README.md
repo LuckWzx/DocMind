@@ -18,17 +18,24 @@ DocMind/
 │   └── server/
 │       └── main.go                   # 服务启动入口
 ├── configs/                          # 配置文件
-│   ├── config.yaml                   # 主配置
+│   ├── config.yaml                   # 主配置（PostgreSQL / Redis / MinIO / DocReader）
 │   └── config.yaml.example           # 配置示例
 ├── internal/                         # 内部模块（不对外暴露）
 │   ├── api/                          # HTTP API 层
 │   │   ├── router.go                 # 路由注册
 │   │   └── v1/                       # API v1
-│   │       ├── auth/                 # 认证模块
-│   │       ├── knowledgebase/        # 知识库模块
-│   │       └── user/                 # 用户模块
+│   │       ├── agent/                # AI Agent 模块
+│   │       ├── auth/                 # 认证模块（注册/登录/刷新Token）
+│   │       ├── chat/                 # 对话模块
+│   │       ├── chunker/              # 分块配置模块
+│   │       ├── initialization/       # 系统初始化
+│   │       ├── knowledge/            # 知识条目（文件上传/解析）
+│   │       ├── knowledgebase/        # 知识库（CRUD / FAQ / Tag / 文件导入）
+│   │       ├── models/               # LLM 模型配置
+│   │       ├── user/                 # 用户模块
+│   │       └── vectorstore/          # 向量存储配置
 │   ├── app/                          # 应用生命周期管理
-│   │   └── app.go                    # 初始化、依赖注入、AutoMigrate
+│   │   └── app.go                    # 初始化、依赖注入、AutoMigrate、自动启动DocReader
 │   ├── middleware/                    # 中间件
 │   │   ├── auth.go                   # JWT 鉴权
 │   │   ├── cors.go                   # 跨域
@@ -36,55 +43,52 @@ DocMind/
 │   │   └── recovery.go              # 异常恢复
 │   ├── model/                        # 数据模型
 │   │   ├── dto/                      # 数据传输对象
-│   │   │   ├── request/              # 请求 DTO
-│   │   │   │   └── knowledge_base.go # 知识库请求 DTO
-│   │   │   └── response/             # 响应 DTO
-│   │   │       └── knowledge_base.go # 知识库响应 DTO
+│   │   │   ├── request/              # 请求 DTO（auth / user / knowledge / knowledge_base / faq / tag / chunker / model / vector_store）
+│   │   │   └── response/             # 响应 DTO（同上）
 │   │   └── entity/                   # 数据库实体（GORM）
 │   │       ├── base.go               # BaseEntity（自增主键+软删除）
 │   │       ├── user.go               # 用户
-│   │       ├── refresh_token.go      # 刷新令牌
+│   │       ├── agent.go              # Agent 配置
+│   │       ├── session.go            # 对话会话
+│   │       ├── message.go            # 对话消息
 │   │       ├── knowledge_base.go     # 知识库
 │   │       ├── knowledge.go          # 知识条目
 │   │       ├── chunk.go              # 分块
-│   │       ├── session.go            # 会话
-│   │       ├── message.go            # 消息
+│   │       ├── chunk_vector.go       # 分块向量
+│   │       ├── faq.go                # FAQ 问答
 │   │       ├── tag.go                # 标签
-│   │       ├── model_config.go       # 模型配置
+│   │       ├── model_config.go       # LLM 模型配置
+│   │       ├── vector_store.go       # 向量存储
+│   │       ├── system_setting.go     # 系统设置
 │   │       ├── web_search_provider.go # 网页搜索
 │   │       └── types.go              # 通用类型（JSON等）
 │   ├── repository/                   # 数据访问层
-│   │   ├── user_interface.go         # 用户仓库接口
-│   │   ├── user_repository.go        # 用户仓库实现
-│   │   ├── refresh_token_interface.go
-│   │   ├── refresh_token_repository.go
-│   │   ├── knowledge_base_interface.go
-│   │   └── knowledge_base_repository.go
+│   │   ├── *_interface.go            # 仓储接口（24个文件，覆盖全部实体）
+│   │   └── *_repository.go           # 仓储实现
 │   └── service/                      # 业务逻辑层
-│       ├── auth_interface.go         # 认证服务接口
-│       ├── auth_service.go           # 认证服务实现
-│       ├── user_interface.go         # 用户服务接口
-│       ├── user_service.go           # 用户服务实现
-│       ├── knowledge_base_interface.go
-│       └── knowledge_base_service.go
+│       ├── *_interface.go            # 服务接口
+│       ├── *_service.go              # 服务实现
+│       ├── image_storage_*.go        # 文档图片存储（MinIO / Noop）
+│       ├── knowledge_image_pipeline.go  # 图片提取与URL替换管道
+│       └── embedder_factory.go       # Embedding 模型工厂
 ├── pkg/                              # 公共工具包
 │   ├── config/                       # 配置加载
 │   ├── database/                     # 数据库驱动（PostgreSQL / MySQL / Redis）
-│   ├── docreader/                    # 文档解析服务（Python + gRPC）
+│   ├── docreader/                    # 文档解析微服务（Python + gRPC）
 │   │   ├── client/                   # Go gRPC 客户端
 │   │   ├── models/                   # Python 数据模型
 │   │   ├── ocr/                      # OCR 识别（Paddle / VLM）
-│   │   ├── parser/                   # 文档解析器（PDF / DOCX / MD / Excel / Web）
+│   │   ├── parser/                   # 文档解析器（PDF / DOCX / MD / Excel / Web / Image）
 │   │   ├── proto/                    # Protobuf 定义
 │   │   ├── splitter/                 # 文档分割器
 │   │   ├── utils/                    # Python 工具函数
 │   │   ├── config.py                 # Python 服务配置
-│   │   ├── main.py                   # Python 服务入口
+│   │   ├── main.py                   # Python 服务入口（gRPC :50051）
 │   │   └── pyproject.toml            # Python 项目配置
-│   ├── errors/                       # 自定义错误
+│   ├── errors/                       # 自定义错误码体系
 │   ├── jwt/                          # JWT 令牌管理
 │   ├── logger/                       # Zap 日志封装
-│   ├── response/                     # 统一响应格式
+│   ├── response/                     # 统一响应格式（分页/成功/错误）
 │   └── utils/                        # 通用工具（字符串、时间）
 ├── scripts/                          # 脚本
 │   ├── build.sh                      # 编译脚本
@@ -94,8 +98,7 @@ DocMind/
 │   ├── ARCHITECTURE.md               # 架构文档
 │   ├── DEVELOPMENT.md                # 开发指南
 │   ├── swagger.yaml                  # Swagger 规范
-│   ├── 甲.md                         # 数据库结构体设计
-│   └── 乙.md                         # 数据流与模块交互
+│   └── 知识库api.md                   # 知识库 API 规范
 ├── web/                              # 前端项目（Vue 3 + TypeScript）
 │   ├── src/
 │   │   ├── api/                      # API 接口层（Mock 预留）
@@ -182,11 +185,16 @@ export async function listKnowledgeBases() {
 
 | 模块 | 功能 | 文件路径 |
 |------|------|----------|
-| **知识库** | 后端 CRUD 已实现（创建/列表/详情/更新/删除/置顶），前端 Mock 预留 | `internal/api/v1/knowledgebase/` |
-| **聊天** | 会话管理、消息收发、流式响应 | `src/api/chat/index.ts` |
-| **Agent** | 创建、编辑、配置 | `src/api/agent/index.ts` |
-| **模型** | LLM提供商配置、模型管理 | `src/api/model/index.ts` |
-| **认证** | 登录、登出、Token管理 | `src/api/auth/index.ts` |
+| **知识库** | 后端 CRUD 已实现（创建/列表/详情/更新/删除/置顶） | `internal/api/v1/knowledgebase/` |
+| **知识条目** | 文件上传、DocReader 解析、Markdown 分块、状态追踪 | `internal/api/v1/knowledge/` |
+| **FAQ** | 问答对管理、批量导入导出 | `internal/api/v1/knowledgebase/` |
+| **标签** | 知识库标签 CRUD | `internal/api/v1/knowledgebase/` |
+| **聊天** | 会话管理、消息收发、流式响应 | `internal/api/v1/chat/` |
+| **Agent** | 创建、编辑、配置 | `internal/api/v1/agent/` |
+| **模型** | LLM 提供商配置、Embedding / VLM / 摘要模型管理 | `internal/api/v1/models/` |
+| **向量存储** | PostgreSQL / Qdrant / Milvus / Elasticsearch 存储配置 | `internal/api/v1/vectorstore/` |
+| **认证** | 登录、注册、Token 刷新、登出 | `internal/api/v1/auth/` |
+| **分块** | 分块策略预设管理 | `internal/api/v1/chunker/` |
 
 ## 🛠️ 技术栈
 
@@ -199,6 +207,7 @@ export async function listKnowledgeBases() {
 - **文档**: Swagger / OpenAPI
 - **RPC**: gRPC + Protobuf（docreader）
 - **文档解析**: Python（PaddleOCR / VLM / MarkItDown）
+- **图片存储**: MinIO（文档内嵌图片持久化）
 
 **前端：**
 - **框架**: Vue 3 + Composition API
@@ -214,7 +223,12 @@ export async function listKnowledgeBases() {
 
 ### 项目特点
 
-✅ **Eino 智能体编排** — 基于 Eino 的 Graph 和 Chain 机制，实现灵活的 Agent 推理循环与工具调用  
+✅ **知识库 CRUD** — 完整的知识库增删改查 + 置顶，基于用户隔离  
+✅ **文档导入解析** — 上传 PDF/DOCX/MD/Excel/Web 文件 → DocReader 解析 → 智能分块  
+✅ **图片持久化** — 文档内嵌图片自动上传 MinIO，Markdown 引用自动替换为公网 URL  
+✅ **FAQ 管理** — 问答对批量导入/导出/增删改查  
+✅ **标签体系** — 知识库标签管理  
+✅ **Eino 智能体编排** — 基于 Eino 的 Graph 和 Chain 机制，实现灵活的 Agent 推理循环与工具调用
 ✅ **Go 后端** — Gin + GORM 分层架构，Swagger 文档，JWT 双 Token  
 ✅ **文档解析服务** — Python gRPC 微服务，支持 PDF/DOCX/MD/Excel/Web  
 ✅ **10 张数据表** — AutoMigrate 自动迁移，PostgreSQL JSONB 支持  

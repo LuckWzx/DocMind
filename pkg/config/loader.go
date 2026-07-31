@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -58,6 +59,29 @@ func Load(configPath string) (*Config, error) {
 	}
 	if val := os.Getenv("STORAGE_LOCAL_ROOT"); val != "" {
 		config.Storage.LocalRoot = val
+	}
+	if val := os.Getenv("MINIO_ENDPOINT"); val != "" {
+		config.MinIO.Endpoint = val
+	}
+	if val := os.Getenv("MINIO_BASE_URL"); val != "" {
+		config.MinIO.BaseURL = val
+	}
+	if val := os.Getenv("MINIO_ACCESS_KEY_ID"); val != "" {
+		config.MinIO.AccessKeyID = val
+	}
+	if val := os.Getenv("MINIO_ACCESS_KEY_SECRET"); val != "" {
+		config.MinIO.AccessKeySecret = val
+	}
+	if val := os.Getenv("MINIO_BUCKET_NAME"); val != "" {
+		config.MinIO.BucketName = val
+	}
+	if val := os.Getenv("MINIO_PATH_PREFIX"); val != "" {
+		config.MinIO.PathPrefix = val
+	}
+	if val := os.Getenv("MINIO_USE_SSL"); val != "" {
+		if parsed, err := strconv.ParseBool(val); err == nil {
+			config.MinIO.UseSSL = parsed
+		}
 	}
 
 	globalConfig = config

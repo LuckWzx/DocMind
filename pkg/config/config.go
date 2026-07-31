@@ -11,6 +11,7 @@ type Config struct {
 	CORS      CORSConfig      `mapstructure:"cors"`
 	DocReader DocReaderConfig `mapstructure:"docreader"`
 	Storage   StorageConfig   `mapstructure:"storage"`
+	MinIO     MinIOConfig     `mapstructure:"minio"`
 }
 
 // AppConfig 应用配置
@@ -95,4 +96,15 @@ type DocReaderConfig struct {
 // StorageConfig 本地文件存储配置
 type StorageConfig struct {
 	LocalRoot string `mapstructure:"local_root"`
+}
+
+// MinIOConfig MinIO 对象存储配置
+type MinIOConfig struct {
+	Endpoint        string `mapstructure:"endpoint"`
+	BaseURL         string `mapstructure:"base_url"`
+	AccessKeyID     string `mapstructure:"access_key_id"`
+	AccessKeySecret string `mapstructure:"access_key_secret"`
+	BucketName      string `mapstructure:"bucket_name"`
+	PathPrefix      string `mapstructure:"path_prefix"`
+	UseSSL          bool   `mapstructure:"use_ssl"`
 }

@@ -39,6 +39,7 @@ type knowledgeService struct {
 	knowledgeBaseRepo repository.KnowledgeBaseRepository
 	chunkRepo         repository.ChunkRepository
 	docReaderClient   *docreaderclient.Client
+	imageStorage      ImageStorageService
 	cfg               *config.Config
 }
 
@@ -48,6 +49,7 @@ func NewKnowledgeService(
 	knowledgeBaseRepo repository.KnowledgeBaseRepository,
 	chunkRepo repository.ChunkRepository,
 	docReaderClient *docreaderclient.Client,
+	imageStorage ImageStorageService,
 	cfg *config.Config,
 ) KnowledgeService {
 	return &knowledgeService{
@@ -55,6 +57,7 @@ func NewKnowledgeService(
 		knowledgeBaseRepo: knowledgeBaseRepo,
 		chunkRepo:         chunkRepo,
 		docReaderClient:   docReaderClient,
+		imageStorage:      imageStorage,
 		cfg:               cfg,
 	}
 }
@@ -101,11 +104,13 @@ func (s *knowledgeService) UploadFile(userID uint, knowledgeBaseID uint, fileHea
 
 	knowledge := &entity.Knowledge{
 		Title:           fileName,
+		FileName:        fileName,
 		Type:            knowledgeTypeFile,
 		ParseStatus:     parseStatusPending,
 		KnowledgeBaseID: knowledgeBaseID,
 		FileURL:         filepath.ToSlash(storedPath),
 		FileType:        fileType,
+		FileSize:        int64(len(fileBytes)),
 	}
 	if err := s.knowledgeRepo.Create(knowledge); err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "创建知识条目失败", err)
@@ -115,13 +120,17 @@ func (s *knowledgeService) UploadFile(userID uint, knowledgeBaseID uint, fileHea
 		return nil, err
 	}
 
-	markdownContent, parserEngine, err := s.parseMarkdown(fileBytes, fileName, fileType, kb)
+	parseResult, err := s.parseMarkdown(fileBytes, fileName, fileType, kb, knowledge)
 	if err != nil {
 		_ = s.updateKnowledgeStatus(knowledge, parseStatusFailed, err.Error())
 		return nil, err
 	}
+	if err := s.applyParsedDocumentMetadata(knowledge, parseResult); err != nil {
+		_ = s.updateKnowledgeStatus(knowledge, parseStatusFailed, err.Error())
+		return nil, err
+	}
 
-	chunks, err := s.buildMarkdownChunks(markdownContent, parserEngine, kb, knowledge)
+	chunks, err := s.buildMarkdownChunks(parseResult.MarkdownContent, parseResult.ParserEngine, kb, knowledge)
 	if err != nil {
 		_ = s.updateKnowledgeStatus(knowledge, parseStatusFailed, err.Error())
 		return nil, err
@@ -143,11 +152,16 @@ func (s *knowledgeService) UploadFile(userID uint, knowledgeBaseID uint, fileHea
 		FilePath:        knowledge.FileURL,
 		ParseStatus:     knowledge.ParseStatus,
 		ChunkCount:      len(chunks),
-		MarkdownChars:   len([]rune(markdownContent)),
+		MarkdownChars:   len([]rune(parseResult.MarkdownContent)),
 	}, nil
 }
 
-func (s *knowledgeService) parseMarkdown(fileBytes []byte, fileName, fileType string, kb *entity.KnowledgeBase) (string, string, error) {
+func (s *knowledgeService) parseMarkdown(
+	fileBytes []byte,
+	fileName, fileType string,
+	kb *entity.KnowledgeBase,
+	knowledge *entity.Knowledge,
+) (*parsedDocumentResult, error) {
 	request := &proto.ReadRequest{
 		FileContent: fileBytes,
 		FileName:    fileName,
@@ -166,21 +180,21 @@ func (s *knowledgeService) parseMarkdown(fileBytes []byte, fileName, fileType st
 
 	resp, err := s.docReaderClient.Read(ctx, request)
 	if err != nil {
-		return "", "", bizerrors.NewWithErr(bizerrors.CodeServiceUnavailable, "DocReader 解析失败", err)
+		return nil, bizerrors.NewWithErr(bizerrors.CodeServiceUnavailable, "DocReader 解析失败", err)
 	}
 	if resp == nil {
-		return "", "", bizerrors.New(bizerrors.CodeServiceUnavailable, "DocReader 返回为空")
+		return nil, bizerrors.New(bizerrors.CodeServiceUnavailable, "DocReader 返回为空")
 	}
 	if strings.TrimSpace(resp.Error) != "" {
-		return "", "", bizerrors.New(bizerrors.CodeServiceUnavailable, strings.TrimSpace(resp.Error))
+		return nil, bizerrors.New(bizerrors.CodeServiceUnavailable, strings.TrimSpace(resp.Error))
 	}
 
-	markdown := strings.TrimSpace(resp.MarkdownContent)
-	if markdown == "" {
-		return "", "", bizerrors.New(bizerrors.CodeInternalError, "解析结果为空")
+	result, err := s.enrichParsedDocument(ctx, resp, knowledge, request.RequestId)
+	if err != nil {
+		return nil, err
 	}
 
-	return markdown, detectSourceParser(resp.Metadata), nil
+	return result, nil
 }
 
 func (s *knowledgeService) buildMarkdownChunks(markdownContent string, parserEngine string, kb *entity.KnowledgeBase, knowledge *entity.Knowledge) ([]*entity.Chunk, error) {

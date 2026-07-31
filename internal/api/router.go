@@ -53,7 +53,7 @@ func NewRouter(
 		userCtrl:           user.NewController(userService),
 		authCtrl:           auth.NewController(authService, userService),
 		chunkerCtrl:        chunker.NewController(chunkerService),
-		knowledgeCtrl:      knowledge.NewController(knowledgeService),
+		knowledgeCtrl:      knowledge.NewController(knowledgeService, knowledgeBaseService, faqService, tagService),
 		vectorStoreCtrl:    vectorstore.NewController(vectorStoreService),
 		knowledgeBaseCtrl:  knowledgebase.NewController(knowledgeBaseService, faqService, tagService),
 		modelCtrl:          models.NewController(modelService),
@@ -106,8 +106,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 		// 分块预览路由
 		r.chunkerCtrl.RegisterRoutes(v1)
 
-		// 知识库文件导入路由（已合并到 knowledgebase 控制器）
-		// r.knowledgeCtrl.RegisterRoutes(v1)
+		// 知识库文件导入路由
+		r.knowledgeCtrl.RegisterRoutes(v1)
 
 		// 向量存储路由
 		r.vectorStoreCtrl.RegisterRoutes(v1)
