@@ -5,7 +5,9 @@ import (
 	req "docmind/internal/model/dto/request"
 	"docmind/internal/service"
 	"docmind/pkg/response"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -102,6 +104,26 @@ func (ctrl *Controller) GetKnowledge(c *gin.Context) {
 		return
 	}
 	response.Success(c, item)
+}
+
+func (ctrl *Controller) PreviewKnowledgeFile(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	id, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+
+	file, err := ctrl.knowledgeService.PreviewFile(userID, id)
+	if err != nil {
+		response.BizError(c, err)
+		return
+	}
+
+	escapedName := url.PathEscape(file.FileName)
+	c.Header("Content-Type", file.ContentType)
+	c.Header("Content-Disposition", fmt.Sprintf("inline; filename*=UTF-8''%s", escapedName))
+	c.Header("Content-Length", strconv.Itoa(len(file.Content)))
+	c.Data(http.StatusOK, file.ContentType, file.Content)
 }
 
 func (ctrl *Controller) ListKnowledgeChunks(c *gin.Context) {

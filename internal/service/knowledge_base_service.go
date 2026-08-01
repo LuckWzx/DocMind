@@ -236,7 +236,7 @@ func (s *knowledgeBaseService) ListKnowledge(userID, kbID uint, request *req.Kno
 	return resp, total, nil
 }
 
-func (s *knowledgeBaseService) GetKnowledge(userID, id uint) (*dto.KnowledgeResponse, error) {
+func (s *knowledgeBaseService) GetKnowledge(userID, id uint) (*dto.KnowledgeDetailResponse, error) {
 	item, err := s.knowledgeRepo.FindByID(id)
 	if err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "查询知识详情失败", err)
@@ -252,7 +252,11 @@ func (s *knowledgeBaseService) GetKnowledge(userID, id uint) (*dto.KnowledgeResp
 		return nil, bizerrors.ErrResourceNotFound
 	}
 	tag, _ := s.loadTag(item.TagID)
-	return s.toKnowledgeResponse(item, tag), nil
+	chunkCount, err := s.countKnowledgeChunks(item.ID)
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "统计知识分块失败", err)
+	}
+	return s.toKnowledgeDetailResponse(item, tag, chunkCount), nil
 }
 
 func (s *knowledgeBaseService) ListKnowledgeChunks(userID, knowledgeID uint, page, pageSize int) ([]map[string]interface{}, int64, error) {
@@ -529,9 +533,50 @@ func (s *knowledgeBaseService) toKnowledgeResponse(item *entity.Knowledge, tag *
 	}
 }
 
+func (s *knowledgeBaseService) toKnowledgeDetailResponse(item *entity.Knowledge, tag *entity.Tag, chunkCount int64) *dto.KnowledgeDetailResponse {
+	tags := make([]dto.KnowledgeTagLite, 0, 1)
+	if tag != nil {
+		tags = append(tags, dto.KnowledgeTagLite{
+			ID:    tag.ID,
+			Name:  tag.Name,
+			Color: tag.Color,
+		})
+	}
+	return &dto.KnowledgeDetailResponse{
+		ID:              item.ID,
+		KnowledgeBaseID: item.KnowledgeBaseID,
+		Title:           item.Title,
+		FileName:        item.FileName,
+		Description:     item.Description,
+		Type:            item.Type,
+		Source:          item.Source,
+		Channel:         item.Channel,
+		ParseStatus:     item.ParseStatus,
+		SummaryStatus:   item.SummaryStatus,
+		ProcessingStage: item.ProcessingStage,
+		FileType:        item.FileType,
+		FileSize:        item.FileSize,
+		FileURL:         item.FileURL,
+		FilePath:        item.FileURL,
+		TagID:           item.TagID,
+		Tags:            tags,
+		ProcessConfig:   item.ProcessConfig,
+		ErrorMessage:    item.ErrorMessage,
+		ChunkCount:      chunkCount,
+		CreatedAt:       item.CreatedAt,
+		UpdatedAt:       item.UpdatedAt,
+	}
+}
+
 func (s *knowledgeBaseService) countKnowledge(kbID uint) (int64, error) {
 	var count int64
 	err := s.db.Model(&entity.Knowledge{}).Where("knowledge_base_id = ?", kbID).Count(&count).Error
+	return count, err
+}
+
+func (s *knowledgeBaseService) countKnowledgeChunks(knowledgeID uint) (int64, error) {
+	var count int64
+	err := s.db.Model(&entity.Chunk{}).Where("knowledge_id = ?", knowledgeID).Count(&count).Error
 	return count, err
 }
 

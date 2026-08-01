@@ -10,17 +10,19 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 	r.Use(middleware.Auth())
 	// 独立路由 — knowledge 和 chunks 不挂在 :id 下
 	r.GET("knowledge/:id", ctrl.GetKnowledge)
+	r.GET("knowledge/:id/preview", ctrl.PreviewKnowledgeFile)
 	r.POST("knowledge/:id/reparse", ctrl.ReparseKnowledge)
 	r.DELETE("knowledge/:id", ctrl.DeleteKnowledge)
 	r.PUT("knowledge/tags", ctrl.UpdateKnowledgeTags)
 	r.GET("chunks/:id", ctrl.ListKnowledgeChunks)
+
 	knowledgeBaseGroup := r.Group("/knowledge-bases")
 	{
 		//knowledgeBaseGroup.POST("/:id/knowledge/file", ctrl.UploadKnowledgeFile)
 		// 知识库子资源 — 用嵌套分组避免 Gin 路由冲突
 		kb := knowledgeBaseGroup.Group(":id")
 		{
-			kb.POST("/:id/knowledge/file", ctrl.UploadKnowledgeFile)
+			kb.POST("/knowledge/file", ctrl.UploadKnowledgeFile)
 			kb.GET("knowledge", ctrl.ListKnowledge)
 
 			// FAQ

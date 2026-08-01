@@ -1,6 +1,10 @@
 package response
 
-import "time"
+import (
+	"time"
+
+	"docmind/internal/model/entity"
+)
 
 type KnowledgeTagLite struct {
 	ID    uint   `json:"id"`
@@ -24,6 +28,31 @@ type KnowledgeResponse struct {
 	TagID           uint               `json:"tag_id"`
 	Tags            []KnowledgeTagLite `json:"tags,omitempty"`
 	ErrorMessage    string             `json:"error_message"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+}
+
+type KnowledgeDetailResponse struct {
+	ID              uint               `json:"id"`
+	KnowledgeBaseID uint               `json:"knowledge_base_id"`
+	Title           string             `json:"title"`
+	FileName        string             `json:"file_name"`
+	Description     string             `json:"description"`
+	Type            string             `json:"type"`
+	Source          string             `json:"source"`
+	Channel         string             `json:"channel"`
+	ParseStatus     string             `json:"parse_status"`
+	SummaryStatus   string             `json:"summary_status"`
+	ProcessingStage string             `json:"processing_stage"`
+	FileType        string             `json:"file_type"`
+	FileSize        int64              `json:"file_size"`
+	FileURL         string             `json:"file_url,omitempty"`
+	FilePath        string             `json:"file_path,omitempty"`
+	TagID           uint               `json:"tag_id"`
+	Tags            []KnowledgeTagLite `json:"tags,omitempty"`
+	ProcessConfig   entity.JSON        `json:"process_config,omitempty"`
+	ErrorMessage    string             `json:"error_message"`
+	ChunkCount      int64              `json:"chunk_count"`
 	CreatedAt       time.Time          `json:"created_at"`
 	UpdatedAt       time.Time          `json:"updated_at"`
 }

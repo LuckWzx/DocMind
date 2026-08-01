@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,6 +155,57 @@ func (s *knowledgeService) UploadFile(userID uint, knowledgeBaseID uint, fileHea
 		ParseStatus:     knowledge.ParseStatus,
 		ChunkCount:      len(chunks),
 		MarkdownChars:   len([]rune(parseResult.MarkdownContent)),
+	}, nil
+}
+
+func (s *knowledgeService) PreviewFile(userID uint, knowledgeID uint) (*KnowledgePreviewFile, error) {
+	knowledge, err := s.knowledgeRepo.FindByID(knowledgeID)
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "查询知识文件失败", err)
+	}
+	if knowledge == nil {
+		return nil, bizerrors.ErrResourceNotFound
+	}
+
+	kb, err := s.knowledgeBaseRepo.FindByUserID(userID, knowledge.KnowledgeBaseID)
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "查询知识库失败", err)
+	}
+	if kb == nil {
+		return nil, bizerrors.ErrResourceNotFound
+	}
+
+	if knowledge.Type != knowledgeTypeFile && knowledge.Type != entity.KnowledgeTypeFile {
+		return nil, bizerrors.New(bizerrors.CodeInvalidParam, "当前知识类型不支持文件预览")
+	}
+
+	filePath := strings.TrimSpace(knowledge.FileURL)
+	if filePath == "" {
+		return nil, bizerrors.New(bizerrors.CodeResourceNotFound, "原始文件不存在")
+	}
+	if isRemoteResourceURL(filePath) {
+		return nil, bizerrors.New(bizerrors.CodeNotImplemented, "远程文件预览暂未实现")
+	}
+
+	raw, err := os.ReadFile(filepath.Clean(filePath))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, bizerrors.NewWithErr(bizerrors.CodeResourceNotFound, "原始文件不存在", err)
+		}
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "读取原始文件失败", err)
+	}
+
+	fileName := strings.TrimSpace(knowledge.FileName)
+	if fileName == "" {
+		fileName = filepath.Base(filePath)
+	}
+
+	contentType := detectPreviewContentType(fileName, raw)
+	return &KnowledgePreviewFile{
+		FileName:    fileName,
+		FileType:    knowledge.FileType,
+		ContentType: contentType,
+		Content:     raw,
 	}, nil
 }
 
@@ -309,4 +362,72 @@ func detectSourceParser(metadata map[string]string) string {
 func sha256Hex(input string) string {
 	sum := sha256.Sum256([]byte(input))
 	return hex.EncodeToString(sum[:])
+}
+
+func detectPreviewContentType(fileName string, raw []byte) string {
+	ext := strings.ToLower(strings.TrimSpace(filepath.Ext(fileName)))
+	if ext != "" {
+		if contentType := previewContentTypeByExt(ext); contentType != "" {
+			return contentType
+		}
+		if contentType := strings.TrimSpace(mime.TypeByExtension(ext)); contentType != "" {
+			return contentType
+		}
+	}
+
+	if len(raw) > 0 {
+		return http.DetectContentType(raw)
+	}
+	return "application/octet-stream"
+}
+
+func previewContentTypeByExt(ext string) string {
+	switch ext {
+	case ".pdf":
+		return "application/pdf"
+	case ".docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".doc":
+		return "application/msword"
+	case ".pptx":
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case ".ppt":
+		return "application/vnd.ms-powerpoint"
+	case ".xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case ".xls":
+		return "application/vnd.ms-excel"
+	case ".csv":
+		return "text/csv; charset=utf-8"
+	case ".md", ".markdown":
+		return "text/markdown; charset=utf-8"
+	case ".txt", ".json", ".xml", ".html", ".css", ".js", ".ts", ".py", ".java", ".go", ".cpp", ".c", ".h", ".sh", ".yaml", ".yml", ".ini", ".conf", ".log", ".sql", ".rs", ".rb", ".php", ".swift", ".kt", ".scala", ".r", ".lua", ".pl", ".toml":
+		return "text/plain; charset=utf-8"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".gif":
+		return "image/gif"
+	case ".bmp":
+		return "image/bmp"
+	case ".webp":
+		return "image/webp"
+	case ".tiff", ".tif":
+		return "image/tiff"
+	case ".svg":
+		return "image/svg+xml"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".wav":
+		return "audio/wav"
+	case ".m4a":
+		return "audio/mp4"
+	case ".flac":
+		return "audio/flac"
+	case ".ogg":
+		return "audio/ogg"
+	default:
+		return ""
+	}
 }
