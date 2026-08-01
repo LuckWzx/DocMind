@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"docmind/internal/middleware"
+	"docmind/internal/model/entity"
 
 	"docmind/internal/service"
 	"docmind/pkg/response"
@@ -339,7 +340,16 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 
 	// 保存助手消息
 	if fullContent != "" {
-		_ = ctrl.chatService.SaveAssistantMessage(c.Request.Context(), sessionID, fullContent, nil)
+		var references []entity.Reference
+		for _, r := range searchResults {
+			references = append(references, entity.Reference{
+				ChunkID:     r.ChunkID,
+				Content:     r.Content,
+				Score:       r.Score,
+				KnowledgeID: r.KnowledgeID,
+			})
+		}
+		_ = ctrl.chatService.SaveAssistantMessage(c.Request.Context(), sessionID, fullContent, references)
 	}
 
 	// 发送完成事件
