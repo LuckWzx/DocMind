@@ -57,10 +57,11 @@ type PipelineEmbedderFactory interface {
 // Context RAG Pipeline 上下文，在所有节点间传递
 type Context struct {
 	// 输入
-	Query       string
-	SessionID   uint
-	UserID      uint
-	AgentConfig *AgentConfig // 从 Agent 动态解析的配置
+	Query           string
+	SessionID       uint
+	UserID          uint
+	AgentConfig     *AgentConfig      // 从 Agent 动态解析的配置
+	HistoryMessages []*schema.Message // 对话历史（由调用方加载）
 
 	// 依赖
 	ModelRepo    repository.ModelRepository

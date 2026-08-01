@@ -30,13 +30,19 @@ func buildPromptNode(ctx context.Context, input *Context) (*Context, error) {
 		systemPrompt += "\n\n参考文档：\n" + contextText
 	}
 
-	// 3. 构建消息列表
-	input.Messages = []*schema.Message{
+	// 3. 构建消息列表：system + 历史消息 + 当前 query
+	messages := []*schema.Message{
 		{Role: schema.System, Content: systemPrompt},
-		{Role: schema.User, Content: input.Query},
 	}
+	messages = append(messages, input.HistoryMessages...)
+	messages = append(messages, &schema.Message{
+		Role:    schema.User,
+		Content: input.Query,
+	})
+	input.Messages = messages
 
-	fmt.Printf("[Pipeline] BuildPrompt: %d results, system prompt length=%d\n", len(input.RerankedResults), len(systemPrompt))
+	fmt.Printf("[Pipeline] BuildPrompt: %d results, %d history, system prompt length=%d\n",
+		len(input.RerankedResults), len(input.HistoryMessages), len(systemPrompt))
 
 	return input, nil
 }
