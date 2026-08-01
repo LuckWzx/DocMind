@@ -88,9 +88,13 @@ type AgentConfig struct {
 	MaxTokens          int
 	SystemPrompt       string
 	EnableQueryRewrite bool
-	EmbeddingTopK      int
-	VectorThreshold    float64
-	RerankTopK         int
+	// 查询改写配置
+	QueryUnderstandModelID string // 用于问题改写的模型ID（可选，为空则复用 ModelID）
+	RewritePromptSystem    string // 改写系统提示词（为空使用默认）
+	RewritePromptUser      string // 改写用户提示词模板（为空使用默认）
+	EmbeddingTopK          int
+	VectorThreshold        float64
+	RerankTopK             int
 }
 
 // SearchResult 搜索结果

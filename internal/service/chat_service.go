@@ -238,6 +238,19 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 			if agent.Config.MaxCompletionTokens != nil {
 				config.MaxTokens = *agent.Config.MaxCompletionTokens
 			}
+			// 解析查询改写配置
+			if agent.Config.EnableRewrite != nil {
+				config.EnableQueryRewrite = *agent.Config.EnableRewrite
+			}
+			if agent.Config.QueryUnderstandModelID != "" {
+				config.QueryUnderstandModelID = agent.Config.QueryUnderstandModelID
+			}
+			if agent.Config.RewritePromptSystem != "" {
+				config.RewritePromptSystem = agent.Config.RewritePromptSystem
+			}
+			if agent.Config.RewritePromptUser != "" {
+				config.RewritePromptUser = agent.Config.RewritePromptUser
+			}
 		}
 	}
 
