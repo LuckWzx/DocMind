@@ -88,6 +88,10 @@ type AgentConfig struct {
 	MaxTokens          int
 	SystemPrompt       string
 	EnableQueryRewrite bool
+	// 多轮对话配置
+	MultiTurnEnabled bool // 是否启用多轮对话
+	HistoryTurns     int  // 保留的历史对话轮数
+
 	// 查询改写配置
 	QueryUnderstandModelID string // 用于问题改写的模型ID（可选，为空则复用 ModelID）
 	RewritePromptSystem    string // 改写系统提示词（为空使用默认）
