@@ -124,8 +124,15 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 	s.sessionRepo.IncrementMessageCount(sessionID)
 	s.sessionRepo.UpdateLastMessage(sessionID, req.Query)
 
-	// 3. 加载最近对话历史（排除刚保存的 userMsg）
-	const maxHistoryMessages = 20
+	// 3. 从 Agent 解析配置（提前，用于确定历史轮数）
+	agentConfig := s.resolveAgentConfig(session, req)
+
+	// 4. 加载最近对话历史（排除刚保存的 userMsg）
+	// 每轮 = 1 user + 1 assistant，所以消息数 = 轮数 * 2
+	maxHistoryMessages := agentConfig.HistoryTurns * 2
+	if maxHistoryMessages <= 0 {
+		maxHistoryMessages = 10 // 默认 5 轮 = 10 条消息
+	}
 	historyMsgs, err := s.messageRepo.ListBySession(sessionID, maxHistoryMessages+1, nil)
 	if err != nil {
 		historyMsgs = nil // 加载失败不影响对话
@@ -147,9 +154,6 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 			Content: m.Content,
 		})
 	}
-
-	// 4. 从 Agent 解析配置
-	agentConfig := s.resolveAgentConfig(session, req)
 
 	// 5. 创建 Pipeline 上下文
 	pipelineCtx := &pipeline.Context{
@@ -213,6 +217,8 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 		SystemPrompt:       knowledgeQASystemPrompt,
 		Temperature:        defaultTemperature,
 		MaxTokens:          2048,
+		MultiTurnEnabled:   false,
+		HistoryTurns:       5,
 		EnableQueryRewrite: false,
 		EmbeddingTopK:      defaultTopK,
 		VectorThreshold:    0.5,
@@ -250,6 +256,13 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 			}
 			if agent.Config.RewritePromptUser != "" {
 				config.RewritePromptUser = agent.Config.RewritePromptUser
+			}
+			// 解析多轮对话配置
+			if agent.Config.MultiTurnEnabled != nil {
+				config.MultiTurnEnabled = *agent.Config.MultiTurnEnabled
+			}
+			if agent.Config.HistoryTurns > 0 {
+				config.HistoryTurns = agent.Config.HistoryTurns
 			}
 		}
 	}
