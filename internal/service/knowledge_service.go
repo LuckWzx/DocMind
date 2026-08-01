@@ -222,7 +222,7 @@ func (s *knowledgeService) parseMarkdown(
 		RequestId:   uuid.NewString(),
 		Title:       fileName,
 	}
-	if parserEngine := selectParserEngine(kb.ChunkingConfig.ParserEngineRules, fileType); parserEngine != "" {
+	if parserEngine := resolveParserEngine(kb.ChunkingConfig.ParserEngineRules, fileType); parserEngine != "" {
 		request.Config = &proto.ReadConfig{
 			ParserEngine: parserEngine,
 		}
@@ -345,6 +345,22 @@ func selectParserEngine(rules []entity.ParserEngineRule, fileType string) string
 		}
 	}
 	return ""
+}
+
+func resolveParserEngine(rules []entity.ParserEngineRule, fileType string) string {
+	if parserEngine := selectParserEngine(rules, fileType); parserEngine != "" {
+		return parserEngine
+	}
+	return defaultParserEngine(fileType)
+}
+
+func defaultParserEngine(fileType string) string {
+	switch strings.TrimPrefix(strings.ToLower(strings.TrimSpace(fileType)), ".") {
+	case "ppt", "pptx", "csv":
+		return "markitdown"
+	default:
+		return ""
+	}
 }
 
 func detectSourceParser(metadata map[string]string) string {
