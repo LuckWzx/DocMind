@@ -124,16 +124,41 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 	s.sessionRepo.IncrementMessageCount(sessionID)
 	s.sessionRepo.UpdateLastMessage(sessionID, req.Query)
 
-	// 3. 从 Agent 解析配置
+	// 3. 加载最近对话历史（排除刚保存的 userMsg）
+	const maxHistoryMessages = 20
+	historyMsgs, err := s.messageRepo.ListBySession(sessionID, maxHistoryMessages+1, nil)
+	if err != nil {
+		historyMsgs = nil // 加载失败不影响对话
+	}
+	var history []*einoschema.Message
+	for _, m := range historyMsgs {
+		// 跳过刚保存的 userMsg
+		if m.ID == userMsg.ID {
+			continue
+		}
+		role := einoschema.User
+		if m.Role == "assistant" {
+			role = einoschema.Assistant
+		} else if m.Role == "system" {
+			role = einoschema.System
+		}
+		history = append(history, &einoschema.Message{
+			Role:    role,
+			Content: m.Content,
+		})
+	}
+
+	// 4. 从 Agent 解析配置
 	agentConfig := s.resolveAgentConfig(session, req)
 
-	// 4. 创建 Pipeline 上下文
+	// 5. 创建 Pipeline 上下文
 	pipelineCtx := &pipeline.Context{
-		Query:       req.Query,
-		SessionID:   sessionID,
-		UserID:      userID,
-		AgentConfig: agentConfig,
-		ModelRepo:   s.modelFactory.modelRepo,
+		Query:           req.Query,
+		SessionID:       sessionID,
+		UserID:          userID,
+		AgentConfig:     agentConfig,
+		HistoryMessages: history,
+		ModelRepo:       s.modelFactory.modelRepo,
 	}
 
 	// 5. 执行 Pipeline
