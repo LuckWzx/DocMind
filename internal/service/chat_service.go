@@ -128,14 +128,17 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 	agentConfig := s.resolveAgentConfig(session, req)
 
 	// 4. 加载最近对话历史（排除刚保存的 userMsg）
-	// 每轮 = 1 user + 1 assistant，所以消息数 = 轮数 * 2
-	maxHistoryMessages := agentConfig.HistoryTurns * 2
-	if maxHistoryMessages <= 0 {
-		maxHistoryMessages = 10 // 默认 5 轮 = 10 条消息
-	}
-	historyMsgs, err := s.messageRepo.ListBySession(sessionID, maxHistoryMessages+1, nil)
-	if err != nil {
-		historyMsgs = nil // 加载失败不影响对话
+	var historyMsgs []*entity.Message
+	if agentConfig.MultiTurnEnabled {
+		// 每轮 = 1 user + 1 assistant，所以消息数 = 轮数 * 2
+		maxHistoryMessages := agentConfig.HistoryTurns * 2
+		if maxHistoryMessages <= 0 {
+			maxHistoryMessages = 10 // 默认 5 轮 = 10 条消息
+		}
+		historyMsgs, err = s.messageRepo.ListBySession(sessionID, maxHistoryMessages+1, nil)
+		if err != nil {
+			historyMsgs = nil // 加载失败不影响对话
+		}
 	}
 	var history []*einoschema.Message
 	for _, m := range historyMsgs {
