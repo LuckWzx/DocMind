@@ -1,6 +1,10 @@
 package repository
 
-import "docmind/internal/model/entity"
+import (
+	"time"
+
+	"docmind/internal/model/entity"
+)
 
 type KnowledgeListFilter struct {
 	KnowledgeBaseID uint
@@ -9,6 +13,8 @@ type KnowledgeListFilter struct {
 	FileType        string
 	ParseStatus     string
 	Source          string
+	StartTime       time.Time
+	EndTime         time.Time
 	Offset          int
 	Limit           int
 }

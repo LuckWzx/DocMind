@@ -33,14 +33,30 @@ func (r *tagRepository) FindByID(id uint) (*entity.Tag, error) {
 	return &item, nil
 }
 
-func (r *tagRepository) ListByKnowledgeBase(knowledgeBaseID uint, keyword string) ([]*entity.Tag, error) {
-	query := r.db.Where("knowledge_base_id = ?", knowledgeBaseID)
+func (r *tagRepository) FindByNameAndKB(name string, knowledgeBaseID uint) (*entity.Tag, error) {
+	var item entity.Tag
+	err := r.db.Where("name = ? AND knowledge_base_id = ?", name, knowledgeBaseID).First(&item).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &item, nil
+}
+
+func (r *tagRepository) ListByKnowledgeBase(knowledgeBaseID uint, keyword string, offset, limit int) ([]*entity.Tag, int64, error) {
+	query := r.db.Model(&entity.Tag{}).Where("knowledge_base_id = ?", knowledgeBaseID)
 	if keyword = strings.TrimSpace(keyword); keyword != "" {
 		query = query.Where("name ILIKE ?", "%"+keyword+"%")
 	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	var items []*entity.Tag
-	err := query.Order("sort_order ASC").Order("created_at ASC").Find(&items).Error
-	return items, err
+	err := query.Order("sort_order ASC").Order("created_at ASC").Offset(offset).Limit(limit).Find(&items).Error
+	return items, total, err
 }
 
 func (r *tagRepository) Update(item *entity.Tag) error {

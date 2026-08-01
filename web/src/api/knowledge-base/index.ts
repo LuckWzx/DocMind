@@ -229,7 +229,7 @@ export function listKnowledgeFiles(
   params: {
     page: number;
     page_size: number;
-    tag_ids?: string;
+    tag_id?: string;
     keyword?: string;
     file_type?: string;
     parse_status?: string;
@@ -241,7 +241,7 @@ export function listKnowledgeFiles(
   const query = new URLSearchParams();
   query.append('page', String(params.page));
   query.append('page_size', String(params.page_size));
-  if (params.tag_ids) query.append('tag_ids', params.tag_ids);
+  if (params.tag_id) query.append('tag_id', params.tag_id);
   if (params.keyword) query.append('keyword', params.keyword);
   if (params.file_type) query.append('file_type', params.file_type);
   if (params.parse_status) query.append('parse_status', params.parse_status);

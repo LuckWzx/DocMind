@@ -9,6 +9,7 @@ import (
 	"docmind/internal/api/v1/knowledge"
 	"docmind/internal/api/v1/knowledgebase"
 	"docmind/internal/api/v1/models"
+	"docmind/internal/api/v1/tag"
 	"docmind/internal/api/v1/user"
 	"docmind/internal/api/v1/vectorstore"
 	"docmind/internal/middleware"
@@ -33,6 +34,7 @@ type Router struct {
 	initializationCtrl *initialization.Controller
 	chatCtrl           *chat.Controller
 	agentCtrl          *agent.Controller
+	tagCtrl            *tag.Controller
 }
 
 // NewRouter 创建路由
@@ -53,13 +55,14 @@ func NewRouter(
 		userCtrl:           user.NewController(userService),
 		authCtrl:           auth.NewController(authService, userService),
 		chunkerCtrl:        chunker.NewController(chunkerService),
-		knowledgeCtrl:      knowledge.NewController(knowledgeService, knowledgeBaseService, faqService, tagService),
+		knowledgeCtrl:      knowledge.NewController(knowledgeService, knowledgeBaseService, faqService),
 		vectorStoreCtrl:    vectorstore.NewController(vectorStoreService),
 		knowledgeBaseCtrl:  knowledgebase.NewController(knowledgeBaseService, faqService, tagService),
 		modelCtrl:          models.NewController(modelService),
 		initializationCtrl: initialization.NewController(modelService),
 		chatCtrl:           chat.NewController(chatService),
 		agentCtrl:          agent.NewController(agentService),
+		tagCtrl:            tag.NewController(tagService),
 	}
 }
 
@@ -114,6 +117,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 		// 知识库管理路由
 		r.knowledgeBaseCtrl.RegisterRoutes(v1)
+
+		// 标签路由
+		r.tagCtrl.RegisterRoutes(v1)
 
 		// 会话与对话路由
 		r.chatCtrl.RegisterRoutes(v1)

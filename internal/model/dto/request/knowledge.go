@@ -3,11 +3,13 @@ package request
 type KnowledgeListRequest struct {
 	Page        int    `form:"page"`
 	PageSize    int    `form:"page_size"`
-	TagIDs      string `form:"tag_ids"`
+	TagID       string `form:"tag_id"`
 	Keyword     string `form:"keyword"`
 	FileType    string `form:"file_type"`
 	ParseStatus string `form:"parse_status"`
 	Source      string `form:"source"`
+	StartTime   string `form:"start_time"`
+	EndTime     string `form:"end_time"`
 }
 
 type ReparseKnowledgeRequest struct {
@@ -15,5 +17,5 @@ type ReparseKnowledgeRequest struct {
 }
 
 type KnowledgeTagBatchUpdateRequest struct {
-	Updates map[uint][]uint `json:"updates"`
+	Updates map[string][]string `json:"updates"`
 }

@@ -50,6 +50,12 @@ func (r *knowledgeRepository) List(filter KnowledgeListFilter) ([]*entity.Knowle
 	if filter.Source != "" {
 		query = query.Where("source = ?", filter.Source)
 	}
+	if !filter.StartTime.IsZero() {
+		query = query.Where("updated_at >= ?", filter.StartTime)
+	}
+	if !filter.EndTime.IsZero() {
+		query = query.Where("updated_at <= ?", filter.EndTime)
+	}
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {

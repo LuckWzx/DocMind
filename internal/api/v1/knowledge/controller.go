@@ -18,16 +18,14 @@ type Controller struct {
 	knowledgeService service.KnowledgeService
 	kbService        service.KnowledgeBaseService
 	faqService       service.FAQService
-	tagService       service.TagService
 }
 
 // NewController 创建知识库控制器
-func NewController(knowledgeService service.KnowledgeService, kbService service.KnowledgeBaseService, faqService service.FAQService, tagService service.TagService) *Controller {
+func NewController(knowledgeService service.KnowledgeService, kbService service.KnowledgeBaseService, faqService service.FAQService) *Controller {
 	return &Controller{
 		knowledgeService: knowledgeService,
 		kbService:        kbService,
 		faqService:       faqService,
-		tagService:       tagService,
 	}
 }
 
@@ -83,12 +81,22 @@ func (ctrl *Controller) ListKnowledge(c *gin.Context) {
 		response.BizError(c, err)
 		return
 	}
+	page := request.Page
+	pageSize := request.PageSize
+	if page < 1 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"code":    0,
-		"message": "success",
-		"data":    items,
-		"total":   total,
+		"success":   true,
+		"code":      0,
+		"message":   "success",
+		"data":      items,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 
@@ -184,7 +192,23 @@ func (ctrl *Controller) UpdateKnowledgeTags(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	if err := ctrl.kbService.UpdateKnowledgeTags(userID, request.Updates); err != nil {
+	updates := make(map[uint][]uint, len(request.Updates))
+	for k, v := range request.Updates {
+		kid, err := strconv.ParseUint(k, 10, 64)
+		if err != nil {
+			continue
+		}
+		tagIDs := make([]uint, 0, len(v))
+		for _, s := range v {
+			id, err := strconv.ParseUint(s, 10, 64)
+			if err != nil {
+				continue
+			}
+			tagIDs = append(tagIDs, uint(id))
+		}
+		updates[uint(kid)] = tagIDs
+	}
+	if err := ctrl.kbService.UpdateKnowledgeTags(userID, updates); err != nil {
 		response.BizError(c, err)
 		return
 	}
@@ -316,80 +340,4 @@ func (ctrl *Controller) ExportFAQEntries(c *gin.Context) {
 	}
 	c.Header("Content-Disposition", "attachment; filename=faq_entries.csv")
 	c.Data(http.StatusOK, "text/csv; charset=utf-8", raw)
-}
-
-func (ctrl *Controller) ListTags(c *gin.Context) {
-	userID := middleware.GetUserID(c)
-	kbID, ok := parseUintParam(c, "kbId")
-	if !ok {
-		return
-	}
-	var request req.TagListRequest
-	_ = c.ShouldBindQuery(&request)
-	items, total, err := ctrl.tagService.List(userID, kbID, &request)
-	if err != nil {
-		response.BizError(c, err)
-		return
-	}
-	response.Success(c, gin.H{"data": items, "total": total})
-}
-
-func (ctrl *Controller) CreateTag(c *gin.Context) {
-	userID := middleware.GetUserID(c)
-	kbID, ok := parseUintParam(c, "kbId")
-	if !ok {
-		return
-	}
-	var request req.CreateTagRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		response.BadRequest(c, err.Error())
-		return
-	}
-	item, err := ctrl.tagService.Create(userID, kbID, &request)
-	if err != nil {
-		response.BizError(c, err)
-		return
-	}
-	response.Success(c, item)
-}
-
-func (ctrl *Controller) UpdateTag(c *gin.Context) {
-	userID := middleware.GetUserID(c)
-	kbID, ok := parseUintParam(c, "kbId")
-	if !ok {
-		return
-	}
-	id, ok := parseUintParam(c, "tagId")
-	if !ok {
-		return
-	}
-	var request req.UpdateTagRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		response.BadRequest(c, err.Error())
-		return
-	}
-	item, err := ctrl.tagService.Update(userID, kbID, id, &request)
-	if err != nil {
-		response.BizError(c, err)
-		return
-	}
-	response.Success(c, item)
-}
-
-func (ctrl *Controller) DeleteTag(c *gin.Context) {
-	userID := middleware.GetUserID(c)
-	kbID, ok := parseUintParam(c, "kbId")
-	if !ok {
-		return
-	}
-	id, ok := parseUintParam(c, "tagId")
-	if !ok {
-		return
-	}
-	force := c.Query("force") == "true"
-	if err := ctrl.tagService.Delete(userID, kbID, id, force); err != nil {
-		response.BizError(c, err)
-		return
-	}
-	response.Success(c, nil)
 }

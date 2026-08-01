@@ -43,7 +43,7 @@ export default function (knowledgeBaseId?: string) {
     query: {
       page: number;
       page_size: number;
-      tag_ids?: string;
+      tag_id?: string;
       keyword?: string;
       file_type?: string;
       parse_status?: string;

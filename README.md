@@ -43,7 +43,7 @@ DocMind/
 │   │   └── recovery.go              # 异常恢复
 │   ├── model/                        # 数据模型
 │   │   ├── dto/                      # 数据传输对象
-│   │   │   ├── request/              # 请求 DTO（auth / user / knowledge / knowledge_base / faq / tag / chunker / model / vector_store）
+│   │   │   ├── request/              # 请求 DTO（auth / user / knowledge / knowledge_base / faq / tag / chunker / model / vector_store / agent）
 │   │   │   └── response/             # 响应 DTO（同上）
 │   │   └── entity/                   # 数据库实体（GORM）
 │   │       ├── base.go               # BaseEntity（自增主键+软删除）
@@ -66,11 +66,14 @@ DocMind/
 │   │   ├── *_interface.go            # 仓储接口（24个文件，覆盖全部实体）
 │   │   └── *_repository.go           # 仓储实现
 │   └── service/                      # 业务逻辑层
-│       ├── *_interface.go            # 服务接口
+│       ├── *_interface.go            # 服务接口（12个模块）
 │       ├── *_service.go              # 服务实现
+│       ├── chat_model_factory.go     # Eino ChatModel 工厂（Agent 核心依赖）
+│       ├── embedder_factory.go       # Eino Embedder 工厂（查询向量化）
+│       ├── vector_driver_postgres.go # pgvector 向量检索驱动
 │       ├── image_storage_*.go        # 文档图片存储（MinIO / Noop）
 │       ├── knowledge_image_pipeline.go  # 图片提取与URL替换管道
-│       └── embedder_factory.go       # Embedding 模型工厂
+│       └── knowledge_pipeline_gateway*.go  # 知识管道网关（接口 + Mock）
 ├── pkg/                              # 公共工具包
 │   ├── config/                       # 配置加载
 │   ├── database/                     # 数据库驱动（PostgreSQL / MySQL / Redis）
@@ -97,8 +100,13 @@ DocMind/
 │   ├── API.md                        # API 文档
 │   ├── ARCHITECTURE.md               # 架构文档
 │   ├── DEVELOPMENT.md                # 开发指南
-│   ├── swagger.yaml                  # Swagger 规范
-│   └── 知识库api.md                   # 知识库 API 规范
+│   ├── swagger.yaml / swagger.json   # Swagger 规范
+│   ├── 甲.md / 乙.md                 # 数据库结构体设计 & 数据流交互
+│   ├── 阶段一.md / 阶段二.md          # 分阶段开发规划
+│   ├── 知识库api.md                   # 知识库 API 规范
+│   ├── 标签crud.md                   # 标签 CRUD 设计
+│   ├── 模型集成.md                   # LLM 模型集成方案
+│   └── 思维导图.md                   # 系统思维导图
 ├── web/                              # 前端项目（Vue 3 + TypeScript）
 │   ├── src/
 │   │   ├── api/                      # API 接口层（Mock 预留）
@@ -190,24 +198,25 @@ export async function listKnowledgeBases() {
 | **FAQ** | 问答对管理、批量导入导出 | `internal/api/v1/knowledgebase/` |
 | **标签** | 知识库标签 CRUD | `internal/api/v1/knowledgebase/` |
 | **聊天** | 会话管理、消息收发、流式响应 | `internal/api/v1/chat/` |
-| **Agent** | 创建、编辑、配置 | `internal/api/v1/agent/` |
-| **模型** | LLM 提供商配置、Embedding / VLM / 摘要模型管理 | `internal/api/v1/models/` |
-| **向量存储** | PostgreSQL / Qdrant / Milvus / Elasticsearch 存储配置 | `internal/api/v1/vectorstore/` |
+| **Agent** | 智能体 CRUD、复制、内置 Agent 种子数据（快速问答） | `internal/api/v1/agent/` |
+| **模型** | LLM / Embedding / Rerank / VLM / ASR 多类型模型统一管理 | `internal/api/v1/models/` |
+| **向量存储** | PostgreSQL（pgvector）向量引擎配置与语义检索 | `internal/api/v1/vectorstore/` |
 | **认证** | 登录、注册、Token 刷新、登出 | `internal/api/v1/auth/` |
-| **分块** | 分块策略预设管理 | `internal/api/v1/chunker/` |
+| **分块** | 多策略文档分块（heading / heuristic / legacy / auto） | `internal/api/v1/chunker/` |
 
 ## 🛠️ 技术栈
 
 **后端：**
 - **框架**: Gin（HTTP 路由）
-- **AI 编排**: **Eino**（Agent 引擎、RAG 管道、Graph 编排）
-- **ORM**: GORM（PostgreSQL）
-- **认证**: JWT（双 Token 机制）
-- **日志**: Zap
+- **AI 编排**: **Eino**（Agent 引擎、RAG 管道、Graph 编排、Tool Calling）
+- **ORM**: GORM（PostgreSQL + pgvector 向量扩展）
+- **向量检索**: pgvector（IVFFlat / HNSW 索引，Cosine / L2 / IP 相似度）
+- **认证**: JWT（双 Token 机制：Access + Refresh）
+- **日志**: Zap（结构化日志 + 请求级上下文）
 - **文档**: Swagger / OpenAPI
-- **RPC**: gRPC + Protobuf（docreader）
+- **RPC**: gRPC + Protobuf（docreader Python 微服务）
 - **文档解析**: Python（PaddleOCR / VLM / MarkItDown）
-- **图片存储**: MinIO（文档内嵌图片持久化）
+- **图片存储**: MinIO（文档内嵌图片持久化，Markdown URL 自动替换）
 
 **前端：**
 - **框架**: Vue 3 + Composition API
@@ -224,21 +233,20 @@ export async function listKnowledgeBases() {
 ### 项目特点
 
 ✅ **知识库 CRUD** — 完整的知识库增删改查 + 置顶，基于用户隔离  
-✅ **文档导入解析** — 上传 PDF/DOCX/MD/Excel/Web 文件 → DocReader 解析 → 智能分块  
+✅ **文档导入解析** — 上传 PDF/DOCX/MD/Excel/Web → DocReader 解析 → 多策略智能分块  
+✅ **向量语义检索** — pgvector 向量引擎，Cosine/L2/IP 相似度，IVFFlat/HNSW 索引  
 ✅ **图片持久化** — 文档内嵌图片自动上传 MinIO，Markdown 引用自动替换为公网 URL  
 ✅ **FAQ 管理** — 问答对批量导入/导出/增删改查  
-✅ **标签体系** — 知识库标签管理  
-✅ **Eino 智能体编排** — 基于 Eino 的 Graph 和 Chain 机制，实现灵活的 Agent 推理循环与工具调用
-✅ **Go 后端** — Gin + GORM 分层架构，Swagger 文档，JWT 双 Token  
-✅ **文档解析服务** — Python gRPC 微服务，支持 PDF/DOCX/MD/Excel/Web  
-✅ **10 张数据表** — AutoMigrate 自动迁移，PostgreSQL JSONB 支持  
-✅ **完整的前端框架** — Vue 3 + TypeScript + Vite  
-✅ **模块化API设计** — 按功能模块分离，易于维护  
-✅ **完整的类型定义** — TypeScript 接口，类型安全  
-✅ **Mock数据** — 开发阶段可独立运行  
-✅ **清晰的替换标记** — 所有 TODO 位置都有注释  
-✅ **现代化UI** — TDesign组件库，美观易用  
-✅ **国际化支持** — 多语言配置  
+✅ **标签体系** — 知识库标签管理，支持按标签筛选  
+✅ **Eino Agent 编排** — Eino ChatModel + Embedder 工厂，ReAct 推理循环，Tool Calling 支持  
+✅ **SSE 流式对话** — 知识问答流式响应，检索结果引用溯源  
+✅ **15 张数据表** — AutoMigrate 自动迁移，PostgreSQL JSONB + pgvector 支持  
+✅ **多模型管理** — LLM / Embedding / Rerank / VLM / ASR 多类型统一管理  
+✅ **10 个 API 模块** — 按功能模块分离，完整的前后端类型定义  
+✅ **Go 后端** — Gin + GORM 分层架构（API → Service → Repository），Swagger 文档，JWT 双 Token  
+✅ **文档解析服务** — Python gRPC 微服务，支持 PDF/DOCX/MD/Excel/Web/Image  
+✅ **完整的前端框架** — Vue 3 + TypeScript + Vite + TDesign UI  
+✅ **国际化支持** — vue-i18n 多语言配置  
 
 ### 后端对接指南
 

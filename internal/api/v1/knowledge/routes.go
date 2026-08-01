@@ -33,12 +33,6 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 			kb.PUT("faq/entries/fields", ctrl.BatchUpdateFAQFields)
 			kb.PUT("faq/entries/:entryId", ctrl.UpdateFAQEntry)
 			kb.DELETE("faq/entries", ctrl.DeleteFAQEntries)
-
-			// Tag
-			kb.GET("tags", ctrl.ListTags)
-			kb.POST("tags", ctrl.CreateTag)
-			kb.PUT("tags/:tagId", ctrl.UpdateTag)
-			kb.DELETE("tags/:tagId", ctrl.DeleteTag)
 		}
 	}
 }
