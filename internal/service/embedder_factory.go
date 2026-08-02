@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"docmind/internal/model/entity"
 	"docmind/internal/pipeline"
@@ -30,9 +31,14 @@ func (f *EmbedderFactory) CreateEmbedder(ctx context.Context, modelID string) (e
 		return nil, err
 	}
 
+	modelName := strings.TrimSpace(model.Parameters.ModelName)
+	if modelName == "" {
+		modelName = model.Name
+	}
+
 	cfg := &openai.EmbeddingConfig{
 		APIKey:  model.Parameters.APIKey,
-		Model:   model.Parameters.ModelName,
+		Model:   modelName,
 		BaseURL: model.Parameters.BaseURL,
 	}
 

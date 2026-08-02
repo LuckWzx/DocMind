@@ -21,9 +21,13 @@ import (
 	"docmind/pkg/config"
 	docreaderclient "docmind/pkg/docreader/client"
 	bizerrors "docmind/pkg/errors"
+	"docmind/pkg/logger"
 
 	"github.com/Tencent/WeKnora/docreader/proto"
 	"github.com/google/uuid"
+	pgvector "github.com/pgvector/pgvector-go"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -43,6 +47,8 @@ type knowledgeService struct {
 	docReaderClient   *docreaderclient.Client
 	imageStorage      ImageStorageService
 	cfg               *config.Config
+	db                *gorm.DB
+	embedderFactory   *EmbedderFactory
 }
 
 // NewKnowledgeService 创建知识条目服务
@@ -53,6 +59,8 @@ func NewKnowledgeService(
 	docReaderClient *docreaderclient.Client,
 	imageStorage ImageStorageService,
 	cfg *config.Config,
+	db *gorm.DB,
+	embedderFactory *EmbedderFactory,
 ) KnowledgeService {
 	return &knowledgeService{
 		knowledgeRepo:     knowledgeRepo,
@@ -61,6 +69,8 @@ func NewKnowledgeService(
 		docReaderClient:   docReaderClient,
 		imageStorage:      imageStorage,
 		cfg:               cfg,
+		db:                db,
+		embedderFactory:   embedderFactory,
 	}
 }
 
@@ -142,6 +152,11 @@ func (s *knowledgeService) UploadFile(userID uint, knowledgeBaseID uint, fileHea
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "保存分块失败", err)
 	}
 
+	// 向量化存储（非关键路径，失败不阻塞上传）
+	if err := s.embedChunks(context.Background(), userID, knowledge, chunks, kb); err != nil {
+		logger.Warnf("[UploadFile] 向量化失败: %v", err)
+	}
+
 	if err := s.updateKnowledgeStatus(knowledge, parseStatusCompleted, ""); err != nil {
 		return nil, err
 	}
@@ -156,6 +171,71 @@ func (s *knowledgeService) UploadFile(userID uint, knowledgeBaseID uint, fileHea
 		ChunkCount:      len(chunks),
 		MarkdownChars:   len([]rune(parseResult.MarkdownContent)),
 	}, nil
+}
+
+// embedChunks 将分块内容向量化并写入 chunk_vectors 表
+func (s *knowledgeService) embedChunks(ctx context.Context, userID uint, knowledge *entity.Knowledge, chunks []*entity.Chunk, kb *entity.KnowledgeBase) error {
+	if s.embedderFactory == nil || s.db == nil {
+		logger.Warnf("[embedChunks] embedderFactory 或 db 未初始化，跳过向量化")
+		return nil
+	}
+	if kb.EmbeddingModelID == "" {
+		logger.Warnf("[embedChunks] 知识库 %d 未配置 EmbeddingModelID，跳过向量化", kb.ID)
+		return nil
+	}
+
+	embedder, err := s.embedderFactory.CreateEmbedder(ctx, kb.EmbeddingModelID)
+	if err != nil {
+		return fmt.Errorf("创建 Embedder 失败 (modelID=%s): %w", kb.EmbeddingModelID, err)
+	}
+
+	texts := make([]string, len(chunks))
+	for i, chunk := range chunks {
+		texts[i] = chunk.Content
+	}
+
+	vectors2D, err := embedder.EmbedStrings(ctx, texts)
+	if err != nil {
+		return fmt.Errorf("向量化失败: %w", err)
+	}
+
+	vectorStoreID := kb.VectorStoreID
+	if vectorStoreID == nil {
+		var defaultStore entity.VectorStore
+		if err := s.db.Where("status = ?", entity.VectorStoreStatusActive).First(&defaultStore).Error; err != nil {
+			logger.Warnf("[embedChunks] 知识库 %d 未配置 VectorStoreID 且未找到可用向量存储，跳过向量化", kb.ID)
+			return nil
+		}
+		id := defaultStore.ID
+		vectorStoreID = &id
+	}
+
+	for i, chunk := range chunks {
+		if i >= len(vectors2D) {
+			break
+		}
+		vec32 := make([]float32, len(vectors2D[i]))
+		for j, v := range vectors2D[i] {
+			vec32[j] = float32(v)
+		}
+		record := &entity.ChunkVector{
+			UserID:          userID,
+			VectorStoreID:   *vectorStoreID,
+			KnowledgeBaseID: knowledge.KnowledgeBaseID,
+			KnowledgeID:     knowledge.ID,
+			ChunkID:         chunk.ID,
+			Embedding:       pgvector.NewVector(vec32),
+			ContentHash:     chunk.ContentHash,
+			IsEnabled:       true,
+		}
+		if err := s.db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "chunk_id"}},
+			UpdateAll: true,
+		}).Create(record).Error; err != nil {
+			return fmt.Errorf("保存向量失败: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *knowledgeService) PreviewFile(userID uint, knowledgeID uint) (*KnowledgePreviewFile, error) {

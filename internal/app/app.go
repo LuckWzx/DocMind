@@ -245,13 +245,15 @@ func (a *App) initDependencies() error {
 	knowledgeBaseSvc := service.NewKnowledgeBaseService(a.pgDB, knowledgeBaseRepo, knowledgeRepo, faqRepo, tagRepo, vectorStoreRepo, pipelineGateway)
 	faqSvc := service.NewFAQService(a.pgDB, knowledgeBaseRepo, faqRepo)
 	tagSvc := service.NewTagService(a.pgDB, knowledgeBaseRepo, tagRepo, faqRepo)
-	knowledgeSvc := service.NewKnowledgeService(knowledgeRepo, knowledgeBaseRepo, chunkRepo, a.docReaderClient, imageStorageSvc, a.cfg)
+
+	// 创建 Embedder 工厂（需在 knowledgeSvc 之前）
+	embedderFactory := service.NewEmbedderFactory(modelRepo)
+	knowledgeSvc := service.NewKnowledgeService(knowledgeRepo, knowledgeBaseRepo, chunkRepo, a.docReaderClient, imageStorageSvc, a.cfg, a.pgDB, embedderFactory)
 
 	// 会话与对话相关
 	sessionRepo := repository.NewSessionRepository(a.pgDB)
 	messageRepo := repository.NewMessageRepository(a.pgDB)
 	chatModelFactory := service.NewChatModelFactory(modelRepo)
-	embedderFactory := service.NewEmbedderFactory(modelRepo)
 	agentRepo := repository.NewAgentRepository(a.pgDB)
 	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, chatModelFactory, embedderFactory, knowledgeBaseRepo, vectorStoreRepo, agentRepo, a.pgDB)
 	if err != nil {
