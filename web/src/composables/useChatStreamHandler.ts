@@ -118,8 +118,15 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
 
   const extractKnowledgeReferences = (data: ChatMessage) => {
     const dataPayload = data.data as ChatMessage | undefined
+    // The knowledge-chat backend serializes the References field as
+    // "references" (see sseEvent.References json tag), but the agent-chat
+    // path nests it under data.references / data.knowledge_references.
+    // Check all possible field names so references are never silently
+    // dropped (which would prevent the assistant placeholder from being
+    // created before the first answer chunk arrives).
     const refs =
       data.knowledge_references ||
+      data.references ||
       dataPayload?.references ||
       dataPayload?.knowledge_references ||
       []
@@ -438,10 +445,17 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
   }
 
   const updateAssistantSession = (payload: ChatMessage) => {
-    const message = findLastMessage((item) => {
-      if (item.request_id === payload.id) return true
-      return item.id === payload.id
-    })
+    // When the backend omits an id (non-agent knowledge-chat path),
+    // undefined === undefined would wrongly match the just-pushed user
+    // message, overwriting the user's question with the assistant answer.
+    // Guard: only match by id when payload.id is truthy; otherwise fall back
+    // to the trailing incomplete assistant row (or undefined → create new).
+    const message = payload.id
+      ? findLastMessage((item) => {
+          if (item.request_id === payload.id) return true
+          return item.id === payload.id
+        })
+      : getTrailingIncompleteAssistant()
     if (message) {
       if (payload.id && !message.request_id) message.request_id = payload.id
       message.content = payload.content
@@ -472,9 +486,14 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
 
   const handleAgentChunk = (data: ChatMessage) => {
     const dataId = data.id as string | undefined
-    let message = findLastMessage(
-      (item) => item.request_id === dataId || item.id === dataId,
-    )
+    // Same undefined-id guard as the non-agent path: when dataId is absent,
+    // don't match by id (would hit the user message); use the trailing
+    // incomplete assistant row instead.
+    let message = dataId
+      ? findLastMessage(
+          (item) => item.request_id === dataId || item.id === dataId,
+        )
+      : getTrailingIncompleteAssistant()
     let created = false
 
     if (!message) {
@@ -948,10 +967,12 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
 
     if (data.response_type === 'stop') {
       log('[Stop Event] Non-agent generation stopped')
-      const stoppedMessage = findLastMessage((item) => {
-        if (item.request_id === data.id) return true
-        return item.id === data.id
-      })
+      const stoppedMessage = data.id
+        ? findLastMessage((item) => {
+            if (item.request_id === data.id) return true
+            return item.id === data.id
+          })
+        : getTrailingIncompleteAssistant()
       if (stoppedMessage) stoppedMessage.is_completed = true
       loading.value = false
       isReplying.value = false
@@ -960,10 +981,18 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
       return
     }
 
-    const existingMessage = findLastMessage((item) => {
-      if (item.request_id === data.id) return true
-      return item.id === data.id
-    })
+    // Guard against undefined-id matching: the knowledge-chat backend sends
+    // answer/complete events WITHOUT an id, so data.id is undefined. Without
+    // this guard, undefined === undefined would match the user message that
+    // was just pushed (also without an id), causing the assistant answer to
+    // overwrite the user's question. When id is absent, look for the trailing
+    // incomplete assistant message instead.
+    const existingMessage = data.id
+      ? findLastMessage((item) => {
+          if (item.request_id === data.id) return true
+          return item.id === data.id
+        })
+      : getTrailingIncompleteAssistant()
     if (existingMessage?.is_completed && data.done && !data.content) {
       log('[Non-Agent] Ignoring duplicate completion event for completed message')
       return
