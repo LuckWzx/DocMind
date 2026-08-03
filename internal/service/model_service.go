@@ -68,12 +68,12 @@ func (s *modelService) CreateModel(userID uint, request *req.UpsertModelRequest)
 		return nil, err
 	}
 
-	existing, err := s.modelRepo.FindByName(strings.TrimSpace(request.Name), userID)
+	existing, err := s.modelRepo.FindDuplicate(userID, strings.TrimSpace(request.Name), request.Type, request.Source, strings.TrimSpace(request.Parameters.Provider))
 	if err != nil {
 		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询模型失败", err)
 	}
 	if existing != nil {
-		return nil, pkgerrors.New(pkgerrors.CodeResourceAlreadyExists, "模型名称已存在")
+		return nil, pkgerrors.New(pkgerrors.CodeResourceAlreadyExists, "已存在同名且同类型、同来源、同供应商的模型，请修改名称或改用其他配置")
 	}
 
 	model := &entity.Model{
@@ -131,13 +131,13 @@ func (s *modelService) UpdateModel(userID uint, id uint, request *req.UpsertMode
 		return nil, pkgerrors.New(pkgerrors.CodeResourceNotFound, "模型不存在")
 	}
 
-	if strings.TrimSpace(request.Name) != model.Name {
-		existing, err := s.modelRepo.FindByName(strings.TrimSpace(request.Name), userID)
+	if strings.TrimSpace(request.Name) != model.Name || request.Type != model.Type || request.Source != model.Source || strings.TrimSpace(request.Parameters.Provider) != model.Parameters.Provider {
+		existing, err := s.modelRepo.FindDuplicate(userID, strings.TrimSpace(request.Name), request.Type, request.Source, strings.TrimSpace(request.Parameters.Provider))
 		if err != nil {
 			return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "查询模型失败", err)
 		}
 		if existing != nil && existing.ID != model.ID {
-			return nil, pkgerrors.New(pkgerrors.CodeResourceAlreadyExists, "模型名称已存在")
+			return nil, pkgerrors.New(pkgerrors.CodeResourceAlreadyExists, "已存在同名且同类型、同来源、同供应商的模型，请修改名称或改用其他配置")
 		}
 	}
 

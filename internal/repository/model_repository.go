@@ -65,6 +65,21 @@ func (r *modelRepository) FindByName(name string, userID uint) (*entity.Model, e
 	return &model, nil
 }
 
+// FindDuplicate 按 名称+类型+来源 查询候选后比对供应商，避免 JSON 字段查询的数据库方言差异
+func (r *modelRepository) FindDuplicate(userID uint, name, modelType, source, provider string) (*entity.Model, error) {
+	var candidates []entity.Model
+	err := r.db.Where("name = ? AND user_id = ? AND type = ? AND source = ?", name, userID, modelType, source).Find(&candidates).Error
+	if err != nil {
+		return nil, err
+	}
+	for i := range candidates {
+		if candidates[i].Parameters.Provider == provider {
+			return &candidates[i], nil
+		}
+	}
+	return nil, nil
+}
+
 func (r *modelRepository) List(modelType string, userID uint) ([]*entity.Model, error) {
 	var models []*entity.Model
 	query := r.db.Where("user_id = ?", userID).Order("created_at DESC")

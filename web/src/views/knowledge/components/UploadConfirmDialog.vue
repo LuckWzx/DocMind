@@ -117,32 +117,6 @@
                 </div>
 
                 <div v-else class="edit-section edit-section--embedded">
-                  <div v-show="activeSection === 'parser'" class="section">
-                    <KBParserSettings
-                      embedded
-                      :relevant-extensions="batchFileExts"
-                      :parser-engine-rules="uiState.chunkingConfig.parserEngineRules"
-                      @update:parser-engine-rules="handleParserEngineRulesUpdate"
-                    />
-                    <div v-if="hasPdf" class="kb-embedded-settings" style="margin-top: 16px;">
-                      <div class="setting-row setting-row--toggle">
-                        <div class="setting-info">
-                          <label>{{ t('uploadConfirm.pdfForceScanned.label') }}</label>
-                          <p class="desc">{{ t('uploadConfirm.pdfForceScanned.description') }}</p>
-                        </div>
-                        <div class="setting-control">
-                          <t-switch v-model="uiState.pdfForceScanned" size="medium" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-show="activeSection === 'chunking'" class="section">
-                    <KBChunkingSettings
-                      embedded
-                      :config="uiState.chunkingConfig"
-                      @update:config="handleChunkingConfigUpdate"
-                    />
-                  </div>
                   <div v-show="activeSection === 'multimodal'" class="section">
                     <div class="kb-embedded-settings">
                       <div class="setting-row setting-row--toggle">
@@ -255,8 +229,6 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin } from 'tdesign-vue-next'
 import ModelSelector from '@/components/ModelSelector.vue'
-import KBParserSettings from '../settings/KBParserSettings.vue'
-import KBChunkingSettings from '../settings/KBChunkingSettings.vue'
 import KBAdvancedSettings from '../settings/KBAdvancedSettings.vue'
 import GraphSettings from '../settings/GraphSettings.vue'
 import { useChatResourcesStore } from '@/stores/chatResources'
@@ -303,7 +275,6 @@ interface UploadUIState {
     customInstructions?: string
   }
   graphEnabled: boolean
-  pdfForceScanned: boolean
 }
 
 const props = withDefaults(defineProps<{
@@ -347,19 +318,6 @@ const dialogVisible = computed({
   get: () => props.visible,
   set: (value: boolean) => emit('update:visible', value),
 })
-
-function getEngineDisplayName(engineName: string): string {
-  const key = `kbSettings.parser.engines.${engineName}.name`
-  const translated = t(key)
-  return translated !== key ? translated : engineName
-}
-
-function getStrategyLabel(strategy?: string): string {
-  if (!strategy) return t('uploadConfirm.summaryStrategyDefault')
-  const key = `knowledgeEditor.chunking.strategies.${strategy}.label`
-  const translated = t(key)
-  return translated !== key ? translated : strategy
-}
 
 function getModelName(modelId: string): string {
   if (!modelId) return t('uploadConfirm.notSet')
@@ -451,50 +409,6 @@ const batchFileExts = computed(() => {
   return [...set]
 })
 
-const hasPdf = computed(() => {
-  return batchFileExts.value.includes('pdf')
-})
-
-function resolveEngineForExt(ext: string): string {
-  const rules = uiState.value.chunkingConfig.parserEngineRules
-  let engineKey = 'builtin'
-  let name = t('uploadConfirm.summaryParserBuiltin')
-  if (rules?.length) {
-    for (const rule of rules) {
-      if (rule.file_types.includes(ext)) {
-        engineKey = rule.engine
-        name = getEngineDisplayName(rule.engine)
-        break
-      }
-    }
-  }
-  if (ext === 'pdf' && uiState.value.pdfForceScanned && engineKey === 'builtin') {
-    return `${name} · ${t('uploadConfirm.summaryParserForceScanned')}`
-  }
-  return name
-}
-
-const parserOverviewValue = computed(() => {
-  const exts = batchFileExts.value
-  if (!exts.length) return t('uploadConfirm.summaryParserBuiltin')
-  return exts.map(ext => `.${ext} → ${resolveEngineForExt(ext)}`).join(' · ')
-})
-
-const chunkingOverviewValue = computed(() => {
-  const c = uiState.value.chunkingConfig
-  const parts = [
-    t('uploadConfirm.navChunkingSummary', { size: c.chunkSize }),
-    t('uploadConfirm.summaryChunkOverlapShort', { overlap: c.chunkOverlap }),
-    getStrategyLabel(c.strategy),
-  ]
-  parts.push(
-    c.enableParentChild
-      ? t('uploadConfirm.summaryParentChildShort')
-      : t('uploadConfirm.summaryParentChildOff'),
-  )
-  return parts.join(' · ')
-})
-
 const overviewLines = computed(() => {
   const mm = uiState.value.multimodalConfig
   const asr = uiState.value.asrConfig
@@ -502,8 +416,6 @@ const overviewLines = computed(() => {
   const graph = uiState.value.nodeExtractConfig
 
   return [
-    { key: 'parser', title: t('uploadConfirm.tabParser'), value: parserOverviewValue.value },
-    { key: 'chunking', title: t('uploadConfirm.tabChunking'), value: chunkingOverviewValue.value },
     {
       key: 'multimodal',
       title: t('uploadConfirm.tabMultimodal'),
@@ -538,8 +450,6 @@ const overviewLines = computed(() => {
 })
 
 const sectionMeta: Record<string, { titleKey: string; descKey?: string }> = {
-  parser: { titleKey: 'uploadConfirm.tabParser', descKey: 'kbSettings.parser.description' },
-  chunking: { titleKey: 'uploadConfirm.tabChunking', descKey: 'knowledgeEditor.chunking.description' },
   multimodal: { titleKey: 'uploadConfirm.tabMultimodal', descKey: 'knowledgeEditor.multimodal.description' },
   asr: { titleKey: 'uploadConfirm.tabAsr', descKey: 'knowledgeEditor.asr.description' },
   question: { titleKey: 'uploadConfirm.tabQuestion', descKey: 'knowledgeEditor.advanced.questionGeneration.description' },
@@ -651,7 +561,6 @@ function createDefaultUIState(): UploadUIState {
       customInstructions: '',
     },
     graphEnabled: false,
-    pdfForceScanned: false,
   }
 }
 
@@ -703,7 +612,6 @@ function initFromKbInfo(kb: any) {
       customInstructions: kb.extract_config?.custom_instructions || '',
     },
     graphEnabled: kb.indexing_strategy?.graph_enabled ?? false,
-    pdfForceScanned: false,
   }
 }
 
@@ -751,12 +659,6 @@ function buildProcessOverrides(): KnowledgeProcessOverrides {
       relations: state.nodeExtractConfig.relations,
       custom_instructions: state.nodeExtractConfig.customInstructions,
     },
-  }
-
-  if (state.pdfForceScanned) {
-    overrides.parser_engine_overrides = {
-      pdf_force_scanned: 'true',
-    }
   }
 
   return overrides
@@ -808,11 +710,6 @@ function applyOverridesToState(o?: KnowledgeProcessOverrides | null) {
     if (ec.custom_instructions != null) s.nodeExtractConfig.customInstructions = ec.custom_instructions
   }
   if (o.graph_enabled != null) s.graphEnabled = o.graph_enabled
-  if (o.parser_engine_overrides && o.parser_engine_overrides.pdf_force_scanned === 'true') {
-    s.pdfForceScanned = true
-  } else {
-    s.pdfForceScanned = false
-  }
 }
 
 async function loadModels() {
@@ -877,14 +774,6 @@ const removeUrl = (index: number) => {
 
 const removeFile = (index: number) => {
   localFiles.value = localFiles.value.filter((_, i) => i !== index)
-}
-
-const handleParserEngineRulesUpdate = (rules: Array<{ file_types: string[]; engine: string }>) => {
-  uiState.value.chunkingConfig.parserEngineRules = rules
-}
-
-const handleChunkingConfigUpdate = (config: ChunkingUIConfig) => {
-  uiState.value.chunkingConfig = { ...config }
 }
 
 const handleMultimodalVLLMChange = (modelId: string) => {
