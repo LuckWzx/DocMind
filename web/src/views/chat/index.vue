@@ -886,15 +886,18 @@ watch(error, (newError) => {
 onChunk((data) => {
     if (data.response_type === 'session_title') {
         const title = data.content || data.data?.title;
-        if (title && data.data?.session_id) {
+        // 后端 sseEvent 的 session_id 在顶层（与 complete 等事件一致），
+        // 此处兼容旧版嵌套写法 data.data.session_id。
+        const sid = data.session_id || data.data?.session_id;
+        if (title && sid) {
             console.log('[Session Title Update]', {
-                session_id: data.data.session_id,
+                session_id: sid,
                 title: title,
             });
-            usemenuStore.updatasessionTitle(data.data.session_id, title);
+            usemenuStore.updatasessionTitle(sid, title);
             usemenuStore.changeIsFirstSession(false);
             notifySessionMutation({
-                sessionId: data.data.session_id,
+                sessionId: sid,
                 patch: { title },
             });
         }
