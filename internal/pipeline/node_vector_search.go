@@ -61,7 +61,7 @@ func newVectorSearchNode(deps *PipelineDeps) func(ctx context.Context, input *Co
 		}
 
 		// 4. 查找默认向量存储
-		stores, _, err := deps.VectorStoreRepo.ListByUser(0, 1, 1)
+		stores, _, err := deps.VectorStoreRepo.ListByUser(0, 0, 1)
 		if err != nil || len(stores) == 0 {
 			return nil, fmt.Errorf("向量检索: 未配置向量存储")
 		}
@@ -106,9 +106,11 @@ func newVectorSearchNode(deps *PipelineDeps) func(ctx context.Context, input *Co
 		searchResults := make([]SearchResult, 0, len(results))
 		for _, r := range results {
 			searchResults = append(searchResults, SearchResult{
-				ChunkID:     r.ChunkID,
-				Score:       r.Score,
-				KnowledgeID: r.KnowledgeID,
+				ChunkID:        r.ChunkID,
+				Score:          r.Score,
+				KnowledgeID:    r.KnowledgeID,
+				Content:        r.Content,
+				KnowledgeTitle: r.KnowledgeTitle,
 			})
 		}
 

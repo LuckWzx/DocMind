@@ -199,18 +199,13 @@ func (s *vectorStoreService) Search(ctx context.Context, userID, id uint, req *r
 		return nil, err
 	}
 
-	contentByChunkID, err := s.loadChunkContentMap(extractChunkIDs(results))
-	if err != nil {
-		return nil, err
-	}
-
 	resp := make([]*dto.VectorSearchResultResponse, 0, len(results))
 	for _, item := range results {
 		resp = append(resp, &dto.VectorSearchResultResponse{
 			ChunkID:         item.ChunkID,
 			KnowledgeID:     item.KnowledgeID,
 			KnowledgeBaseID: item.KnowledgeBaseID,
-			Content:         contentByChunkID[item.ChunkID],
+			Content:         item.Content,
 			Score:           item.Score,
 		})
 	}
@@ -443,30 +438,6 @@ func jsonString(raw entity.JSON) string {
 		return ""
 	}
 	return string(raw)
-}
-
-func extractChunkIDs(items []VectorSearchResult) []uint {
-	ids := make([]uint, 0, len(items))
-	for _, item := range items {
-		ids = append(ids, item.ChunkID)
-	}
-	return ids
-}
-
-func (s *vectorStoreService) loadChunkContentMap(chunkIDs []uint) (map[uint]string, error) {
-	result := make(map[uint]string, len(chunkIDs))
-	if len(chunkIDs) == 0 {
-		return result, nil
-	}
-
-	chunks, err := s.chunkRepo.ListByIDs(chunkIDs)
-	if err != nil {
-		return nil, err
-	}
-	for _, chunk := range chunks {
-		result[chunk.ID] = chunk.Content
-	}
-	return result, nil
 }
 
 func (s *vectorStoreService) loadKnowledgeTitleMap(chunks []*entity.Chunk) (map[uint]string, error) {

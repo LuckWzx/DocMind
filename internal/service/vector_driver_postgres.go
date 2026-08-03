@@ -88,7 +88,9 @@ func (d *postgresVectorDriver) Search(ctx context.Context, params VectorSearchPa
 
 	query := d.db.WithContext(ctx).
 		Table("chunk_vectors AS cv").
-		Select("cv.chunk_id, cv.knowledge_id, cv.knowledge_base_id, "+scoreSQL+" AS score", queryVector).
+		Select("cv.chunk_id, cv.knowledge_id, cv.knowledge_base_id, c.content, k.title AS knowledge_title, "+scoreSQL+" AS score", queryVector).
+		Joins("LEFT JOIN chunks AS c ON cv.chunk_id = c.id AND c.deleted_at IS NULL").
+		Joins("LEFT JOIN knowledges AS k ON cv.knowledge_id = k.id AND k.deleted_at IS NULL").
 		Where("cv.user_id = ? AND cv.vector_store_id = ? AND cv.is_enabled = ?", params.UserID, params.VectorStoreID, true)
 
 	if len(params.KnowledgeBaseIDs) > 0 {
@@ -150,9 +152,11 @@ func (d *postgresVectorDriver) SearchWithPipelineParams(ctx context.Context, par
 	pipelineResults := make([]pipeline.PipelineVectorSearchResult, 0, len(results))
 	for _, r := range results {
 		pipelineResults = append(pipelineResults, pipeline.PipelineVectorSearchResult{
-			ChunkID:     r.ChunkID,
-			KnowledgeID: r.KnowledgeID,
-			Score:       r.Score,
+			ChunkID:        r.ChunkID,
+			KnowledgeID:    r.KnowledgeID,
+			Content:        r.Content,
+			KnowledgeTitle: r.KnowledgeTitle,
+			Score:          r.Score,
 		})
 	}
 	return pipelineResults, nil

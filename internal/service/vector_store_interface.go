@@ -38,6 +38,7 @@ type VectorSearchResult struct {
 	KnowledgeID     uint    `json:"knowledge_id"`
 	KnowledgeBaseID uint    `json:"knowledge_base_id"`
 	Content         string  `json:"content"`
+	KnowledgeTitle  string  `json:"knowledge_title"`
 	Score           float64 `json:"score"`
 }
 

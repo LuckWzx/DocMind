@@ -178,10 +178,11 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 	var searchResults []VectorSearchResult
 	for _, r := range result.RerankedResults {
 		searchResults = append(searchResults, VectorSearchResult{
-			ChunkID:     r.ChunkID,
-			Content:     r.Content,
-			Score:       r.Score,
-			KnowledgeID: r.KnowledgeID,
+			ChunkID:        r.ChunkID,
+			Content:        r.Content,
+			Score:          r.Score,
+			KnowledgeID:    r.KnowledgeID,
+			KnowledgeTitle: r.KnowledgeTitle,
 		})
 	}
 
@@ -319,7 +320,7 @@ func (s *chatService) vectorSearch(ctx context.Context, kbIDs []string, queryVec
 	}
 
 	// 查找默认向量存储
-	stores, _, err := s.vectorStoreRepo.ListByUser(0, 1, 1)
+	stores, _, err := s.vectorStoreRepo.ListByUser(0, 0, 1)
 	if err != nil || len(stores) == 0 {
 		return nil, fmt.Errorf("未配置向量存储")
 	}

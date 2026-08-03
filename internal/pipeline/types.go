@@ -33,9 +33,11 @@ type PipelineVectorSearchParams struct {
 
 // PipelineVectorSearchResult 向量检索结果
 type PipelineVectorSearchResult struct {
-	ChunkID     uint
-	KnowledgeID uint
-	Score       float64
+	ChunkID        uint
+	KnowledgeID    uint
+	Content        string
+	KnowledgeTitle string
+	Score          float64
 }
 
 // PipelineDeps Pipeline 外部依赖，在 NewPipeline 时注入

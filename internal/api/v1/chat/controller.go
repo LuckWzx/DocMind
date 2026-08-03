@@ -300,10 +300,11 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 		refs := make([]reference, 0, len(searchResults))
 		for _, r := range searchResults {
 			refs = append(refs, reference{
-				ChunkID:     r.ChunkID,
-				Content:     r.Content,
-				Score:       r.Score,
-				KnowledgeID: r.KnowledgeID,
+				ChunkID:        r.ChunkID,
+				Content:        r.Content,
+				Score:          r.Score,
+				KnowledgeID:    r.KnowledgeID,
+				KnowledgeTitle: r.KnowledgeTitle,
 			})
 		}
 		writeSSEEvent(c.Writer, sseEvent{
@@ -343,10 +344,11 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 		var references []entity.Reference
 		for _, r := range searchResults {
 			references = append(references, entity.Reference{
-				ChunkID:     r.ChunkID,
-				Content:     r.Content,
-				Score:       r.Score,
-				KnowledgeID: r.KnowledgeID,
+				ChunkID:        r.ChunkID,
+				Content:        r.Content,
+				Score:          r.Score,
+				KnowledgeID:    r.KnowledgeID,
+				KnowledgeTitle: r.KnowledgeTitle,
 			})
 		}
 		_ = ctrl.chatService.SaveAssistantMessage(c.Request.Context(), sessionID, fullContent, references)
