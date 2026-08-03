@@ -31,7 +31,7 @@ const (
 	parseStatusProcessing     = "processing"
 	parseStatusCompleted      = "completed"
 	parseStatusFailed         = "failed"
-	knowledgeUploadTimeout    = 120 * time.Second
+	knowledgeUploadTimeout    = 300 * time.Second
 	knowledgeDefaultStoreRoot = "data/files"
 )
 

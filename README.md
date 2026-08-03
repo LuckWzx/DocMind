@@ -26,12 +26,13 @@ DocMind/
 │   │   └── v1/                       # API v1
 │   │       ├── agent/                # AI Agent 模块
 │   │       ├── auth/                 # 认证模块（注册/登录/刷新Token）
-│   │       ├── chat/                 # 对话模块
+│   │       ├── chat/                 # 对话模块（SSE 流式问答）
 │   │       ├── chunker/              # 分块配置模块
 │   │       ├── initialization/       # 系统初始化
-│   │       ├── knowledge/            # 知识条目（文件上传/解析）
-│   │       ├── knowledgebase/        # 知识库（CRUD / FAQ / Tag / 文件导入）
+│   │       ├── knowledge/            # 知识条目（文件上传/解析/向量化）
+│   │       ├── knowledgebase/        # 知识库（CRUD / FAQ / 文件导入）
 │   │       ├── models/               # LLM 模型配置
+│   │       ├── tag/                  # 标签模块（独立 CRUD）
 │   │       ├── user/                 # 用户模块
 │   │       └── vectorstore/          # 向量存储配置
 │   ├── app/                          # 应用生命周期管理
@@ -43,8 +44,8 @@ DocMind/
 │   │   └── recovery.go              # 异常恢复
 │   ├── model/                        # 数据模型
 │   │   ├── dto/                      # 数据传输对象
-│   │   │   ├── request/              # 请求 DTO（auth / user / knowledge / knowledge_base / faq / tag / chunker / model / vector_store / agent）
-│   │   │   └── response/             # 响应 DTO（同上）
+│   │   │   ├── request/              # 请求 DTO（9个模块：auth / chunker / faq / knowledge / knowledge_base / model / tag / user / vector_store）
+│   │   │   └── response/             # 响应 DTO（8个模块：chunker / faq / knowledge / knowledge_base / model / tag / user / vector_store）
 │   │   └── entity/                   # 数据库实体（GORM）
 │   │       ├── base.go               # BaseEntity（自增主键+软删除）
 │   │       ├── user.go               # 用户
@@ -63,13 +64,14 @@ DocMind/
 │   │       ├── web_search_provider.go # 网页搜索
 │   │       └── types.go              # 通用类型（JSON等）
 │   ├── repository/                   # 数据访问层
-│   │   ├── *_interface.go            # 仓储接口（24个文件，覆盖全部实体）
+│   │   ├── *_interface.go            # 仓储接口（25个文件，覆盖全部实体）
 │   │   └── *_repository.go           # 仓储实现
 │   └── service/                      # 业务逻辑层
-│       ├── *_interface.go            # 服务接口（12个模块）
+│       ├── *_interface.go            # 服务接口（13个模块）
 │       ├── *_service.go              # 服务实现
 │       ├── chat_model_factory.go     # Eino ChatModel 工厂（Agent 核心依赖）
 │       ├── embedder_factory.go       # Eino Embedder 工厂（查询向量化）
+│       ├── knowledge_embedder.go     # 知识分块自动向量化（分批处理）
 │       ├── vector_driver_postgres.go # pgvector 向量检索驱动
 │       ├── image_storage_*.go        # 文档图片存储（MinIO / Noop）
 │       ├── knowledge_image_pipeline.go  # 图片提取与URL替换管道
@@ -196,13 +198,14 @@ export async function listKnowledgeBases() {
 | **知识库** | 后端 CRUD 已实现（创建/列表/详情/更新/删除/置顶） | `internal/api/v1/knowledgebase/` |
 | **知识条目** | 文件上传、DocReader 解析、Markdown 分块、状态追踪 | `internal/api/v1/knowledge/` |
 | **FAQ** | 问答对管理、批量导入导出 | `internal/api/v1/knowledgebase/` |
-| **标签** | 知识库标签 CRUD | `internal/api/v1/knowledgebase/` |
-| **聊天** | 会话管理、消息收发、流式响应 | `internal/api/v1/chat/` |
+| **标签** | 标签独立 CRUD，支持按知识库筛选 | `internal/api/v1/tag/` |
+| **聊天** | 会话管理、消息收发、SSE 流式响应 | `internal/api/v1/chat/` |
 | **Agent** | 智能体 CRUD、复制、内置 Agent 种子数据（快速问答） | `internal/api/v1/agent/` |
 | **模型** | LLM / Embedding / Rerank / VLM / ASR 多类型模型统一管理 | `internal/api/v1/models/` |
 | **向量存储** | PostgreSQL（pgvector）向量引擎配置与语义检索 | `internal/api/v1/vectorstore/` |
 | **认证** | 登录、注册、Token 刷新、登出 | `internal/api/v1/auth/` |
 | **分块** | 多策略文档分块（heading / heuristic / legacy / auto） | `internal/api/v1/chunker/` |
+| **初始化** | 系统初始化配置向导 | `internal/api/v1/initialization/` |
 
 ## 🛠️ 技术栈
 
@@ -242,7 +245,7 @@ export async function listKnowledgeBases() {
 ✅ **SSE 流式对话** — 知识问答流式响应，检索结果引用溯源  
 ✅ **15 张数据表** — AutoMigrate 自动迁移，PostgreSQL JSONB + pgvector 支持  
 ✅ **多模型管理** — LLM / Embedding / Rerank / VLM / ASR 多类型统一管理  
-✅ **10 个 API 模块** — 按功能模块分离，完整的前后端类型定义  
+✅ **11 个 API 模块** — 按功能模块分离，完整的前后端类型定义  
 ✅ **Go 后端** — Gin + GORM 分层架构（API → Service → Repository），Swagger 文档，JWT 双 Token  
 ✅ **文档解析服务** — Python gRPC 微服务，支持 PDF/DOCX/MD/Excel/Web/Image  
 ✅ **完整的前端框架** — Vue 3 + TypeScript + Vite + TDesign UI  
