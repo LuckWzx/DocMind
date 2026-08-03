@@ -29,16 +29,11 @@ const (
 )
 
 type chatService struct {
-	sessionRepo     repository.SessionRepository
-	messageRepo     repository.MessageRepository
-	modelFactory    *ChatModelFactory
-	embedderFactory *EmbedderFactory
-	kbRepo          repository.KnowledgeBaseRepository
-	vectorStoreRepo repository.VectorStoreRepository
-	agentRepo       repository.AgentRepository
-	primaryDB       *gorm.DB
-	ragPipeline     *pipeline.Pipeline
-	pipelineDeps    *pipeline.PipelineDeps
+	sessionRepo  repository.SessionRepository
+	messageRepo  repository.MessageRepository
+	modelFactory *ChatModelFactory
+	agentRepo    repository.AgentRepository
+	ragPipeline  *pipeline.Pipeline
 }
 
 // NewChatService 创建对话服务
@@ -79,16 +74,11 @@ func NewChatService(
 	}
 
 	return &chatService{
-		sessionRepo:     sessionRepo,
-		messageRepo:     messageRepo,
-		modelFactory:    modelFactory,
-		embedderFactory: embedderFactory,
-		kbRepo:          kbRepo,
-		vectorStoreRepo: vectorStoreRepo,
-		agentRepo:       agentRepo,
-		primaryDB:       primaryDB,
-		ragPipeline:     ragPipeline,
-		pipelineDeps:    pipelineDeps,
+		sessionRepo:  sessionRepo,
+		messageRepo:  messageRepo,
+		modelFactory: modelFactory,
+		agentRepo:    agentRepo,
+		ragPipeline:  ragPipeline,
 	}, nil
 }
 
@@ -274,100 +264,6 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 	return config
 }
 
-// embedQuery 使用 Embedder 将查询文本转为向量，同时返回使用的模型 ID
-func (s *chatService) embedQuery(ctx context.Context, kbIDs []string, query string) ([]float32, string, error) {
-	if len(kbIDs) == 0 {
-		return nil, "", fmt.Errorf("未指定知识库")
-	}
-
-	kbID := parseUint(kbIDs[0])
-	kb, err := s.kbRepo.FindByID(kbID)
-	if err != nil || kb == nil {
-		return nil, "", fmt.Errorf("知识库不存在: %s", kbIDs[0])
-	}
-
-	embedderID := kb.EmbeddingModelID
-	if embedderID == "" {
-		embedderID = "default"
-	}
-
-	embedder, err := s.embedderFactory.CreateEmbedder(ctx, embedderID)
-	if err != nil {
-		return nil, "", fmt.Errorf("创建 Embedder 失败: %w", err)
-	}
-
-	vectors, err := embedder.EmbedStrings(ctx, []string{query})
-	if err != nil {
-		return nil, "", fmt.Errorf("Embedding 调用失败: %w", err)
-	}
-	if len(vectors) == 0 {
-		return nil, "", fmt.Errorf("Embedding 返回空结果")
-	}
-
-	// 将 []float64 转为 []float32
-	vec := vectors[0]
-	result := make([]float32, len(vec))
-	for i, v := range vec {
-		result[i] = float32(v)
-	}
-	return result, embedderID, nil
-}
-
-// vectorSearch 执行向量检索
-func (s *chatService) vectorSearch(ctx context.Context, kbIDs []string, queryVector []float32) ([]VectorSearchResult, error) {
-	if len(kbIDs) == 0 {
-		return nil, nil
-	}
-
-	// 查找默认向量存储
-	stores, _, err := s.vectorStoreRepo.ListByUser(0, 0, 1)
-	if err != nil || len(stores) == 0 {
-		return nil, fmt.Errorf("未配置向量存储")
-	}
-	store := stores[0]
-
-	// 创建向量驱动
-	driver, cleanup, err := s.getVectorDriver(store)
-	if err != nil {
-		return nil, fmt.Errorf("创建向量驱动失败: %w", err)
-	}
-	defer cleanup()
-
-	// 转换 KB IDs
-	uintKBIDs := make([]uint, 0, len(kbIDs))
-	for _, id := range kbIDs {
-		uintKBIDs = append(uintKBIDs, parseUint(id))
-	}
-
-	results, err := driver.Search(ctx, VectorSearchParams{
-		UserID:           0,
-		VectorStoreID:    store.ID,
-		KnowledgeBaseIDs: uintKBIDs,
-		QueryVector:      queryVector,
-		TopK:             defaultTopK,
-		Threshold:        0.5,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("向量检索失败: %w", err)
-	}
-
-	return results, nil
-}
-
-// getVectorDriver 根据 VectorStore 创建驱动
-func (s *chatService) getVectorDriver(store *entity.VectorStore) (VectorDriver, func(), error) {
-	switch strings.ToLower(store.EngineType) {
-	case entity.VectorStoreEnginePostgres:
-		db, cleanup, err := resolvePostgresDB(s.primaryDB, store)
-		if err != nil {
-			return nil, func() {}, err
-		}
-		return newPostgresVectorDriver(db, store), cleanup, nil
-	default:
-		return nil, func() {}, fmt.Errorf("不支持的向量引擎: %s", store.EngineType)
-	}
-}
-
 // resolvePostgresDB 解析 PostgreSQL 连接配置
 func resolvePostgresDB(primaryDB *gorm.DB, store *entity.VectorStore) (*gorm.DB, func(), error) {
 	connCfg := entity.ConnectionConfig{}
@@ -379,30 +275,6 @@ func resolvePostgresDB(primaryDB *gorm.DB, store *entity.VectorStore) (*gorm.DB,
 	}
 	// 如果配置了自定义连接，创建新的 DB 连接（简化实现：使用默认连接）
 	return primaryDB, func() {}, nil
-}
-
-// buildPrompt 构建 RAG Prompt
-func (s *chatService) buildPrompt(session *entity.Session, query string, searchResults []VectorSearchResult) []*einoschema.Message {
-	var docs strings.Builder
-	for i, result := range searchResults {
-		docs.WriteString(fmt.Sprintf("[文档 %d] (相似度: %.2f)\n%s\n\n", i+1, result.Score, result.Content))
-	}
-
-	systemContent := knowledgeQASystemPrompt
-	if docs.Len() > 0 {
-		systemContent += "\n\n## 检索到的文档内容\n\n" + docs.String()
-	}
-
-	return []*einoschema.Message{
-		{
-			Role:    einoschema.System,
-			Content: systemContent,
-		},
-		{
-			Role:    einoschema.User,
-			Content: query,
-		},
-	}
 }
 
 // CreateSession 创建会话
@@ -575,15 +447,4 @@ func (s *chatService) SaveAssistantMessage(ctx context.Context, sessionID uint, 
 	}
 	s.sessionRepo.UpdateLastMessage(sessionID, content)
 	return nil
-}
-
-// parseUint 解析字符串为 uint
-func parseUint(s string) uint {
-	var n uint
-	for _, c := range s {
-		if c >= '0' && c <= '9' {
-			n = n*10 + uint(c-'0')
-		}
-	}
-	return n
 }
