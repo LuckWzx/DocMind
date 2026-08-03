@@ -354,6 +354,19 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 		_ = ctrl.chatService.SaveAssistantMessage(c.Request.Context(), sessionID, fullContent, references)
 	}
 
+	// 首条消息后自动生成会话标题并推送，前端据此把侧栏的“新对话”更新为实际标题。
+	// 仅当标题仍为默认占位时生成，避免覆盖用户手动重命名的会话。
+	if req.Query != "" {
+		if newTitle, err := ctrl.chatService.GenerateSessionTitle(c.Request.Context(), sessionID, userID, req.Query); err == nil && newTitle != "" && newTitle != "新对话" {
+			writeSSEEvent(c.Writer, sseEvent{
+				ResponseType: "session_title",
+				Content:      newTitle,
+				SessionID:    strconv.FormatUint(uint64(sessionID), 10),
+			})
+			c.Writer.Flush()
+		}
+	}
+
 	// 发送完成事件
 	writeSSEEvent(c.Writer, sseEvent{
 		ResponseType: "complete",

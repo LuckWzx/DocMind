@@ -448,3 +448,38 @@ func (s *chatService) SaveAssistantMessage(ctx context.Context, sessionID uint, 
 	s.sessionRepo.UpdateLastMessage(sessionID, content)
 	return nil
 }
+
+// buildSessionTitle 由用户首条消息生成会话标题，截断规则与 GenerateTitle 接口保持一致。
+// 按 rune 计数以避免中文被截断成乱码。
+func buildSessionTitle(query string) string {
+	title := strings.TrimSpace(query)
+	if len([]rune(title)) > 20 {
+		title = string([]rune(title)[:20]) + "..."
+	}
+	if title == "" {
+		title = "新对话"
+	}
+	return title
+}
+
+// GenerateSessionTitle 若会话标题仍为默认占位（"新对话"），则用首条用户消息生成标题并落库。
+// 已被用户手动重命名的会话不会被覆盖。返回最终标题供调用方推送给前端。
+func (s *chatService) GenerateSessionTitle(ctx context.Context, sessionID uint, userID uint, query string) (string, error) {
+	session, err := s.sessionRepo.FindByID(sessionID)
+	if err != nil || session == nil {
+		return "", bizerrors.New(bizerrors.CodeResourceNotFound, "会话不存在")
+	}
+	if session.UserID != userID {
+		return "", bizerrors.New(bizerrors.CodeForbidden, "无权操作")
+	}
+	// 仅当标题仍为默认占位时才自动生成，避免覆盖用户手动设置的标题
+	if session.Title != "" && session.Title != "新对话" {
+		return session.Title, nil
+	}
+	title := buildSessionTitle(query)
+	session.Title = title
+	if err := s.sessionRepo.Update(session); err != nil {
+		return "", bizerrors.NewWithErr(bizerrors.CodeInternalError, "更新会话标题失败", err)
+	}
+	return title, nil
+}
