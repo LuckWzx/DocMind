@@ -11,9 +11,11 @@ import (
 	"strings"
 
 	"docmind/internal/model/entity"
+	"docmind/pkg/docreader"
 	bizerrors "docmind/pkg/errors"
 
 	"github.com/Tencent/WeKnora/docreader/proto"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -40,27 +42,44 @@ func (s *knowledgeService) enrichParsedDocument(
 
 	result := &parsedDocumentResult{
 		MarkdownContent: markdown,
-		ParserEngine:    detectSourceParser(resp.Metadata),
+		ParserEngine:    docreader.DetectSourceParser(resp.Metadata),
 	}
 
 	if s.imageStorage == nil || !s.imageStorage.Enabled() || len(resp.GetImageRefs()) == 0 {
 		return result, nil
 	}
 
-	replacements := make(map[string]string, len(resp.GetImageRefs())*2)
-	for _, ref := range resp.GetImageRefs() {
+	// 并行持久化图片
+	refs := resp.GetImageRefs()
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(5)                                    // 最多 5 个并发
+	storedResults := make([]*StoredImage, len(refs)) // 按原始索引对齐
+
+	for i, ref := range refs {
+		i, ref := i, ref
 		if ref == nil {
 			continue
 		}
+		g.Go(func() error {
+			stored, err := s.persistDocImage(gctx, knowledge, requestID, ref)
+			if err != nil {
+				return err
+			}
+			storedResults[i] = stored
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "并行保存图片失败", err)
+	}
 
-		stored, err := s.persistDocImage(ctx, knowledge, requestID, ref)
-		if err != nil {
-			return nil, err
-		}
+	// 串行构建替换映射（避免 map 并发写入）
+	replacements := make(map[string]string, len(refs)*2)
+	for i, stored := range storedResults {
 		if stored == nil || strings.TrimSpace(stored.URL) == "" {
 			continue
 		}
-
+		ref := refs[i]
 		result.ImageMappings = append(result.ImageMappings, *stored)
 		for _, candidate := range buildImageReplacementCandidates(ref, stored) {
 			replacements[candidate] = stored.URL

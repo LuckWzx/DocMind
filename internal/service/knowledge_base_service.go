@@ -262,6 +262,69 @@ func (s *knowledgeBaseService) GetKnowledge(userID, id uint) (*dto.KnowledgeDeta
 	return s.toKnowledgeDetailResponse(item, tag, chunkCount), nil
 }
 
+// BatchGetKnowledge 批量获取知识条目状态（供前端轮询用）
+func (s *knowledgeBaseService) BatchGetKnowledge(userID uint, ids []uint) ([]*dto.KnowledgeResponse, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	items, err := s.knowledgeRepo.FindByIDs(ids)
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "批量查询知识失败", err)
+	}
+	resp := make([]*dto.KnowledgeResponse, 0, len(items))
+	for _, item := range items {
+		tag, _ := s.loadTag(item.TagID)
+		resp = append(resp, s.toKnowledgeResponse(item, tag))
+	}
+	return resp, nil
+}
+
+// GetKnowledgeSpans 获取知识条目的处理时间线（供前端轮询用）
+func (s *knowledgeBaseService) GetKnowledgeSpans(userID, id uint) (*dto.KnowledgeSpansResponse, error) {
+	item, err := s.knowledgeRepo.FindByID(id)
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "查询知识失败", err)
+	}
+	if item == nil {
+		return nil, bizerrors.ErrResourceNotFound
+	}
+
+	// 映射 parse_status → trace status
+	traceStatus := "ok"
+	switch item.ParseStatus {
+	case parseStatusPending:
+		traceStatus = "pending"
+	case parseStatusProcessing:
+		traceStatus = "running"
+	case parseStatusFailed:
+		traceStatus = "error"
+	}
+
+	trace := &dto.SpanNode{
+		Name:   "knowledge-processing",
+		Kind:   "process",
+		Status: traceStatus,
+	}
+
+	var lastError *dto.SpanNode
+	if item.ParseStatus == parseStatusFailed && item.ErrorMessage != "" {
+		lastError = &dto.SpanNode{
+			Name:         "parse-error",
+			ErrorCode:    "PARSE_FAILED",
+			ErrorMessage: item.ErrorMessage,
+		}
+	}
+
+	return &dto.KnowledgeSpansResponse{
+		KnowledgeID:   item.ID,
+		Attempt:       1,
+		LatestAttempt: 1,
+		ParseStatus:   item.ParseStatus,
+		Trace:         trace,
+		LastError:     lastError,
+	}, nil
+}
+
 func (s *knowledgeBaseService) ListKnowledgeChunks(userID, knowledgeID uint, page, pageSize int) ([]map[string]interface{}, int64, error) {
 	item, err := s.knowledgeRepo.FindByID(knowledgeID)
 	if err != nil {

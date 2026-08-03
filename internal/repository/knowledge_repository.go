@@ -33,6 +33,17 @@ func (r *knowledgeRepository) FindByID(id uint) (*entity.Knowledge, error) {
 	return &item, nil
 }
 
+func (r *knowledgeRepository) FindByIDs(ids []uint) ([]*entity.Knowledge, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var items []*entity.Knowledge
+	if err := r.db.Where("id IN ?", ids).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 func (r *knowledgeRepository) List(filter KnowledgeListFilter) ([]*entity.Knowledge, int64, error) {
 	query := r.db.Model(&entity.Knowledge{}).Where("knowledge_base_id = ?", filter.KnowledgeBaseID)
 	if len(filter.TagIDs) > 0 {

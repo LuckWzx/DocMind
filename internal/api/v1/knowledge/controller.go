@@ -114,6 +114,45 @@ func (ctrl *Controller) GetKnowledge(c *gin.Context) {
 	response.Success(c, item)
 }
 
+// BatchGetKnowledge 批量获取知识条目状态（供前端轮询用）
+func (ctrl *Controller) BatchGetKnowledge(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	idsRaw := c.QueryArray("ids")
+	if len(idsRaw) == 0 {
+		response.Success(c, []interface{}{})
+		return
+	}
+	ids := make([]uint, 0, len(idsRaw))
+	for _, raw := range idsRaw {
+		id, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, uint(id))
+	}
+	items, err := ctrl.kbService.BatchGetKnowledge(userID, ids)
+	if err != nil {
+		response.BizError(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+
+// GetKnowledgeSpans 获取知识处理时间线
+func (ctrl *Controller) GetKnowledgeSpans(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	id, ok := parseUintParam(c, "id")
+	if !ok {
+		return
+	}
+	spans, err := ctrl.kbService.GetKnowledgeSpans(userID, id)
+	if err != nil {
+		response.BizError(c, err)
+		return
+	}
+	response.Success(c, spans)
+}
+
 func (ctrl *Controller) PreviewKnowledgeFile(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	id, ok := parseUintParam(c, "id")

@@ -17,8 +17,10 @@ type KnowledgeBaseService interface {
 	UploadFile(userID, kbID uint, fileHeader *multipart.FileHeader, processConfig string, tagID *uint) (*dto.KnowledgeResponse, error)
 	ListKnowledge(userID, kbID uint, request *req.KnowledgeListRequest) ([]*dto.KnowledgeResponse, int64, error)
 	GetKnowledge(userID, id uint) (*dto.KnowledgeDetailResponse, error)
+	BatchGetKnowledge(userID uint, ids []uint) ([]*dto.KnowledgeResponse, error)
 	ListKnowledgeChunks(userID, knowledgeID uint, page, pageSize int) ([]map[string]interface{}, int64, error)
 	UpdateKnowledgeTags(userID uint, updates map[uint][]uint) error
 	ReparseKnowledge(userID, id uint, processConfig string) (*dto.KnowledgeResponse, error)
+	GetKnowledgeSpans(userID, id uint) (*dto.KnowledgeSpansResponse, error)
 	DeleteKnowledge(userID, id uint) error
 }

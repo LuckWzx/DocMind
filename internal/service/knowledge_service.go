@@ -2,14 +2,9 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
-	"mime"
 	"mime/multipart"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,15 +14,15 @@ import (
 	"docmind/internal/model/entity"
 	"docmind/internal/repository"
 	"docmind/pkg/config"
+	"docmind/pkg/docreader"
 	docreaderclient "docmind/pkg/docreader/client"
 	bizerrors "docmind/pkg/errors"
+	"docmind/pkg/fileutil"
 	"docmind/pkg/logger"
 
 	"github.com/Tencent/WeKnora/docreader/proto"
 	"github.com/google/uuid"
-	pgvector "github.com/pgvector/pgvector-go"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const (
@@ -101,7 +96,7 @@ func (s *knowledgeService) UploadFile(userID uint, knowledgeBaseID uint, fileHea
 		return nil, bizerrors.New(bizerrors.CodeInvalidParam, "无法识别文件类型")
 	}
 
-	fileBytes, err := readUploadedFile(fileHeader)
+	fileBytes, err := fileutil.ReadUploadedFile(fileHeader)
 	if err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "读取上传文件失败", err)
 	}
@@ -132,34 +127,8 @@ func (s *knowledgeService) UploadFile(userID uint, knowledgeBaseID uint, fileHea
 		return nil, err
 	}
 
-	parseResult, err := s.parseMarkdown(fileBytes, fileName, fileType, kb, knowledge)
-	if err != nil {
-		_ = s.updateKnowledgeStatus(knowledge, parseStatusFailed, err.Error())
-		return nil, err
-	}
-	if err := s.applyParsedDocumentMetadata(knowledge, parseResult); err != nil {
-		_ = s.updateKnowledgeStatus(knowledge, parseStatusFailed, err.Error())
-		return nil, err
-	}
-
-	chunks, err := s.buildMarkdownChunks(parseResult.MarkdownContent, parseResult.ParserEngine, kb, knowledge)
-	if err != nil {
-		_ = s.updateKnowledgeStatus(knowledge, parseStatusFailed, err.Error())
-		return nil, err
-	}
-	if err := s.chunkRepo.CreateBatch(chunks); err != nil {
-		_ = s.updateKnowledgeStatus(knowledge, parseStatusFailed, "保存分块失败")
-		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "保存分块失败", err)
-	}
-
-	// 向量化存储（非关键路径，失败不阻塞上传）
-	if err := s.embedChunks(context.Background(), userID, knowledge, chunks, kb); err != nil {
-		logger.Warnf("[UploadFile] 向量化失败: %v", err)
-	}
-
-	if err := s.updateKnowledgeStatus(knowledge, parseStatusCompleted, ""); err != nil {
-		return nil, err
-	}
+	// 异步处理：解析 → 分块 → 向量化（不阻塞 HTTP 响应）
+	go s.processUploadAsync(knowledge, fileBytes, fileName, fileType, kb, userID)
 
 	return &dto.KnowledgeFileUploadResponse{
 		KnowledgeID:     knowledge.ID,
@@ -168,74 +137,54 @@ func (s *knowledgeService) UploadFile(userID uint, knowledgeBaseID uint, fileHea
 		FileType:        knowledge.FileType,
 		FilePath:        knowledge.FileURL,
 		ParseStatus:     knowledge.ParseStatus,
-		ChunkCount:      len(chunks),
-		MarkdownChars:   len([]rune(parseResult.MarkdownContent)),
+		ChunkCount:      0,
+		MarkdownChars:   0,
 	}, nil
 }
 
-// embedChunks 将分块内容向量化并写入 chunk_vectors 表
-func (s *knowledgeService) embedChunks(ctx context.Context, userID uint, knowledge *entity.Knowledge, chunks []*entity.Chunk, kb *entity.KnowledgeBase) error {
-	if s.embedderFactory == nil || s.db == nil {
-		logger.Warnf("[embedChunks] embedderFactory 或 db 未初始化，跳过向量化")
-		return nil
-	}
-	if kb.EmbeddingModelID == "" {
-		logger.Warnf("[embedChunks] 知识库 %d 未配置 EmbeddingModelID，跳过向量化", kb.ID)
-		return nil
-	}
+// processUploadAsync 异步执行解析 → 分块 → 向量化流水线
+func (s *knowledgeService) processUploadAsync(knowledge *entity.Knowledge, fileBytes []byte, fileName, fileType string, kb *entity.KnowledgeBase, userID uint) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Warnf("[UploadAsync] panic recovered knowledge=%d: %v", knowledge.ID, r)
+			_ = s.updateKnowledgeStatus(knowledge, parseStatusFailed, fmt.Sprintf("panic: %v", r))
+		}
+	}()
 
-	embedder, err := s.embedderFactory.CreateEmbedder(ctx, kb.EmbeddingModelID)
+	ctx := context.Background()
+
+	parseResult, err := s.parseMarkdown(fileBytes, fileName, fileType, kb, knowledge)
 	if err != nil {
-		return fmt.Errorf("创建 Embedder 失败 (modelID=%s): %w", kb.EmbeddingModelID, err)
+		logger.Warnf("[UploadAsync] 解析失败 knowledge=%d: %v", knowledge.ID, err)
+		_ = s.updateKnowledgeStatus(knowledge, parseStatusFailed, err.Error())
+		return
+	}
+	if err := s.applyParsedDocumentMetadata(knowledge, parseResult); err != nil {
+		logger.Warnf("[UploadAsync] 保存元数据失败 knowledge=%d: %v", knowledge.ID, err)
+		_ = s.updateKnowledgeStatus(knowledge, parseStatusFailed, err.Error())
+		return
 	}
 
-	texts := make([]string, len(chunks))
-	for i, chunk := range chunks {
-		texts[i] = chunk.Content
-	}
-
-	vectors2D, err := embedder.EmbedStrings(ctx, texts)
+	chunks, err := s.buildMarkdownChunks(parseResult.MarkdownContent, parseResult.ParserEngine, kb, knowledge)
 	if err != nil {
-		return fmt.Errorf("向量化失败: %w", err)
+		logger.Warnf("[UploadAsync] 分块失败 knowledge=%d: %v", knowledge.ID, err)
+		_ = s.updateKnowledgeStatus(knowledge, parseStatusFailed, err.Error())
+		return
+	}
+	if err := s.chunkRepo.CreateBatch(chunks); err != nil {
+		logger.Warnf("[UploadAsync] 保存分块失败 knowledge=%d: %v", knowledge.ID, err)
+		_ = s.updateKnowledgeStatus(knowledge, parseStatusFailed, "保存分块失败")
+		return
 	}
 
-	vectorStoreID := kb.VectorStoreID
-	if vectorStoreID == nil {
-		var defaultStore entity.VectorStore
-		if err := s.db.Where("status = ?", entity.VectorStoreStatusActive).First(&defaultStore).Error; err != nil {
-			logger.Warnf("[embedChunks] 知识库 %d 未配置 VectorStoreID 且未找到可用向量存储，跳过向量化", kb.ID)
-			return nil
-		}
-		id := defaultStore.ID
-		vectorStoreID = &id
+	// 向量化存储（非关键路径，失败不阻塞）
+	if err := s.embedChunks(ctx, userID, knowledge, chunks, kb); err != nil {
+		logger.Warnf("[UploadAsync] 向量化失败 knowledge=%d: %v", knowledge.ID, err)
 	}
 
-	for i, chunk := range chunks {
-		if i >= len(vectors2D) {
-			break
-		}
-		vec32 := make([]float32, len(vectors2D[i]))
-		for j, v := range vectors2D[i] {
-			vec32[j] = float32(v)
-		}
-		record := &entity.ChunkVector{
-			UserID:          userID,
-			VectorStoreID:   *vectorStoreID,
-			KnowledgeBaseID: knowledge.KnowledgeBaseID,
-			KnowledgeID:     knowledge.ID,
-			ChunkID:         chunk.ID,
-			Embedding:       pgvector.NewVector(vec32),
-			ContentHash:     chunk.ContentHash,
-			IsEnabled:       true,
-		}
-		if err := s.db.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "chunk_id"}},
-			UpdateAll: true,
-		}).Create(record).Error; err != nil {
-			return fmt.Errorf("保存向量失败: %w", err)
-		}
+	if err := s.updateKnowledgeStatus(knowledge, parseStatusCompleted, ""); err != nil {
+		logger.Warnf("[UploadAsync] 更新状态失败 knowledge=%d: %v", knowledge.ID, err)
 	}
-	return nil
 }
 
 func (s *knowledgeService) PreviewFile(userID uint, knowledgeID uint) (*KnowledgePreviewFile, error) {
@@ -280,7 +229,7 @@ func (s *knowledgeService) PreviewFile(userID uint, knowledgeID uint) (*Knowledg
 		fileName = filepath.Base(filePath)
 	}
 
-	contentType := detectPreviewContentType(fileName, raw)
+	contentType := fileutil.DetectPreviewContentType(fileName, raw)
 	return &KnowledgePreviewFile{
 		FileName:    fileName,
 		FileType:    knowledge.FileType,
@@ -302,7 +251,14 @@ func (s *knowledgeService) parseMarkdown(
 		RequestId:   uuid.NewString(),
 		Title:       fileName,
 	}
-	if parserEngine := resolveParserEngine(kb.ChunkingConfig.ParserEngineRules, fileType); parserEngine != "" {
+	rules := make(map[string]string, len(kb.ChunkingConfig.ParserEngineRules))
+	for _, r := range kb.ChunkingConfig.ParserEngineRules {
+		for _, ft := range r.FileTypes {
+			rules[ft] = r.Engine
+		}
+	}
+	parserEngine := docreader.ResolveParserEngine(rules, fileType)
+	if parserEngine != "" {
 		request.Config = &proto.ReadConfig{
 			ParserEngine: parserEngine,
 		}
@@ -365,7 +321,7 @@ func (s *knowledgeService) buildMarkdownChunks(markdownContent string, parserEng
 			ChunkType:       entity.ChunkTypeMarkdown,
 			ChunkStatus:     1,
 			Metadata:        entity.JSON(metadataRaw),
-			ContentHash:     sha256Hex(content),
+			ContentHash:     fileutil.Sha256Hex(content),
 			IsEnabled:       true,
 		})
 	}
@@ -380,17 +336,7 @@ func (s *knowledgeService) storeUploadedFile(knowledgeBaseID uint, fileName stri
 	if s.cfg != nil && strings.TrimSpace(s.cfg.Storage.LocalRoot) != "" {
 		root = strings.TrimSpace(s.cfg.Storage.LocalRoot)
 	}
-
-	extension := filepath.Ext(fileName)
-	storedName := uuid.NewString() + extension
-	relativePath := filepath.Join(root, fmt.Sprintf("%d", knowledgeBaseID), storedName)
-	if err := os.MkdirAll(filepath.Dir(relativePath), 0o755); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(relativePath, fileBytes, 0o644); err != nil {
-		return "", err
-	}
-	return relativePath, nil
+	return fileutil.StoreFile(root, fmt.Sprintf("%d", knowledgeBaseID), fileName, fileBytes)
 }
 
 func (s *knowledgeService) updateKnowledgeStatus(knowledge *entity.Knowledge, status, errorMessage string) error {
@@ -400,130 +346,4 @@ func (s *knowledgeService) updateKnowledgeStatus(knowledge *entity.Knowledge, st
 		return bizerrors.NewWithErr(bizerrors.CodeInternalError, "更新知识状态失败", err)
 	}
 	return nil
-}
-
-func readUploadedFile(fileHeader *multipart.FileHeader) ([]byte, error) {
-	file, err := fileHeader.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	return io.ReadAll(file)
-}
-
-func selectParserEngine(rules []entity.ParserEngineRule, fileType string) string {
-	normalizedType := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(fileType)), ".")
-	if normalizedType == "" {
-		return ""
-	}
-	for _, rule := range rules {
-		for _, candidate := range rule.FileTypes {
-			current := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(candidate)), ".")
-			if current == normalizedType {
-				return strings.TrimSpace(rule.Engine)
-			}
-		}
-	}
-	return ""
-}
-
-func resolveParserEngine(rules []entity.ParserEngineRule, fileType string) string {
-	if parserEngine := selectParserEngine(rules, fileType); parserEngine != "" {
-		return parserEngine
-	}
-	return defaultParserEngine(fileType)
-}
-
-func defaultParserEngine(fileType string) string {
-	switch strings.TrimPrefix(strings.ToLower(strings.TrimSpace(fileType)), ".") {
-	case "ppt", "pptx", "csv":
-		return "markitdown"
-	default:
-		return ""
-	}
-}
-
-func detectSourceParser(metadata map[string]string) string {
-	if len(metadata) == 0 {
-		return ""
-	}
-	for _, key := range []string{"parser_engine", "parser", "engine"} {
-		if value := strings.TrimSpace(metadata[key]); value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func sha256Hex(input string) string {
-	sum := sha256.Sum256([]byte(input))
-	return hex.EncodeToString(sum[:])
-}
-
-func detectPreviewContentType(fileName string, raw []byte) string {
-	ext := strings.ToLower(strings.TrimSpace(filepath.Ext(fileName)))
-	if ext != "" {
-		if contentType := previewContentTypeByExt(ext); contentType != "" {
-			return contentType
-		}
-		if contentType := strings.TrimSpace(mime.TypeByExtension(ext)); contentType != "" {
-			return contentType
-		}
-	}
-
-	if len(raw) > 0 {
-		return http.DetectContentType(raw)
-	}
-	return "application/octet-stream"
-}
-
-func previewContentTypeByExt(ext string) string {
-	switch ext {
-	case ".pdf":
-		return "application/pdf"
-	case ".docx":
-		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-	case ".doc":
-		return "application/msword"
-	case ".pptx":
-		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-	case ".ppt":
-		return "application/vnd.ms-powerpoint"
-	case ".xlsx":
-		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-	case ".xls":
-		return "application/vnd.ms-excel"
-	case ".csv":
-		return "text/csv; charset=utf-8"
-	case ".md", ".markdown":
-		return "text/markdown; charset=utf-8"
-	case ".txt", ".json", ".xml", ".html", ".css", ".js", ".ts", ".py", ".java", ".go", ".cpp", ".c", ".h", ".sh", ".yaml", ".yml", ".ini", ".conf", ".log", ".sql", ".rs", ".rb", ".php", ".swift", ".kt", ".scala", ".r", ".lua", ".pl", ".toml":
-		return "text/plain; charset=utf-8"
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".png":
-		return "image/png"
-	case ".gif":
-		return "image/gif"
-	case ".bmp":
-		return "image/bmp"
-	case ".webp":
-		return "image/webp"
-	case ".tiff", ".tif":
-		return "image/tiff"
-	case ".svg":
-		return "image/svg+xml"
-	case ".mp3":
-		return "audio/mpeg"
-	case ".wav":
-		return "audio/wav"
-	case ".m4a":
-		return "audio/mp4"
-	case ".flac":
-		return "audio/flac"
-	case ".ogg":
-		return "audio/ogg"
-	default:
-		return ""
-	}
 }

@@ -22,6 +22,7 @@ type KnowledgeListFilter struct {
 type KnowledgeRepository interface {
 	Create(item *entity.Knowledge) error
 	FindByID(id uint) (*entity.Knowledge, error)
+	FindByIDs(ids []uint) ([]*entity.Knowledge, error)
 	List(filter KnowledgeListFilter) ([]*entity.Knowledge, int64, error)
 	Update(item *entity.Knowledge) error
 	Delete(id uint) error

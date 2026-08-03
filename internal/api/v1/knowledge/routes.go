@@ -2,6 +2,7 @@ package knowledge
 
 import (
 	"docmind/internal/middleware"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -9,11 +10,13 @@ import (
 func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 	r.Use(middleware.Auth())
 	// 独立路由 — knowledge 和 chunks 不挂在 :id 下
+	r.PUT("knowledge/tags", ctrl.UpdateKnowledgeTags)
+	r.GET("knowledge/batch", ctrl.BatchGetKnowledge)
 	r.GET("knowledge/:id", ctrl.GetKnowledge)
 	r.GET("knowledge/:id/preview", ctrl.PreviewKnowledgeFile)
+	r.GET("knowledge/:id/spans", ctrl.GetKnowledgeSpans)
 	r.POST("knowledge/:id/reparse", ctrl.ReparseKnowledge)
 	r.DELETE("knowledge/:id", ctrl.DeleteKnowledge)
-	r.PUT("knowledge/tags", ctrl.UpdateKnowledgeTags)
 	r.GET("chunks/:id", ctrl.ListKnowledgeChunks)
 
 	knowledgeBaseGroup := r.Group("/knowledge-bases")
