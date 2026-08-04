@@ -33,6 +33,7 @@ type chatService struct {
 	messageRepo  repository.MessageRepository
 	modelFactory *ChatModelFactory
 	agentRepo    repository.AgentRepository
+	kbRepo       repository.KnowledgeBaseRepository
 	ragPipeline  *pipeline.Pipeline
 }
 
@@ -78,6 +79,7 @@ func NewChatService(
 		messageRepo:  messageRepo,
 		modelFactory: modelFactory,
 		agentRepo:    agentRepo,
+		kbRepo:       kbRepo,
 		ragPipeline:  ragPipeline,
 	}, nil
 }
@@ -226,7 +228,18 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 			if agent.Config.ModelID != "" {
 				config.ModelID = agent.Config.ModelID
 			}
-			if len(agent.Config.KnowledgeBases) > 0 {
+			// 处理知识库配置
+			if agent.Config.KBSelectionMode == "all" {
+				// 自动检索所有知识库
+				allKBs, err := s.kbRepo.ListByUser(0)
+				if err == nil && len(allKBs) > 0 {
+					kbIDs := make([]string, 0, len(allKBs))
+					for _, kb := range allKBs {
+						kbIDs = append(kbIDs, fmt.Sprintf("%d", kb.ID))
+					}
+					config.KnowledgeBaseIDs = kbIDs
+				}
+			} else if len(agent.Config.KnowledgeBases) > 0 {
 				config.KnowledgeBaseIDs = agent.Config.KnowledgeBases
 			}
 			if agent.Config.SystemPrompt != "" {
@@ -429,14 +442,39 @@ func (s *chatService) LoadMessages(ctx context.Context, sessionID uint, userID u
 }
 
 // SaveAssistantMessage 保存助手回复
-func (s *chatService) SaveAssistantMessage(ctx context.Context, sessionID uint, content string, references []entity.Reference) error {
+func (s *chatService) SaveAssistantMessage(ctx context.Context, sessionID uint, content string, references []entity.Reference, agentSteps entity.AgentSteps, isCompleted bool, agentDurationMs int64, isFallback bool) error {
+	// 将 References 转换为 JSON 格式以便存储
+	var refsJSON *entity.ReferenceJSONs
+	if len(references) > 0 {
+		refsJSON = &entity.ReferenceJSONs{}
+		for _, r := range references {
+			*refsJSON = append(*refsJSON, entity.ReferenceJSON{
+				ChunkID:        r.ChunkID,
+				Content:        r.Content,
+				Score:          r.Score,
+				KnowledgeID:    r.KnowledgeID,
+				KnowledgeTitle: r.KnowledgeTitle,
+			})
+		}
+	}
+
+	// 初始化 agentSteps（避免 nil）
+	if agentSteps == nil {
+		agentSteps = entity.AgentSteps{}
+	}
+
 	msg := &entity.Message{
 		SessionID:           sessionID,
 		Role:                "assistant",
 		Content:             content,
 		RenderedContent:     content,
+		ReferencesJSON:      refsJSON,
 		KnowledgeReferences: references,
 		FinishReason:        "stop",
+		AgentSteps:          agentSteps,
+		IsCompleted:         isCompleted,
+		AgentDurationMs:     agentDurationMs,
+		IsFallback:          isFallback,
 	}
 	if err := s.messageRepo.Create(msg); err != nil {
 		return err

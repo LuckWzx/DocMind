@@ -20,15 +20,10 @@
   // this span (see applyStreamingTailFade) so its right edge dissolves, giving
   // a soft "just typed" reveal that settles once streaming stops and the wrap
   // is no longer emitted.
+  // Disabled: the fade effect made the last few characters nearly invisible,
+  // which hurt readability during streaming.
   :deep(.stream-fade-tail) {
-    -webkit-mask-image: linear-gradient(to right,
-        rgba(0, 0, 0, 1) 0%,
-        rgba(0, 0, 0, 0.7) 30%,
-        rgba(0, 0, 0, 0) 100%);
-    mask-image: linear-gradient(to right,
-        rgba(0, 0, 0, 1) 0%,
-        rgba(0, 0, 0, 0.7) 30%,
-        rgba(0, 0, 0, 0) 100%);
+    // mask-image removed – display text normally.
   }
 
   :deep(p) {

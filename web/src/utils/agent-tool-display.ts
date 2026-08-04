@@ -117,6 +117,11 @@ export function getKnowledgeSearchSummaryHtml(
 ): string {
   if (!toolData) return ''
 
+  // Check if no knowledge bases were selected
+  if (toolData.no_knowledge_bases === true) {
+    return t('agentStream.search.noKnowledgeBasesSelected')
+  }
+
   const results = toolData.results
   const count = (Array.isArray(results) ? results.length : 0) || Number(toolData.count) || 0
   if (count === 0) return t('agentStream.search.noResults')

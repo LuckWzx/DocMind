@@ -536,6 +536,9 @@ const {
     handleMsgList,
     processStreamChunk,
     prepareForNewOutgoingMessage,
+    createPendingAssistantMessage,
+    removePendingPlaceholder,
+    updateKnowledgeSearchStep,
     markInFlightAssistantStopped,
 } = useChatStreamHandler({
     messagesList,
@@ -791,6 +794,9 @@ const sendMsg = async (value, modelId = '', mentionedItems = [], imageFiles = []
 
     const requestMcpServiceIds = agentEnabled ? mcpServiceIds : [];
     const requestSkillNames = agentEnabled ? skillNames : [];
+
+    // Create placeholder message for RAG pipeline progress display (all modes)
+    createPendingAssistantMessage(value);
 
     const suggestionAttribution = pendingSuggestionAttribution;
     pendingSuggestionAttribution = null;

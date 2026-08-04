@@ -295,24 +295,25 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 		return
 	}
 
-	// 先发送 references 事件
-	if len(searchResults) > 0 {
-		refs := make([]reference, 0, len(searchResults))
-		for _, r := range searchResults {
-			refs = append(refs, reference{
-				ChunkID:        r.ChunkID,
-				Content:        r.Content,
-				Score:          r.Score,
-				KnowledgeID:    r.KnowledgeID,
-				KnowledgeTitle: r.KnowledgeTitle,
-			})
-		}
-		writeSSEEvent(c.Writer, sseEvent{
-			ResponseType: "references",
-			References:   refs,
+	// 先发送 references 事件（即使为空也要发送，以便前端显示检索进度）
+	refs := make([]reference, 0, len(searchResults))
+	for _, r := range searchResults {
+		refs = append(refs, reference{
+			ChunkID:        r.ChunkID,
+			Content:        r.Content,
+			Score:          r.Score,
+			KnowledgeID:    r.KnowledgeID,
+			KnowledgeTitle: r.KnowledgeTitle,
 		})
-		c.Writer.Flush()
 	}
+	writeSSEEvent(c.Writer, sseEvent{
+		ResponseType: "references",
+		References:   refs,
+	})
+	c.Writer.Flush()
+
+	// 记录开始时间，用于计算 agent 执行时长
+	agentStartTime := time.Now()
 
 	// 流式读取 LLM 回复并推送给前端
 	var fullContent string
@@ -339,6 +340,40 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 		}
 	}
 
+	// 计算 agent 执行时长
+	agentDurationMs := time.Since(agentStartTime).Milliseconds()
+
+	// 构建 agent_steps（RAG 管道的两个步骤：query_understand 和 knowledge_search）
+	agentSteps := entity.AgentSteps{
+		{
+			Iteration: 1,
+			Timestamp: agentStartTime,
+			Duration:  0, // 第一步几乎不耗时
+			ToolCalls: []entity.AgentStepToolCall{{
+				ID:   "rag-history-query-understand",
+				Name: "query_understand",
+			}},
+		},
+		{
+			Iteration: 2,
+			Timestamp: agentStartTime,
+			Duration:  agentDurationMs,
+			ToolCalls: []entity.AgentStepToolCall{{
+				ID:   "rag-history-knowledge-search",
+				Name: "knowledge_search",
+				Result: &entity.AgentStepToolResult{
+					Success: true,
+					Data: map[string]interface{}{
+						"count": len(searchResults),
+					},
+				},
+			}},
+		},
+	}
+
+	// 判断是否为兜底回复（没有搜索结果）
+	isFallback := len(searchResults) == 0
+
 	// 保存助手消息
 	if fullContent != "" {
 		var references []entity.Reference
@@ -351,7 +386,10 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 				KnowledgeTitle: r.KnowledgeTitle,
 			})
 		}
-		_ = ctrl.chatService.SaveAssistantMessage(c.Request.Context(), sessionID, fullContent, references)
+		_ = ctrl.chatService.SaveAssistantMessage(
+			c.Request.Context(), sessionID, fullContent, references,
+			agentSteps, true, agentDurationMs, isFallback,
+		)
 	}
 
 	// 首条消息后自动生成会话标题并推送，前端据此把侧栏的“新对话”更新为实际标题。

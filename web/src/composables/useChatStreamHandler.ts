@@ -1,4 +1,4 @@
-import { markRaw, nextTick, type Ref } from 'vue'
+import { markRaw, nextTick, type Ref, triggerRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ensureRagPipelineHistoryStream } from '@/utils/rag-pipeline-history'
 
@@ -103,6 +103,122 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
     currentAssistantMessageId.value = ''
   }
 
+  /** Create a placeholder assistant message to show RAG pipeline progress immediately. */
+  const createPendingAssistantMessage = (userQuery: string) => {
+    const placeholderId = `pending-${Date.now()}`
+    const isAgentMode = isAgentStreamSession()
+    
+    // Create simulated tool_call events for RAG pipeline progress display
+    const simulatedEvents: Array<Record<string, unknown>> = []
+    if (!isAgentMode) {
+      // Simulate query_understand step
+      simulatedEvents.push({
+        type: 'tool_call',
+        tool_call_id: `${placeholderId}-query-understand`,
+        tool_name: 'query_understand',
+        pending: false,
+        success: true,
+        timestamp: Date.now(),
+      })
+      
+      // Simulate knowledge_search step (pending initially)
+      simulatedEvents.push({
+        type: 'tool_call',
+        tool_call_id: `${placeholderId}-knowledge-search`,
+        tool_name: 'knowledge_search',
+        pending: true,
+        timestamp: Date.now() + 100,
+      })
+    }
+    
+    const placeholderMessage: ChatMessage = {
+      id: placeholderId,
+      request_id: placeholderId,
+      role: 'assistant',
+      content: '',
+      isAgentMode: isAgentMode,
+      isRagMode: !isAgentMode, // Show RAG pipeline progress for non-agent mode
+      is_completed: false,
+      agentEventStream: simulatedEvents,
+      _eventMap: new Map(),
+      _pendingToolCalls: new Map(),
+      knowledge_references: [],
+      isPendingPlaceholder: true,
+    }
+    messagesList.push(placeholderMessage)
+    onMessageCreated?.(placeholderMessage)
+    loading.value = false
+    scrollToBottom(true)
+    log('[Placeholder] Created pending assistant message with simulated events:', placeholderId)
+    return placeholderMessage
+  }
+
+  /** Remove placeholder message when real stream starts. */
+  const removePendingPlaceholder = () => {
+    const idx = messagesList.findIndex(
+      (m) => m.role === 'assistant' && m.isPendingPlaceholder,
+    )
+    if (idx !== -1) {
+      messagesList.splice(idx, 1)
+      log('[Placeholder] Removed pending placeholder message')
+    }
+  }
+
+  /** Update knowledge_search step to completed state with search results. */
+  const updateKnowledgeSearchStep = (message: ChatMessage, searchResults: unknown[]) => {
+    log('[UpdateKnowledgeSearch] Called with searchResults:', searchResults.length)
+    if (!message.agentEventStream || !Array.isArray(message.agentEventStream)) {
+      log('[UpdateKnowledgeSearch] agentEventStream is not an array')
+      return
+    }
+    
+    log('[UpdateKnowledgeSearch] agentEventStream:', message.agentEventStream)
+    const searchStepIndex = message.agentEventStream.findIndex(
+      (event: Record<string, unknown>) => event.type === 'tool_call' && event.tool_name === 'knowledge_search'
+    )
+    
+    log('[UpdateKnowledgeSearch] searchStepIndex:', searchStepIndex)
+    if (searchStepIndex !== -1) {
+      // Add tool_data with search results summary
+      const kbCounts: Record<string, number> = {}
+      let docCount = 0
+      
+      searchResults.forEach((result: any) => {
+        docCount++
+        const key = result.knowledge_id || result.knowledge_title || 'document'
+        kbCounts[key] = (kbCounts[key] || 0) + 1
+      })
+      
+      // Check if user has selected any knowledge bases
+      const refs = message.knowledge_references as unknown[] | undefined
+      const hasKnowledgeBases = Array.isArray(refs) && refs.length > 0
+      
+      // Create a new object to ensure reactivity
+      const updatedStep = {
+        ...message.agentEventStream[searchStepIndex],
+        pending: false,
+        success: true,
+        tool_data: {
+          count: searchResults.length,
+          doc_count: docCount,
+          kb_counts: kbCounts,
+          results: searchResults,
+          // Add flag to indicate if knowledge bases were selected
+          no_knowledge_bases: !hasKnowledgeBases && searchResults.length === 0,
+        },
+      }
+      
+      log('[UpdateKnowledgeSearch] Updated step:', updatedStep)
+      
+      // Create a new array to trigger Vue reactivity
+      const newStream = [...message.agentEventStream]
+      newStream[searchStepIndex] = updatedStep
+      message.agentEventStream = newStream
+      
+      log('[UpdateKnowledgeSearch] Updated agentEventStream with new array')
+    }
+  }
+
   /** Mark the assistant row being stopped without clearing its id (stop API still needs it). */
   const markInFlightAssistantStopped = (messageId?: string) => {
     let target: ChatMessage | undefined
@@ -154,32 +270,56 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
 
   const applyKnowledgeReferences = (data: ChatMessage) => {
     const refs = extractKnowledgeReferences(data)
-    if (!refs.length) return undefined
-
+    log('[References] Received references:', refs.length, refs)
+    
+    // Always find or create message, even with empty refs
     let message = resolveActiveAssistantMessage(data)
     const created = !message
     if (!message) {
-      const rowId = (data.id as string | undefined) || currentAssistantMessageId.value
-      message = {
-        id: rowId,
-        request_id: rowId,
-        role: 'assistant',
-        content: '',
-        showThink: false,
-        thinkContent: '',
-        thinking: false,
-        is_completed: false,
-        knowledge_references: [],
+      // Check for pending placeholder first
+      const placeholderIdx = messagesList.findIndex(
+        (m) => m.role === 'assistant' && m.isPendingPlaceholder,
+      )
+      if (placeholderIdx !== -1) {
+        message = messagesList[placeholderIdx] as ChatMessage
+        const rowId = (data.id as string | undefined) || currentAssistantMessageId.value
+        if (rowId) {
+          message.id = rowId
+          message.request_id = rowId
+        }
+        message.isPendingPlaceholder = false
+        ensureAgentMessageShell(message, data.id as string | undefined)
+        log('[References] Using pending placeholder message')
+      } else {
+        const rowId = (data.id as string | undefined) || currentAssistantMessageId.value
+        message = {
+          id: rowId,
+          request_id: rowId,
+          role: 'assistant',
+          content: '',
+          showThink: false,
+          thinkContent: '',
+          thinking: false,
+          is_completed: false,
+          knowledge_references: [],
+        }
+        ensureAgentMessageShell(message, data.id as string | undefined)
+        messagesList.push(message)
+        onMessageCreated?.(message)
+        loading.value = false
       }
-      ensureAgentMessageShell(message, data.id as string | undefined)
-      messagesList.push(message)
-      onMessageCreated?.(message)
-      loading.value = false
     } else {
       ensureAgentMessageShell(message, data.id as string | undefined)
     }
 
     message.knowledge_references = refs.slice()
+    
+    // Update knowledge_search step in RAG pipeline progress
+    if (message.agentEventStream && Array.isArray(message.agentEventStream)) {
+      log('[References] Updating knowledge_search step, agentEventStream length:', message.agentEventStream.length)
+      updateKnowledgeSearchStep(message, refs)
+    }
+    
     if (created) onAgentChunkBound?.(message, true)
     onMessageUpdated?.(message, data)
     log('[References] Saved to message, count:', refs.length)
@@ -379,6 +519,12 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
         item._pendingToolCalls = markRaw(new Map())
       }
 
+      // 历史消息已完整存储在数据库中，标记为已完成以跳过打字机动画
+      // 注意：必须在 restoreQuickAnswerFlags 之前设置，否则 ensureRagPipelineHistoryStream 会因条件不满足而跳过
+      if (item.role === 'assistant' && item.content && !item.is_completed) {
+        item.is_completed = true
+      }
+
       if (item.agent_steps && Array.isArray(item.agent_steps) && item.agent_steps.length > 0) {
         item.isAgentMode = true
         item.agentEventStream = markRaw(
@@ -467,6 +613,10 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
       }
       if (payload.is_fallback) message.is_fallback = true
       if (payload.is_completed) message.is_completed = true
+      // Clear pending placeholder flag when real content arrives
+      if (message.isPendingPlaceholder) {
+        message.isPendingPlaceholder = false
+      }
       onMessageUpdated?.(message, payload)
     } else {
       const entry = { ...payload }
@@ -889,11 +1039,26 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
         request_id: (data.data as ChatMessage | undefined)?.request_id,
       })
 
+      // Check for existing placeholder message first
+      const placeholderIdx = messagesList.findIndex(
+        (m) => m.role === 'assistant' && m.isPendingPlaceholder,
+      )
+      
       let existingMessage = findLastMessage(
         (item) => item.id === data.id || item.request_id === data.id,
       )
-      const created = !existingMessage
-      if (!existingMessage) {
+      
+      // If we have a placeholder and no matching message, use the placeholder
+      if (!existingMessage && placeholderIdx !== -1) {
+        existingMessage = messagesList[placeholderIdx] as ChatMessage
+        const assistantId = data.assistant_message_id as string | undefined
+        existingMessage.id = assistantId || data.id
+        existingMessage.request_id = data.id
+        existingMessage.isPendingPlaceholder = false
+        existingMessage.isRagMode = !isAgentStreamSession() // Update to actual mode
+        ensureAgentMessageShell(existingMessage, data.id as string | undefined)
+        log('[Agent Query] Replaced placeholder message with real stream')
+      } else if (!existingMessage) {
         const assistantId = data.assistant_message_id as string | undefined
         existingMessage = {
           id: assistantId || data.id,
@@ -917,7 +1082,7 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
         ensureAgentMessageShell(existingMessage, data.id as string | undefined)
         log('[Agent Query] Continuing stream for existing message')
       }
-      onAgentQuery?.(data, existingMessage, created)
+      onAgentQuery?.(data, existingMessage, !existingMessage || existingMessage.isPendingPlaceholder === false)
       return
     }
 
@@ -1048,6 +1213,9 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
     handleMsgList,
     processStreamChunk,
     prepareForNewOutgoingMessage,
+    createPendingAssistantMessage,
+    removePendingPlaceholder,
+    updateKnowledgeSearchStep,
     markInFlightAssistantStopped,
   }
 }

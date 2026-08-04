@@ -18,6 +18,38 @@ export interface Message {
   created_at: string
   sources?: MessageSource[]
   tool_calls?: ToolCall[]
+  // Agent 执行相关字段（参考 WeKnora 实现）
+  agent_steps?: AgentStep[]
+  is_completed?: boolean
+  agent_duration_ms?: number
+  is_fallback?: boolean
+}
+
+// Agent 执行步骤（用于持久化 RAG 检索过程）
+export interface AgentStep {
+  iteration: number
+  timestamp: string
+  duration?: number
+  thought?: string
+  reasoning_content?: string
+  tool_calls?: AgentStepToolCall[]
+}
+
+// Agent 工具调用
+export interface AgentStepToolCall {
+  id: string
+  name: string
+  args?: any
+  result?: AgentStepToolResult
+  duration?: number
+}
+
+// Agent 工具调用结果
+export interface AgentStepToolResult {
+  success: boolean
+  output?: string
+  error?: string
+  data?: any
 }
 
 export interface MessageSource {
