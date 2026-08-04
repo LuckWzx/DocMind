@@ -12,6 +12,7 @@ import (
 	"strings"
 )
 
+// ollamaBaseURL 从环境变量 OLLAMA_BASE_URL 读取 Ollama 地址，默认 localhost:11434/api。
 func (s *modelService) ollamaBaseURL() string {
 	if value := strings.TrimSpace(os.Getenv("OLLAMA_BASE_URL")); value != "" {
 		return strings.TrimRight(value, "/")
@@ -19,6 +20,7 @@ func (s *modelService) ollamaBaseURL() string {
 	return "http://localhost:11434/api"
 }
 
+// doJSONRequest 发送 JSON 请求并返回状态码与反序列化后的 body map。
 func (s *modelService) doJSONRequest(method, targetURL string, payload interface{}, headers http.Header) (int, map[string]interface{}, error) {
 	var bodyReader io.Reader
 	if payload != nil {
@@ -63,6 +65,7 @@ func (s *modelService) doJSONRequest(method, targetURL string, payload interface
 	return response.StatusCode, result, nil
 }
 
+// doMultipartTranscription 发送 multipart/form-data 请求（用于 ASR 音频转写）。
 func (s *modelService) doMultipartTranscription(targetURL, modelName string, fileData []byte, fileName string, headers http.Header) (int, map[string]interface{}, error) {
 	buffer := &bytes.Buffer{}
 	writer := multipart.NewWriter(buffer)
@@ -109,6 +112,7 @@ func (s *modelService) doMultipartTranscription(targetURL, modelName string, fil
 	return response.StatusCode, result, nil
 }
 
+// buildAuthHeaders 构造包含 Bearer Token 和自定义头的请求头。
 func buildAuthHeaders(apiKey string, customHeaders map[string]string) http.Header {
 	headers := http.Header{}
 	if strings.TrimSpace(apiKey) != "" {
@@ -120,6 +124,7 @@ func buildAuthHeaders(apiKey string, customHeaders map[string]string) http.Heade
 	return headers
 }
 
+// sanitizeHeaders 清洗自定义头：去空白、规范化 MIME 头名称、过滤保留头（Authorization/Content-Type）。
 func sanitizeHeaders(headers map[string]string) map[string]string {
 	if len(headers) == 0 {
 		return nil
@@ -139,6 +144,7 @@ func sanitizeHeaders(headers map[string]string) map[string]string {
 	return result
 }
 
+// appendPath 在 BaseURL 后拼接路径后缀，自动处理斜杠和重复拼接。
 func appendPath(baseURL, suffix string) string {
 	if strings.TrimSpace(baseURL) == "" {
 		return ""

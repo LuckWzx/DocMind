@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// ollamaDownloadTask 记录单次 Ollama 模型下载任务的状态与进度。
 type ollamaDownloadTask struct {
 	ID        string
 	ModelName string
@@ -31,6 +32,7 @@ type ollamaDownloadTask struct {
 
 // ---------- Ollama 状态与模型列表 ----------
 
+// GetOllamaStatus 探测本地 Ollama 服务是否可达并获取版本号。
 func (s *modelService) GetOllamaStatus() (*dto.OllamaStatusResponse, error) {
 	url := appendPath(s.ollamaBaseURL(), "version")
 	status, body, err := s.doJSONRequest(http.MethodGet, url, nil, nil)
@@ -56,6 +58,7 @@ func (s *modelService) GetOllamaStatus() (*dto.OllamaStatusResponse, error) {
 	}, nil
 }
 
+// ListOllamaModels 获取已安装的 Ollama 模型列表。
 func (s *modelService) ListOllamaModels() ([]*dto.OllamaModelInfoResponse, error) {
 	status, body, err := s.doJSONRequest(http.MethodGet, appendPath(s.ollamaBaseURL(), "tags"), nil, nil)
 	if err != nil {
@@ -82,6 +85,7 @@ func (s *modelService) ListOllamaModels() ([]*dto.OllamaModelInfoResponse, error
 	return result, nil
 }
 
+// CheckOllamaModels 批量检查指定模型是否在 Ollama 中已安装。
 func (s *modelService) CheckOllamaModels(models []string) (map[string]bool, error) {
 	list, err := s.ListOllamaModels()
 	if err != nil {
@@ -102,6 +106,7 @@ func (s *modelService) CheckOllamaModels(models []string) (map[string]bool, erro
 
 // ---------- Ollama 模型下载 ----------
 
+// DownloadOllamaModel 异步下载 Ollama 模型，返回任务 ID 供前端轮询进度。
 func (s *modelService) DownloadOllamaModel(modelName string) (*dto.DownloadTaskResponse, error) {
 	modelName = strings.TrimSpace(modelName)
 	if modelName == "" {
@@ -125,6 +130,7 @@ func (s *modelService) DownloadOllamaModel(modelName string) (*dto.DownloadTaskR
 	return s.toDownloadTaskResponse(task), nil
 }
 
+// GetOllamaDownloadProgress 按任务 ID 查询下载进度。
 func (s *modelService) GetOllamaDownloadProgress(taskID string) (*dto.DownloadTaskResponse, error) {
 	s.taskMu.RLock()
 	task, ok := s.tasks[taskID]
@@ -135,6 +141,7 @@ func (s *modelService) GetOllamaDownloadProgress(taskID string) (*dto.DownloadTa
 	return s.toDownloadTaskResponse(task), nil
 }
 
+// ListOllamaDownloadTasks 列出所有下载任务（按创建时间倒序）。
 func (s *modelService) ListOllamaDownloadTasks() ([]*dto.DownloadTaskResponse, error) {
 	s.taskMu.RLock()
 	tasks := make([]*ollamaDownloadTask, 0, len(s.tasks))
@@ -154,6 +161,7 @@ func (s *modelService) ListOllamaDownloadTasks() ([]*dto.DownloadTaskResponse, e
 	return result, nil
 }
 
+// runOllamaDownload 在后台 goroutine 中执行 Ollama pull，解析 SSE 进度事件。
 func (s *modelService) runOllamaDownload(task *ollamaDownloadTask) {
 	s.updateTask(task.ID, func(t *ollamaDownloadTask) {
 		t.Status = "downloading"
@@ -238,6 +246,7 @@ func (s *modelService) runOllamaDownload(task *ollamaDownloadTask) {
 	})
 }
 
+// updateTask 线程安全地更新下载任务字段。
 func (s *modelService) updateTask(taskID string, fn func(task *ollamaDownloadTask)) {
 	s.taskMu.Lock()
 	defer s.taskMu.Unlock()
@@ -246,6 +255,7 @@ func (s *modelService) updateTask(taskID string, fn func(task *ollamaDownloadTas
 	}
 }
 
+// failTask 将下载任务标记为失败。
 func (s *modelService) failTask(taskID string, err error) {
 	now := time.Now()
 	s.updateTask(taskID, func(task *ollamaDownloadTask) {
@@ -255,6 +265,7 @@ func (s *modelService) failTask(taskID string, err error) {
 	})
 }
 
+// toDownloadTaskResponse 将内部任务结构转为 API 响应。
 func (s *modelService) toDownloadTaskResponse(task *ollamaDownloadTask) *dto.DownloadTaskResponse {
 	resp := &dto.DownloadTaskResponse{
 		ID:        task.ID,
@@ -272,6 +283,7 @@ func (s *modelService) toDownloadTaskResponse(task *ollamaDownloadTask) *dto.Dow
 
 // ---------- Ollama 底层调用 ----------
 
+// callOllamaEmbed 调用 Ollama embed API 生成向量。
 func (s *modelService) callOllamaEmbed(modelName, input string) ([]float64, map[string]interface{}, error) {
 	payload := map[string]interface{}{
 		"model": modelName,
@@ -287,6 +299,7 @@ func (s *modelService) callOllamaEmbed(modelName, input string) ([]float64, map[
 	return extractEmbeddingVector(body), body, nil
 }
 
+// callOllamaChat 调用 Ollama chat API 生成对话回复，支持 vision 图片。
 func (s *modelService) callOllamaChat(modelName, input string, options map[string]interface{}, fileHeader *multipart.FileHeader, withVision bool) (map[string]interface{}, string, error) {
 	message := map[string]interface{}{
 		"role":    "user",
