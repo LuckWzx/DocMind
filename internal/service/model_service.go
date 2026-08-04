@@ -19,6 +19,8 @@ import (
 
 const docMindCloudCredentialKey = "docmindcloud_credentials"
 
+// modelService 模型管理服务实现，统一管理模型配置的 CRUD、连接探测、调试与向量化调用。
+// Ollama 下载任务及 HTTP 工具方法分别拆分至 model_service_ollama.go / model_service_http.go。
 type modelService struct {
 	modelRepo   repository.ModelRepository
 	settingRepo repository.SystemSettingRepository
@@ -28,6 +30,7 @@ type modelService struct {
 	tasks  map[string]*ollamaDownloadTask
 }
 
+// NewModelService 创建模型管理服务实例，需注入数据仓库、系统配置仓库及 HTTP 客户端。
 func NewModelService(
 	modelRepo repository.ModelRepository,
 	settingRepo repository.SystemSettingRepository,
@@ -43,6 +46,8 @@ func NewModelService(
 
 // ---------- 模型 CRUD ----------
 
+// CreateModel 创建新的模型配置。
+// 校验请求参数后以 name+type+source+provider 四项组合去重，防止同质模型重复添加。
 func (s *modelService) CreateModel(userID uint, request *req.UpsertModelRequest) (*dto.ModelResponse, error) {
 	if err := validateModelRequest(request); err != nil {
 		return nil, err
@@ -73,6 +78,7 @@ func (s *modelService) CreateModel(userID uint, request *req.UpsertModelRequest)
 	return s.buildModelResponse(&model), nil
 }
 
+// ListModels 查询指定用户的模型列表，可按 modelType 过滤。
 func (s *modelService) ListModels(userID uint, modelType string) ([]*dto.ModelResponse, error) {
 	models, err := s.modelRepo.List(modelType, userID)
 	if err != nil {
@@ -85,6 +91,7 @@ func (s *modelService) ListModels(userID uint, modelType string) ([]*dto.ModelRe
 	return result, nil
 }
 
+// GetModel 按 ID 获取单个模型配置（校验所属用户）。
 func (s *modelService) GetModel(userID uint, id uint) (*dto.ModelResponse, error) {
 	model, err := s.modelRepo.FindByUserID(id, userID)
 	if err != nil {
@@ -96,6 +103,8 @@ func (s *modelService) GetModel(userID uint, id uint) (*dto.ModelResponse, error
 	return s.buildModelResponse(model), nil
 }
 
+// UpdateModel 更新已有模型配置。
+// 仅当 name/type/source/provider 任一发生变化时才执行去重检查。
 func (s *modelService) UpdateModel(userID uint, id uint, request *req.UpsertModelRequest) (*dto.ModelResponse, error) {
 	if err := validateModelRequest(request); err != nil {
 		return nil, err
@@ -136,6 +145,7 @@ func (s *modelService) UpdateModel(userID uint, id uint, request *req.UpsertMode
 	return s.buildModelResponse(model), nil
 }
 
+// DeleteModel 删除模型配置，内置模型（IsBuiltin）不允许删除。
 func (s *modelService) DeleteModel(userID uint, id uint) error {
 	model, err := s.modelRepo.FindByUserID(id, userID)
 	if err != nil {
@@ -150,6 +160,7 @@ func (s *modelService) DeleteModel(userID uint, id uint) error {
 	return s.modelRepo.Delete(id)
 }
 
+// PutModelCredentials 更新模型的 API Key / App Secret 凭据字段。
 func (s *modelService) PutModelCredentials(userID uint, id uint, request *req.PutModelCredentialsRequest) (*dto.ModelCredentialsResponse, error) {
 	model, err := s.modelRepo.FindByUserID(id, userID)
 	if err != nil {
@@ -170,6 +181,7 @@ func (s *modelService) PutModelCredentials(userID uint, id uint, request *req.Pu
 	return buildCredentialResponse(model.Parameters), nil
 }
 
+// DeleteModelCredentialField 清除指定凭据字段（api_key 或 app_secret）。
 func (s *modelService) DeleteModelCredentialField(userID uint, id uint, field string) (*dto.ModelCredentialsResponse, error) {
 	model, err := s.modelRepo.FindByUserID(id, userID)
 	if err != nil {
@@ -194,6 +206,7 @@ func (s *modelService) DeleteModelCredentialField(userID uint, id uint, field st
 
 // ---------- 供应商列表 ----------
 
+// ListProviders 返回可选模型供应商列表，可按模型类型过滤。
 func (s *modelService) ListProviders(modelType string) []*dto.ModelProviderOptionResponse {
 	all := []*dto.ModelProviderOptionResponse{
 		{
@@ -264,6 +277,7 @@ func (s *modelService) ListProviders(modelType string) []*dto.ModelProviderOptio
 
 // ---------- DocMindCloud ----------
 
+// SaveDocMindCloudCredentials 保存 DocMindCloud 的 AppID 和 AppSecret。
 func (s *modelService) SaveDocMindCloudCredentials(appID, appSecret string) error {
 	setting, err := s.settingRepo.FindByKey(docMindCloudCredentialKey)
 	if err != nil {
@@ -280,6 +294,7 @@ func (s *modelService) SaveDocMindCloudCredentials(appID, appSecret string) erro
 	return s.settingRepo.Upsert(setting)
 }
 
+// GetDocMindCloudStatus 返回 DocMindCloud 凭据是否已配置。
 func (s *modelService) GetDocMindCloudStatus() (*dto.DocMindCloudStatusResponse, error) {
 	creds, err := s.getDocMindCloudCredentials()
 	if err != nil {
@@ -292,6 +307,7 @@ func (s *modelService) GetDocMindCloudStatus() (*dto.DocMindCloudStatusResponse,
 
 // ---------- 模型探测 ----------
 
+// CheckRemoteModel 对聊天/通用模型执行连通性探测（发送 ping 消息）。
 func (s *modelService) CheckRemoteModel(request *req.ModelTestRequest) (map[string]interface{}, error) {
 	cfg, err := s.resolveTestConfig(request)
 	if err != nil {
@@ -326,6 +342,7 @@ func (s *modelService) CheckRemoteModel(request *req.ModelTestRequest) (map[stri
 	return map[string]interface{}{"available": false, "message": extractErrorMessage(body, status)}, nil
 }
 
+// TestEmbeddingModel 对 embedding 模型执行连通性探测，返回向量维度。
 func (s *modelService) TestEmbeddingModel(request *req.ModelTestRequest) (map[string]interface{}, error) {
 	cfg, err := s.resolveTestConfig(request)
 	if err != nil {
@@ -366,6 +383,7 @@ func (s *modelService) TestEmbeddingModel(request *req.ModelTestRequest) (map[st
 	return result, nil
 }
 
+// CheckRerankModel 对 rerank 模型执行连通性探测，自动尝试多种 URL 后缀。
 func (s *modelService) CheckRerankModel(request *req.ModelTestRequest) (map[string]interface{}, error) {
 	cfg, err := s.resolveTestConfig(request)
 	if err != nil {
@@ -403,6 +421,7 @@ func (s *modelService) CheckRerankModel(request *req.ModelTestRequest) (map[stri
 	return map[string]interface{}{"available": false, "message": "未找到可用的 Rerank 接口"}, nil
 }
 
+// CheckASRModel 对 ASR（语音识别）模型执行连通性探测。
 func (s *modelService) CheckASRModel(request *req.ModelTestRequest) (map[string]interface{}, error) {
 	cfg, err := s.resolveTestConfig(request)
 	if err != nil {
@@ -425,6 +444,7 @@ func (s *modelService) CheckASRModel(request *req.ModelTestRequest) (map[string]
 
 // ---------- 模型调试 ----------
 
+// DebugModel 对指定模型执行调试调用，根据模型类型分发到对应的调试方法。
 func (s *modelService) DebugModel(userID uint, id uint, input string, documents []string, options map[string]interface{}, fileHeader *multipart.FileHeader) (*dto.ModelDebugResult, error) {
 	model, err := s.modelRepo.FindByUserID(id, userID)
 	if err != nil {
@@ -491,6 +511,7 @@ func (s *modelService) DebugModel(userID uint, id uint, input string, documents 
 	}
 }
 
+// debugChatLikeModel 对聊天/视觉模型执行调试调用，支持 system prompt、temperature、thinking 控制及 Vision 图片。
 func (s *modelService) debugChatLikeModel(model *entity.Model, input string, options map[string]interface{}, fileHeader *multipart.FileHeader, withVision bool, startedAt time.Time) (*dto.ModelDebugResult, error) {
 	payload := map[string]interface{}{
 		"model": model.Name,
@@ -586,6 +607,7 @@ func (s *modelService) debugChatLikeModel(model *entity.Model, input string, opt
 	return result, nil
 }
 
+// debugEmbeddingModel 对 embedding 模型执行调试调用，返回向量与原始响应。
 func (s *modelService) debugEmbeddingModel(model *entity.Model, input string) ([]float64, map[string]interface{}, error) {
 	if strings.TrimSpace(input) == "" {
 		input = "hello world"
@@ -649,6 +671,7 @@ func (s *modelService) EmbedText(userID uint, modelRef string, input string) ([]
 	return result, nil
 }
 
+// debugRerankModel 对 rerank 模型执行调试调用，自动尝试多种 URL 后缀。
 func (s *modelService) debugRerankModel(model *entity.Model, query string, documents []string) (map[string]interface{}, int, error) {
 	if strings.TrimSpace(query) == "" {
 		return map[string]interface{}{}, 0, fmt.Errorf("query 不能为空")
@@ -690,6 +713,7 @@ func (s *modelService) debugRerankModel(model *entity.Model, query string, docum
 	return map[string]interface{}{}, 0, fmt.Errorf("未找到可用的 Rerank 接口")
 }
 
+// debugASRModel 对 ASR 模型执行调试调用，上传音频文件并解析转写结果。
 func (s *modelService) debugASRModel(model *entity.Model, fileHeader *multipart.FileHeader) (map[string]interface{}, string, error) {
 	if fileHeader == nil {
 		return map[string]interface{}{}, "", fmt.Errorf("请上传音频文件")
@@ -716,6 +740,7 @@ func (s *modelService) debugASRModel(model *entity.Model, fileHeader *multipart.
 
 // ---------- 配置解析 ----------
 
+// resolveTestConfig 从探测请求中解析实际配置：优先使用请求参数，其次从已存储模型补全。
 func (s *modelService) resolveTestConfig(request *req.ModelTestRequest) (*req.ModelTestRequest, error) {
 	if request == nil {
 		return nil, pkgerrors.New(pkgerrors.CodeInvalidParam, "请求不能为空")
@@ -777,6 +802,7 @@ func (s *modelService) resolveTestConfig(request *req.ModelTestRequest) (*req.Mo
 	return &cloned, nil
 }
 
+// getDocMindCloudCredentials 从系统配置表读取 DocMindCloud 凭据。
 func (s *modelService) getDocMindCloudCredentials() (map[string]string, error) {
 	setting, err := s.settingRepo.FindByKey(docMindCloudCredentialKey)
 	if err != nil {
@@ -793,6 +819,7 @@ func (s *modelService) getDocMindCloudCredentials() (map[string]string, error) {
 
 // ---------- DTO 构建 ----------
 
+// buildModelResponse 将 entity.Model 转换为 API 响应 DTO，包含凭据脱敏标记。
 func (s *modelService) buildModelResponse(model *entity.Model) *dto.ModelResponse {
 	var deletedAt *string
 	if model.DeletedAt.Valid {
@@ -845,6 +872,8 @@ func (s *modelService) buildModelResponse(model *entity.Model) *dto.ModelRespons
 
 // ---------- 校验与转换 ----------
 
+// validateModelRequest 对创建/更新模型的请求做基础校验。
+// 注意：Gin 已保证 request 非 nil，故不在此处做 nil 检查。
 func validateModelRequest(request *req.UpsertModelRequest) error {
 	request.Name = strings.TrimSpace(request.Name)
 	if request.Name == "" {
@@ -866,6 +895,7 @@ func validateModelRequest(request *req.UpsertModelRequest) error {
 	return nil
 }
 
+// toEntityParameters 将请求参数合并到已有实体参数中，空白字段保留原值（凭据类字段仅在非空时覆盖）。
 func toEntityParameters(request req.ModelParametersRequest, existing entity.ModelParameters) entity.ModelParameters {
 	params := existing
 	params.BaseURL = strings.TrimSpace(request.BaseURL)
@@ -899,6 +929,7 @@ func toEntityParameters(request req.ModelParametersRequest, existing entity.Mode
 	return params
 }
 
+// buildCredentialResponse 构造凭据配置状态响应（仅标记字段是否已配置，不透出真实值）。
 func buildCredentialResponse(parameters entity.ModelParameters) *dto.ModelCredentialsResponse {
 	return &dto.ModelCredentialsResponse{
 		Fields: map[string]dto.CredentialFieldState{
