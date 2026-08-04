@@ -190,9 +190,7 @@
           </div>
 
           <div class="form-item">
-            <label class="form-label">{{
-              isSignedRerank ? signedRerankAccessKeyLabel : $t('model.editor.apiKeyOptional')
-            }}</label>
+            <label class="form-label">{{ $t('model.editor.apiKeyOptional') }}</label>
             <!--
               Edit mode: credentials live behind the /credentials subresource
               of the model — managed by the shared CredentialResource card,
@@ -207,7 +205,7 @@
             <CredentialResource v-if="isEdit && props.modelData?.id" :api="credentialApi" :fields="credentialFields"
               :meta="credentialMeta" />
             <t-input v-else v-model="formData.apiKey" :type="showApiKey ? 'text' : 'password'"
-              :placeholder="isSignedRerank ? signedRerankAccessKeyPlaceholder : apiKeyPlaceholder"
+              :placeholder="apiKeyPlaceholder"
               class="api-key-input" autocomplete="off" spellcheck="false">
               <template #prefix-icon><t-icon name="lock-on" /></template>
               <template #suffix-icon>
@@ -219,22 +217,6 @@
                 />
               </template>
             </t-input>
-            <p v-if="isSignedRerank" class="form-desc">{{ signedRerankCredentialHint }}</p>
-          </div>
-
-          <!-- AK/SK Rerank 创建模式：SecretKey（编辑模式由 CredentialResource 管理） -->
-          <div v-if="isSignedRerank && !isEdit" class="form-item">
-            <label class="form-label required">{{ signedRerankSecretKeyLabel }}</label>
-            <t-input v-model="formData.appSecret" type="password"
-              :placeholder="signedRerankSecretKeyPlaceholder" autocomplete="off" spellcheck="false">
-              <template #prefix-icon><t-icon name="lock-on" /></template>
-            </t-input>
-          </div>
-
-          <div v-if="isLkeapRerank" class="form-item">
-            <label class="form-label">{{ $t('model.editor.lkeap.regionLabel') }}</label>
-            <t-input v-model="formData.lkeapRegion" :placeholder="$t('model.editor.lkeap.regionPlaceholder')" />
-            <p class="form-desc">{{ $t('model.editor.lkeap.regionDesc') }}</p>
           </div>
 
           <!-- 自定义 HTTP Header（类似 OpenAI Python SDK 的 extra_headers） -->
@@ -400,8 +382,6 @@ interface ModelFormData {
   customHeaders?: CustomHeaderItem[]
   /** LKEAP Rerank：腾讯云 SecretKey（创建时写入 app_secret） */
   appSecret?: string
-  /** LKEAP Rerank：地域，如 ap-guangzhou */
-  lkeapRegion?: string
 }
 
 type EditorModelType = 'chat' | 'embedding' | 'rerank' | 'vllm' | 'asr'
@@ -453,23 +433,10 @@ const fallbackProviderOptions = computed(() => [
     defaultUrls: {
       chat: 'https://api.openai.com/v1',
       embedding: 'https://api.openai.com/v1',
-      rerank: 'https://api.openai.com/v1',
       vllm: 'https://api.openai.com/v1',
       asr: 'https://api.openai.com/v1'
     },
     description: t('model.editor.providers.openai.description'),
-    modelTypes: ['chat', 'embedding', 'vllm', 'asr']
-  },
-  {
-    value: 'azure_openai',
-    label: t('model.editor.providers.azure_openai.label'),
-    defaultUrls: {
-      chat: 'https://{resource}.openai.azure.com',
-      embedding: 'https://{resource}.openai.azure.com',
-      vllm: 'https://{resource}.openai.azure.com',
-      asr: 'https://{resource}.openai.azure.com'
-    },
-    description: t('model.editor.providers.azure_openai.description'),
     modelTypes: ['chat', 'embedding', 'vllm', 'asr']
   },
   {
@@ -485,47 +452,6 @@ const fallbackProviderOptions = computed(() => [
     modelTypes: ['chat', 'embedding', 'rerank', 'vllm']
   },
   {
-    value: 'zhipu',
-    label: t('model.editor.providers.zhipu.label'),
-    defaultUrls: {
-      chat: 'https://open.bigmodel.cn/api/paas/v4',
-      embedding: 'https://open.bigmodel.cn/api/paas/v4/embeddings',
-      vllm: 'https://open.bigmodel.cn/api/paas/v4'
-    },
-    description: t('model.editor.providers.zhipu.description'),
-    modelTypes: ['chat', 'embedding', 'vllm']
-  },
-  {
-    value: 'openrouter',
-    label: t('model.editor.providers.openrouter.label'),
-    defaultUrls: {
-      chat: 'https://openrouter.ai/api/v1',
-      embedding: 'https://openrouter.ai/api/v1'
-    },
-    description: t('model.editor.providers.openrouter.description'),
-    modelTypes: ['chat', 'embedding']
-  },
-  {
-    value: 'requesty',
-    label: t('model.editor.providers.requesty.label'),
-    defaultUrls: {
-      chat: 'https://router.requesty.ai/v1',
-      embedding: 'https://router.requesty.ai/v1'
-    },
-    description: t('model.editor.providers.requesty.description'),
-    modelTypes: ['chat', 'embedding']
-  },
-  {
-    value: 'gemini',
-    label: t('model.editor.providers.gemini.label'),
-    defaultUrls: {
-      chat: 'https://generativelanguage.googleapis.com/v1beta/openai',
-      embedding: 'https://generativelanguage.googleapis.com/v1beta'
-    },
-    description: t('model.editor.providers.gemini.description'),
-    modelTypes: ['chat', 'embedding']
-  },
-  {
     value: 'siliconflow',
     label: t('model.editor.providers.siliconflow.label'),
     defaultUrls: {
@@ -537,6 +463,17 @@ const fallbackProviderOptions = computed(() => [
     modelTypes: ['chat', 'embedding', 'rerank']
   },
   {
+    value: 'zhipu',
+    label: t('model.editor.providers.zhipu.label'),
+    defaultUrls: {
+      chat: 'https://open.bigmodel.cn/api/paas/v4',
+      embedding: 'https://open.bigmodel.cn/api/paas/v4/embeddings',
+      vllm: 'https://open.bigmodel.cn/api/paas/v4'
+    },
+    description: t('model.editor.providers.zhipu.description'),
+    modelTypes: ['chat', 'embedding', 'vllm']
+  },
+  {
     value: 'jina',
     label: t('model.editor.providers.jina.label'),
     defaultUrls: {
@@ -545,29 +482,6 @@ const fallbackProviderOptions = computed(() => [
     },
     description: t('model.editor.providers.jina.description'),
     modelTypes: ['embedding', 'rerank']
-  },
-  {
-    value: 'nvidia',
-    label: t('model.editor.providers.nvidia.label'),
-    defaultUrls: {
-      chat: 'https://integrate.api.nvidia.com/v1',
-      embedding: 'https://integrate.api.nvidia.com/v1',
-      rerank: 'https://ai.api.nvidia.com/v1/retrieval/nvidia/reranking',
-      vllm: 'https://integrate.api.nvidia.com/v1',
-    },
-    description: t('model.editor.providers.nvidia.description'),
-    modelTypes: ['chat', 'embedding', 'rerank', 'vllm']
-  },
-  {
-    value: 'novita',
-    label: t('model.editor.providers.novita.label'),
-    defaultUrls: {
-      chat: 'https://api.novita.ai/openai/v1',
-      embedding: 'https://api.novita.ai/openai/v1',
-      vllm: 'https://api.novita.ai/openai/v1',
-    },
-    description: t('model.editor.providers.novita.description'),
-    modelTypes: ['chat', 'embedding', 'vllm']
   },
   {
     value: 'generic',
@@ -680,54 +594,14 @@ const modelTypeIcon = computed(() => {
   return map[activeModelType.value] || 'setting'
 })
 
-const isLkeapRerank = computed(
-  () => activeModelType.value === 'rerank' && formData.value.provider === 'lkeap',
-)
-const isVolcengineRerank = computed(
-  () => activeModelType.value === 'rerank' && formData.value.provider === 'volcengine',
-)
-const isSignedRerank = computed(
-  () => isLkeapRerank.value || isVolcengineRerank.value,
-)
-const signedRerankAccessKeyLabel = computed(() => (
-  isVolcengineRerank.value
-    ? t('model.editor.volcengine.accessKeyLabel')
-    : t('model.editor.lkeap.secretIdLabel')
-))
-const signedRerankAccessKeyPlaceholder = computed(() => (
-  isVolcengineRerank.value
-    ? t('model.editor.volcengine.accessKeyPlaceholder')
-    : t('model.editor.lkeap.secretIdPlaceholder')
-))
-const signedRerankSecretKeyLabel = computed(() => (
-  isVolcengineRerank.value
-    ? t('model.editor.volcengine.secretKeyLabel')
-    : t('model.editor.lkeap.secretKeyLabel')
-))
-const signedRerankSecretKeyPlaceholder = computed(() => (
-  isVolcengineRerank.value
-    ? t('model.editor.volcengine.secretKeyPlaceholder')
-    : t('model.editor.lkeap.secretKeyPlaceholder')
-))
-const signedRerankCredentialHint = computed(() => (
-  isVolcengineRerank.value
-    ? t('model.editor.volcengine.rerankCredentialHint')
-    : t('model.editor.lkeap.rerankCredentialHint')
-))
-
 // Credential resource binding for the shared <CredentialResource> component.
 const credentialFields = computed<CredentialFieldDef<ModelCredentialField>[]>(() => {
   const fields: CredentialFieldDef<ModelCredentialField>[] = [
     {
       key: 'api_key',
-      label: (isSignedRerank.value
-        ? signedRerankAccessKeyLabel.value
-        : t('model.editor.apiKeyOptional')) as string,
+      label: t('model.editor.apiKeyOptional') as string,
     },
   ]
-  if (isSignedRerank.value) {
-    fields.push({ key: 'app_secret', label: signedRerankSecretKeyLabel.value as string })
-  }
   return fields
 })
 
@@ -805,7 +679,6 @@ const formData = ref<ModelFormData>({
   thinkingControl: defaultThinkingControl('generic', ''),
   customHeaders: [],
   appSecret: '',
-  lkeapRegion: 'ap-guangzhou',
 })
 
 const rules = computed(() => ({
@@ -1041,7 +914,6 @@ const resetForm = () => {
     thinkingControl: defaultThinkingControl('generic', ''),
     customHeaders: [],
     appSecret: '',
-    lkeapRegion: 'ap-guangzhou',
   }
   modelChecked.value = false
   modelAvailable.value = false
@@ -1062,12 +934,6 @@ const handleProviderChange = (value: string) => {
     const defaultUrl = provider.defaultUrls[activeModelType.value]
     if (defaultUrl) {
       formData.value.baseUrl = defaultUrl
-    }
-    if (value === 'lkeap' && activeModelType.value === 'rerank' && !formData.value.modelName?.trim()) {
-      formData.value.modelName = 'lke-reranker-base'
-    }
-    if (value === 'volcengine' && activeModelType.value === 'rerank' && !formData.value.modelName?.trim()) {
-      formData.value.modelName = 'doubao-seed-rerank'
     }
     // 重置校验状态
     remoteChecked.value = false
@@ -1326,20 +1192,6 @@ const checkRemoteAPI = async () => {
         break
 
       case 'rerank': {
-        const signedRerankExtra = isSignedRerank.value
-          ? {
-              ...(isLkeapRerank.value
-                ? {
-                    extraConfig: {
-                      region: (formData.value.lkeapRegion || 'ap-guangzhou').trim(),
-                    },
-                  }
-                : {}),
-              ...(formData.value.appSecret?.trim()
-                ? { appSecret: formData.value.appSecret.trim() }
-                : {}),
-            }
-          : {}
         result = await checkRerankModel({
           modelName: formData.value.modelName,
           baseUrl: formData.value.baseUrl || '',
@@ -1347,7 +1199,6 @@ const checkRemoteAPI = async () => {
           provider: formData.value.provider,
           ...idPayload,
           ...headerPayload,
-          ...signedRerankExtra,
         })
         break
       }

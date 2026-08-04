@@ -50,11 +50,12 @@ export {
 
 // 模型相关API
 export {
-  listProviders,
-  updateProviderConfig,
+  createModel,
   listModels,
-  testModel,
-  getModelConfig
+  getModel,
+  updateModel,
+  deleteModel,
+  debugModel
 } from './model'
 
 // 认证相关API

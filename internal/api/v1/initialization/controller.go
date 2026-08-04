@@ -18,60 +18,24 @@ func NewController(modelService service.ModelService) *Controller {
 	return &Controller{modelService: modelService}
 }
 
-func (ctrl *Controller) CheckRemoteModel(c *gin.Context) {
-	var request req.ModelTestRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		response.BadRequest(c, err.Error())
-		return
-	}
-	data, err := ctrl.modelService.CheckRemoteModel(&request)
-	if err != nil {
-		response.BizError(c, err)
-		return
-	}
-	response.Success(c, data)
-}
+// modelTestFn 模型探测函数签名，统一的入参/出参类型
+type modelTestFn func(request *req.ModelTestRequest) (map[string]interface{}, error)
 
-func (ctrl *Controller) TestEmbeddingModel(c *gin.Context) {
-	var request req.ModelTestRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		response.BadRequest(c, err.Error())
-		return
+// handleModelTest 统一处理模型探测请求：绑定 JSON → 调探测函数 → 返回结果
+func handleModelTest(fn modelTestFn) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request req.ModelTestRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		data, err := fn(&request)
+		if err != nil {
+			response.BizError(c, err)
+			return
+		}
+		response.Success(c, data)
 	}
-	data, err := ctrl.modelService.TestEmbeddingModel(&request)
-	if err != nil {
-		response.BizError(c, err)
-		return
-	}
-	response.Success(c, data)
-}
-
-func (ctrl *Controller) CheckRerankModel(c *gin.Context) {
-	var request req.ModelTestRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		response.BadRequest(c, err.Error())
-		return
-	}
-	data, err := ctrl.modelService.CheckRerankModel(&request)
-	if err != nil {
-		response.BizError(c, err)
-		return
-	}
-	response.Success(c, data)
-}
-
-func (ctrl *Controller) CheckASRModel(c *gin.Context) {
-	var request req.ModelTestRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		response.BadRequest(c, err.Error())
-		return
-	}
-	data, err := ctrl.modelService.CheckASRModel(&request)
-	if err != nil {
-		response.BizError(c, err)
-		return
-	}
-	response.Success(c, data)
 }
 
 func (ctrl *Controller) GetOllamaStatus(c *gin.Context) {

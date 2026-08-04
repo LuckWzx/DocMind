@@ -197,8 +197,6 @@ function convertToLegacyFormat(model: ModelConfig) {
     customHeaders: model.parameters.custom_headers
       ? Object.entries(model.parameters.custom_headers).map(([key, value]) => ({ key, value: String(value) }))
       : [],
-    lkeapRegion: model.parameters.extra_config?.region || 'ap-guangzhou',
-    // 原始存库值，编辑弹窗内再 resolve（避免打开时被推断值覆盖）
     thinkingControl: model.parameters.extra_config?.thinking_control,
     _modelType: backendTypeToModelType[model.type] || 'chat' as ModelType,
     // Preserve the credential metadata map so the editor dialog can render
@@ -418,9 +416,6 @@ const handleModelSave = async (modelData: any) => {
     const appSecretFields: { app_secret?: string } =
       !editingModel.value && trimmedAppSecret ? { app_secret: trimmedAppSecret } : {}
     const extraConfig: Record<string, string> = {}
-    if (modelData.provider === 'lkeap' && saveType === 'rerank') {
-      extraConfig.region = (modelData.lkeapRegion || 'ap-guangzhou').trim()
-    }
     if (
       saveType === 'chat'
       && modelData.source === 'remote'

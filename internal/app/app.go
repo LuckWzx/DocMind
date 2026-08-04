@@ -233,7 +233,7 @@ func (a *App) initDependencies() error {
 	// 创建 Service
 	userSvc := service.NewUserService(userRepo)
 	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, userSvc)
-	modelSvc := service.NewModelService(modelRepo, systemSettingRepo)
+	modelSvc := service.NewModelService(modelRepo, systemSettingRepo, &http.Client{Timeout: 30 * time.Second})
 	chunkerSvc := service.NewChunkerService()
 	vectorStoreSvc := service.NewVectorStoreService(vectorStoreRepo, knowledgeBaseRepo, chunkRepo, modelSvc, a.pgDB, a.cfg)
 	imageStorageSvc, err := service.NewImageStorageService(a.cfg.MinIO)

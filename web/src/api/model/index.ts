@@ -15,7 +15,7 @@ export interface ModelConfig {
   parameters: {
     base_url?: string;
     api_key?: string;
-    provider?: string; // Provider identifier: openai, aliyun, zhipu, generic
+    provider?: string; // Provider identifier: openai, aliyun, siliconflow, zhipu, jina, generic
     embedding_parameters?: {
       dimension?: number;
       truncate_prompt_tokens?: number;

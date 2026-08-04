@@ -11,10 +11,10 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 	group := r.Group("/initialization")
 	group.Use(middleware.Auth())
 	{
-		group.POST("/remote/check", ctrl.CheckRemoteModel)
-		group.POST("/embedding/test", ctrl.TestEmbeddingModel)
-		group.POST("/rerank/check", ctrl.CheckRerankModel)
-		group.POST("/asr/check", ctrl.CheckASRModel)
+		group.POST("/remote/check", handleModelTest(ctrl.modelService.CheckRemoteModel))
+		group.POST("/embedding/test", handleModelTest(ctrl.modelService.TestEmbeddingModel))
+		group.POST("/rerank/check", handleModelTest(ctrl.modelService.CheckRerankModel))
+		group.POST("/asr/check", handleModelTest(ctrl.modelService.CheckASRModel))
 
 		group.GET("/ollama/status", ctrl.GetOllamaStatus)
 		group.GET("/ollama/models", ctrl.ListOllamaModels)
