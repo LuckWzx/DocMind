@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"docmind/internal/model/entity"
 	docreaderclient "docmind/pkg/docreader/client"
 	"fmt"
 	"net/http"
@@ -157,17 +156,17 @@ func (a *App) initDatabase() error {
 	// 自动迁移数据库表
 	logger.Info("开始数据库迁移...")
 	if err := a.pgDB.AutoMigrate(
-		//&entity.KnowledgeBase{},
-		//&entity.Knowledge{},
-		//&entity.Chunk{},
-		//&entity.Tag{},
-		//&entity.FAQ{},
-		//&entity.VectorStore{},
-		//&entity.ChunkVector{},
-		//&entity.Model{},
-		//&entity.Session{},
-		&entity.Message{},
-		//&entity.Agent{},
+	//&entity.KnowledgeBase{},
+	//&entity.Knowledge{},
+	//&entity.Chunk{},
+	//&entity.Tag{},
+	//&entity.FAQ{},
+	//&entity.VectorStore{},
+	//&entity.ChunkVector{},
+	//&entity.Model{},
+	//&entity.Session{},
+	//&entity.Message{},
+	//&entity.Agent{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {
