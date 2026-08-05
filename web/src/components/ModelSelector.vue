@@ -10,6 +10,12 @@
       filterable
       style="width: 100%;"
     >
+      <!-- 折叠态自定义显示：确保始终展示模型名称而非原始 ID -->
+      <template #value-display>
+        <span v-if="selectedModelDisplay" class="model-selector__display">{{ selectedModelDisplay }}</span>
+        <span v-else class="model-selector__placeholder t-input__placeholder">{{ placeholderText }}</span>
+      </template>
+
       <!-- 已有的模型选项 -->
       <t-option
         v-for="model in models"
@@ -80,6 +86,13 @@ const modelDisplayName = (model: ModelConfig) => {
   return displayName || model.name
 }
 
+// 折叠态显示文本：从 models 列表中查找当前选中模型的名称，避免 t-select 自动解析失败时回退显示原始 ID
+const selectedModelDisplay = computed(() => {
+  if (!props.selectedModelId) return ''
+  const found = models.value.find(m => String(m.id) === String(props.selectedModelId))
+  return found ? modelDisplayName(found) : ''
+})
+
 // 直接从 allModels prop 过滤当前类型的模型
 // 不再自己调用 API，完全依赖父组件提供的数据
 watch(() => props.allModels, (newModels) => {
@@ -114,6 +127,17 @@ defineExpose({
 <style lang="less" scoped>
 .model-selector {
   width: 100%;
+
+  &__display {
+    color: var(--td-text-color-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__placeholder {
+    color: var(--td-text-color-placeholder);
+  }
 }
 
 .model-option {

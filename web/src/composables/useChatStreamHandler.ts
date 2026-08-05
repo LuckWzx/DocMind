@@ -189,10 +189,6 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
         kbCounts[key] = (kbCounts[key] || 0) + 1
       })
       
-      // Check if user has selected any knowledge bases
-      const refs = message.knowledge_references as unknown[] | undefined
-      const hasKnowledgeBases = Array.isArray(refs) && refs.length > 0
-      
       // Create a new object to ensure reactivity
       const updatedStep = {
         ...message.agentEventStream[searchStepIndex],
@@ -203,8 +199,6 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
           doc_count: docCount,
           kb_counts: kbCounts,
           results: searchResults,
-          // Add flag to indicate if knowledge bases were selected
-          no_knowledge_bases: !hasKnowledgeBases && searchResults.length === 0,
         },
       }
       

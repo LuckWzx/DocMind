@@ -5302,6 +5302,7 @@ export default {
       completed: "已完成",
     },
     search: {
+      noKnowledgeBasesSelected: "未选择知识库",
       noResults: "未找到匹配的内容",
       foundResultsFromFiles: "找到 {count} 个结果，来自 {files} 个文件",
       foundResults: "找到 {count} 个结果",

@@ -21,7 +21,7 @@ func NewPipeline(deps *PipelineDeps) (*Pipeline, error) {
 	queryRewriteLambda := compose.InvokableLambda(queryRewriteNode)
 	intentClassifyLambda := compose.InvokableLambda(intentClassifyNode)
 	vectorSearchLambda := compose.InvokableLambda(newVectorSearchNode(deps))
-	rerankLambda := compose.InvokableLambda(rerankNode)
+	rerankLambda := compose.InvokableLambda(newRerankNode(deps))
 	buildPromptLambda := compose.InvokableLambda(buildPromptNode)
 	chatCompletionLambda := compose.InvokableLambda(chatCompletionNode)
 

@@ -5589,6 +5589,7 @@ export default {
       completed: '완료',
     },
     search: {
+      noKnowledgeBasesSelected: '지식베이스가 선택되지 않았습니다',
       noResults: '일치하는 내용을 찾을 수 없습니다',
       foundResultsFromFiles: '{files}개 파일에서 {count}개 결과 발견',
       foundResults: '{count}개 결과 발견',

@@ -900,7 +900,7 @@ const agentOptions = computed(() => agents.value.map((agent) => ({
 
 const knowledgeBaseOptions = computed(() => knowledgeBases.value.map((kb) => ({
   label: kb.name || kb.id,
-  value: kb.id,
+  value: String(kb.id),
 })))
 
 const hasUnsavedSecretChange = computed(() => {

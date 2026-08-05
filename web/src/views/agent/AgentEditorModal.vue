@@ -3280,7 +3280,7 @@ const mapKbToOption = (kb: any, shared: boolean, orgName?: string) => {
   const caps: KBCapabilities | undefined = kb.capabilities;
   return {
     label: kb.name,
-    value: kb.id,
+    value: String(kb.id),
     type: kb.type || 'document',
     count: kb.type === 'faq' ? (kb.chunk_count || 0) : (kb.knowledge_count || 0),
     shared,

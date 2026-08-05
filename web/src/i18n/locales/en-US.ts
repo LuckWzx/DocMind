@@ -5562,6 +5562,7 @@ export default {
       completed: 'Completed',
     },
     search: {
+      noKnowledgeBasesSelected: 'No knowledge bases selected',
       noResults: 'No matching content found',
       foundResultsFromFiles: 'Found {count} result(s) from {files} file(s)',
       foundResults: 'Found {count} result(s)',

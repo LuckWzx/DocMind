@@ -5089,6 +5089,7 @@ export default {
       completed: 'Завершено'
     },
     search: {
+      noKnowledgeBasesSelected: 'Базы знаний не выбраны',
       noResults: 'Совпадения не найдены',
       foundResultsFromFiles: 'Найдено {count} результат(ов) из {files} файл(ов)',
       foundResults: 'Найдено {count} результат(ов)',

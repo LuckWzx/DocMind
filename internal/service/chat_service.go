@@ -43,6 +43,7 @@ func NewChatService(
 	messageRepo repository.MessageRepository,
 	modelFactory *ChatModelFactory,
 	embedderFactory *EmbedderFactory,
+	rerankerFactory pipeline.PipelineRerankerFactory,
 	kbRepo repository.KnowledgeBaseRepository,
 	vectorStoreRepo repository.VectorStoreRepository,
 	agentRepo repository.AgentRepository,
@@ -51,6 +52,7 @@ func NewChatService(
 	// 构建 Pipeline 依赖
 	pipelineDeps := &pipeline.PipelineDeps{
 		EmbedderFactory: &pipelineEmbedderFactoryAdapter{factory: embedderFactory},
+		RerankerFactory: rerankerFactory,
 		KBRepo:          kbRepo,
 		VectorStoreRepo: vectorStoreRepo,
 		PrimaryDB:       primaryDB,
@@ -117,7 +119,7 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 	s.sessionRepo.UpdateLastMessage(sessionID, req.Query)
 
 	// 3. 从 Agent 解析配置（提前，用于确定历史轮数）
-	agentConfig := s.resolveAgentConfig(session, req)
+	agentConfig := s.resolveAgentConfig(session, req, userID)
 
 	// 4. 加载最近对话历史（排除刚保存的 userMsg）
 	var historyMsgs []*entity.Message
@@ -206,7 +208,7 @@ func (s *chatService) resolveChatModelID(session *entity.Session) string {
 }
 
 // resolveAgentConfig 从 Agent 动态解析配置
-func (s *chatService) resolveAgentConfig(session *entity.Session, req *KnowledgeChatRequest) *pipeline.AgentConfig {
+func (s *chatService) resolveAgentConfig(session *entity.Session, req *KnowledgeChatRequest, userID uint) *pipeline.AgentConfig {
 	config := &pipeline.AgentConfig{
 		ModelID:            "default",
 		KnowledgeBaseIDs:   req.KnowledgeBaseIDs,
@@ -231,7 +233,7 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 			// 处理知识库配置
 			if agent.Config.KBSelectionMode == "all" {
 				// 自动检索所有知识库
-				allKBs, err := s.kbRepo.ListByUser(0)
+				allKBs, err := s.kbRepo.ListByUser(userID)
 				if err == nil && len(allKBs) > 0 {
 					kbIDs := make([]string, 0, len(allKBs))
 					for _, kb := range allKBs {
@@ -270,6 +272,23 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 			}
 			if agent.Config.HistoryTurns > 0 {
 				config.HistoryTurns = agent.Config.HistoryTurns
+			}
+			// 解析 Rerank 配置
+			if agent.Config.RerankModelID != "" {
+				config.RerankModelID = agent.Config.RerankModelID
+			}
+			if agent.Config.RerankTopK > 0 {
+				config.RerankTopK = agent.Config.RerankTopK
+			}
+			if agent.Config.RerankThreshold != nil {
+				config.RerankThreshold = *agent.Config.RerankThreshold
+			}
+			// 解析检索策略配置
+			if agent.Config.EmbeddingTopK > 0 {
+				config.EmbeddingTopK = agent.Config.EmbeddingTopK
+			}
+			if agent.Config.VectorThreshold > 0 {
+				config.VectorThreshold = agent.Config.VectorThreshold
 			}
 		}
 	}

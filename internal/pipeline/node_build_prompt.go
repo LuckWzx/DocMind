@@ -28,6 +28,9 @@ func buildPromptNode(ctx context.Context, input *Context) (*Context, error) {
 	if len(input.RerankedResults) > 0 {
 		contextText := buildContextText(input.RerankedResults)
 		systemPrompt += "\n\n参考文档：\n" + contextText
+	} else {
+		// 没有检索到内容时，明确告知模型
+		systemPrompt += "\n\n[注意] 本次检索未找到任何相关文档内容。请直接告知用户未找到相关信息，不要编造内容。"
 	}
 
 	// 3. 构建消息列表：system + 历史消息 + 当前 query

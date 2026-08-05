@@ -21,6 +21,22 @@ type PipelineVectorDriver interface {
 	Search(ctx context.Context, params PipelineVectorSearchParams) ([]PipelineVectorSearchResult, error)
 }
 
+// PipelineReranker Rerank 重排序接口，由 service 层实现
+type PipelineReranker interface {
+	Rerank(ctx context.Context, query string, documents []string, topK int) ([]PipelineRerankResult, error)
+}
+
+// PipelineRerankerFactory Rerank 工厂接口，根据模型 ID 创建 Reranker 实例
+type PipelineRerankerFactory interface {
+	CreateReranker(ctx context.Context, modelID string) (PipelineReranker, error)
+}
+
+// PipelineRerankResult Rerank 单条结果
+type PipelineRerankResult struct {
+	Index          int     // 原始文档在输入列表中的下标
+	RelevanceScore float64 // 相关度分数（0~1）
+}
+
 // PipelineVectorSearchParams 向量检索参数
 type PipelineVectorSearchParams struct {
 	UserID           uint
@@ -43,6 +59,7 @@ type PipelineVectorSearchResult struct {
 // PipelineDeps Pipeline 外部依赖，在 NewPipeline 时注入
 type PipelineDeps struct {
 	EmbedderFactory PipelineEmbedderFactory
+	RerankerFactory PipelineRerankerFactory
 	KBRepo          repository.KnowledgeBaseRepository
 	VectorStoreRepo repository.VectorStoreRepository
 	PrimaryDB       interface{} // *gorm.DB，使用 interface 避免导入 gorm
@@ -101,6 +118,7 @@ type AgentConfig struct {
 	EmbeddingTopK          int
 	VectorThreshold        float64
 	RerankTopK             int
+	RerankThreshold        float64 // Rerank 相关度阈值，低于此值的结果将被过滤（0~1）
 }
 
 // SearchResult 搜索结果

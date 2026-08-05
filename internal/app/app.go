@@ -255,7 +255,8 @@ func (a *App) initDependencies() error {
 	messageRepo := repository.NewMessageRepository(a.pgDB)
 	chatModelFactory := service.NewChatModelFactory(modelRepo)
 	agentRepo := repository.NewAgentRepository(a.pgDB)
-	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, chatModelFactory, embedderFactory, knowledgeBaseRepo, vectorStoreRepo, agentRepo, a.pgDB)
+	rerankerFactory := service.NewRerankerFactory(modelRepo, &http.Client{Timeout: 30 * time.Second})
+	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentRepo, a.pgDB)
 	if err != nil {
 		return fmt.Errorf("创建 ChatService 失败: %w", err)
 	}
