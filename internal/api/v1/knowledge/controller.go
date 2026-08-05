@@ -195,22 +195,6 @@ func (ctrl *Controller) ListKnowledgeChunks(c *gin.Context) {
 	})
 }
 
-func (ctrl *Controller) ReparseKnowledge(c *gin.Context) {
-	userID := middleware.GetUserID(c)
-	id, ok := parseUintParam(c, "id")
-	if !ok {
-		return
-	}
-	var request req.ReparseKnowledgeRequest
-	_ = c.ShouldBindJSON(&request)
-	item, err := ctrl.kbService.ReparseKnowledge(userID, id, request.ProcessConfig)
-	if err != nil {
-		response.BizError(c, err)
-		return
-	}
-	response.Success(c, item)
-}
-
 func (ctrl *Controller) DeleteKnowledge(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	id, ok := parseUintParam(c, "id")

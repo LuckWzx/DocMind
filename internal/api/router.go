@@ -10,7 +10,6 @@ import (
 	"docmind/internal/api/v1/knowledgebase"
 	"docmind/internal/api/v1/models"
 	"docmind/internal/api/v1/tag"
-	"docmind/internal/api/v1/user"
 	"docmind/internal/api/v1/vectorstore"
 	"docmind/internal/middleware"
 	"docmind/internal/service"
@@ -24,7 +23,6 @@ import (
 
 // Router 路由
 type Router struct {
-	userCtrl           *user.Controller
 	authCtrl           *auth.Controller
 	chunkerCtrl        *chunker.Controller
 	knowledgeCtrl      *knowledge.Controller
@@ -52,7 +50,6 @@ func NewRouter(
 	agentService service.AgentService,
 ) *Router {
 	return &Router{
-		userCtrl:           user.NewController(userService),
 		authCtrl:           auth.NewController(authService, userService),
 		chunkerCtrl:        chunker.NewController(chunkerService),
 		knowledgeCtrl:      knowledge.NewController(knowledgeService, knowledgeBaseService, faqService),
@@ -96,9 +93,6 @@ func (r *Router) Setup(engine *gin.Engine) {
 	{
 		// 认证路由
 		r.authCtrl.RegisterRoutes(v1)
-
-		// 用户路由
-		r.userCtrl.RegisterRoutes(v1)
 
 		// 模型管理路由
 		r.modelCtrl.RegisterRoutes(v1)

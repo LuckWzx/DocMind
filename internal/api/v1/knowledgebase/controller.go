@@ -2,7 +2,6 @@ package knowledgebase
 
 import (
 	"strconv"
-	"strings"
 
 	"docmind/internal/middleware"
 	req "docmind/internal/model/dto/request"
@@ -97,27 +96,6 @@ func (ctrl *Controller) DeleteKnowledgeBase(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-func (ctrl *Controller) UploadKnowledgeFile(c *gin.Context) {
-	userID := middleware.GetUserID(c)
-	kbID, ok := parseUintParam(c, "id")
-	if !ok {
-		return
-	}
-	fileHeader, err := c.FormFile("file")
-	if err != nil {
-		response.BadRequest(c, "缺少上传文件")
-		return
-	}
-	processConfig := c.PostForm("process_config")
-	tagID := parseTagID(c.PostForm("tag_id"), c.PostForm("tag_ids"))
-	item, err := ctrl.kbService.UploadFile(userID, kbID, fileHeader, processConfig, tagID)
-	if err != nil {
-		response.BizError(c, err)
-		return
-	}
-	response.Success(c, item)
-}
-
 func parseUintParam(c *gin.Context, key string) (uint, bool) {
 	raw := c.Param(key)
 	value, err := strconv.ParseUint(raw, 10, 64)
@@ -126,22 +104,4 @@ func parseUintParam(c *gin.Context, key string) (uint, bool) {
 		return 0, false
 	}
 	return uint(value), true
-}
-
-func parseTagID(values ...string) *uint {
-	for _, raw := range values {
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
-			continue
-		}
-		if strings.Contains(raw, ",") {
-			raw = strings.TrimSpace(strings.Split(raw, ",")[0])
-		}
-		value, err := strconv.ParseUint(raw, 10, 64)
-		if err == nil {
-			parsed := uint(value)
-			return &parsed
-		}
-	}
-	return nil
 }

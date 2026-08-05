@@ -1,13 +1,9 @@
 package service
 
 import (
-	"context"
-	"crypto/sha256"
 	"encoding/csv"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"mime/multipart"
 	"strconv"
 	"strings"
 	"time"
@@ -18,9 +14,7 @@ import (
 	"docmind/internal/repository"
 	bizerrors "docmind/pkg/errors"
 
-	pgvector "github.com/pgvector/pgvector-go"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type knowledgeBaseService struct {
@@ -30,7 +24,6 @@ type knowledgeBaseService struct {
 	faqRepo         repository.FAQRepository
 	tagRepo         repository.TagRepository
 	vectorStoreRepo repository.VectorStoreRepository
-	gateway         KnowledgePipelineGateway
 }
 
 func NewKnowledgeBaseService(
@@ -40,7 +33,6 @@ func NewKnowledgeBaseService(
 	faqRepo repository.FAQRepository,
 	tagRepo repository.TagRepository,
 	vectorStoreRepo repository.VectorStoreRepository,
-	gateway KnowledgePipelineGateway,
 ) KnowledgeBaseService {
 	return &knowledgeBaseService{
 		db:              db,
@@ -49,7 +41,6 @@ func NewKnowledgeBaseService(
 		faqRepo:         faqRepo,
 		tagRepo:         tagRepo,
 		vectorStoreRepo: vectorStoreRepo,
-		gateway:         gateway,
 	}
 }
 
@@ -167,47 +158,6 @@ func (s *knowledgeBaseService) Delete(userID, id uint) error {
 		}
 		return tx.Delete(&entity.KnowledgeBase{}, id).Error
 	})
-}
-
-func (s *knowledgeBaseService) UploadFile(userID, kbID uint, fileHeader *multipart.FileHeader, processConfig string, tagID *uint) (*dto.KnowledgeResponse, error) {
-	kb, err := s.kbRepo.FindByUserID(userID, kbID)
-	if err != nil {
-		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "查询知识库失败", err)
-	}
-	if kb == nil {
-		return nil, bizerrors.ErrResourceNotFound
-	}
-	sourceRef, err := s.gateway.StageUpload(context.Background(), fileHeader)
-	if err != nil {
-		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "暂存上传文件失败", err)
-	}
-
-	item := &entity.Knowledge{
-		Title:           strings.TrimSuffix(fileHeader.Filename, filepathExt(fileHeader.Filename)),
-		FileName:        fileHeader.Filename,
-		Type:            entity.KnowledgeTypeFile,
-		Source:          "web",
-		ParseStatus:     entity.KnowledgeParseStatusPending,
-		SummaryStatus:   "completed",
-		ProcessingStage: "queued",
-		KnowledgeBaseID: kbID,
-		FileURL:         sourceRef,
-		FileType:        strings.TrimPrefix(strings.ToLower(filepathExt(fileHeader.Filename)), "."),
-		FileSize:        fileHeader.Size,
-		ErrorMessage:    "",
-	}
-	if tagID != nil {
-		item.TagID = *tagID
-	}
-	if strings.TrimSpace(processConfig) != "" {
-		item.ProcessConfig = entity.JSON([]byte(processConfig))
-	}
-	if err := s.knowledgeRepo.Create(item); err != nil {
-		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "创建知识记录失败", err)
-	}
-
-	go s.processKnowledge(item.ID)
-	return s.toKnowledgeResponse(item, nil), nil
 }
 
 func (s *knowledgeBaseService) ListKnowledge(userID, kbID uint, request *req.KnowledgeListRequest) ([]*dto.KnowledgeResponse, int64, error) {
@@ -358,31 +308,6 @@ func (s *knowledgeBaseService) ListKnowledgeChunks(userID, knowledgeID uint, pag
 	return resp, total, nil
 }
 
-func (s *knowledgeBaseService) ReparseKnowledge(userID, id uint, processConfig string) (*dto.KnowledgeResponse, error) {
-	item, err := s.knowledgeRepo.FindByID(id)
-	if err != nil {
-		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "查询知识详情失败", err)
-	}
-	if item == nil {
-		return nil, bizerrors.ErrResourceNotFound
-	}
-	if _, err := s.Get(userID, item.KnowledgeBaseID); err != nil {
-		return nil, err
-	}
-	item.ParseStatus = entity.KnowledgeParseStatusPending
-	item.ProcessingStage = "queued"
-	item.ErrorMessage = ""
-	if strings.TrimSpace(processConfig) != "" {
-		item.ProcessConfig = entity.JSON([]byte(processConfig))
-	}
-	if err := s.knowledgeRepo.Update(item); err != nil {
-		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "更新知识状态失败", err)
-	}
-	go s.processKnowledge(item.ID)
-	tag, _ := s.loadTag(item.TagID)
-	return s.toKnowledgeResponse(item, tag), nil
-}
-
 func (s *knowledgeBaseService) UpdateKnowledgeTags(userID uint, updates map[uint][]uint) error {
 	for knowledgeID, tagIDs := range updates {
 		item, err := s.knowledgeRepo.FindByID(knowledgeID)
@@ -430,105 +355,6 @@ func (s *knowledgeBaseService) DeleteKnowledge(userID, id uint) error {
 		}
 		return tx.Delete(&entity.Knowledge{}, id).Error
 	})
-}
-
-func (s *knowledgeBaseService) processKnowledge(id uint) {
-	item, err := s.knowledgeRepo.FindByID(id)
-	if err != nil || item == nil {
-		return
-	}
-	item.ParseStatus = entity.KnowledgeParseStatusProcessing
-	item.ProcessingStage = "parsing"
-	_ = s.knowledgeRepo.Update(item)
-
-	parsed, err := s.gateway.ParseDocument(context.Background(), item.FileURL, string(item.ProcessConfig))
-	if err != nil {
-		s.markKnowledgeFailed(item, err)
-		return
-	}
-
-	if err := s.db.Where("knowledge_id = ?", item.ID).Delete(&entity.ChunkVector{}).Error; err != nil {
-		s.markKnowledgeFailed(item, err)
-		return
-	}
-	if err := s.db.Where("knowledge_id = ?", item.ID).Delete(&entity.Chunk{}).Error; err != nil {
-		s.markKnowledgeFailed(item, err)
-		return
-	}
-
-	item.ParseStatus = entity.KnowledgeParseStatusFinalizing
-	item.ProcessingStage = "indexing"
-	if strings.TrimSpace(item.Title) == "" && strings.TrimSpace(parsed.Title) != "" {
-		item.Title = parsed.Title
-	}
-	_ = s.knowledgeRepo.Update(item)
-
-	chunkIDs := make([]uint, 0, len(parsed.Chunks))
-	vectorTexts := make([]string, 0, len(parsed.Chunks))
-	for idx, text := range parsed.Chunks {
-		contentHash := sha256.Sum256([]byte(text))
-		chunk := &entity.Chunk{
-			Content:         text,
-			ChunkIndex:      idx + 1,
-			KnowledgeID:     item.ID,
-			KnowledgeBaseID: item.KnowledgeBaseID,
-			ChunkType:       entity.ChunkTypeMarkdown,
-			ChunkStatus:     1,
-			TagID:           item.TagID,
-			ContentHash:     hex.EncodeToString(contentHash[:]),
-			IsEnabled:       true,
-		}
-		if err := s.db.Create(chunk).Error; err != nil {
-			s.markKnowledgeFailed(item, err)
-			return
-		}
-		chunkIDs = append(chunkIDs, chunk.ID)
-		vectorTexts = append(vectorTexts, text)
-	}
-
-	kb, err := s.kbRepo.FindByID(item.KnowledgeBaseID)
-	if err != nil || kb == nil {
-		s.markKnowledgeFailed(item, fmt.Errorf("知识库不存在"))
-		return
-	}
-	if kb.IndexingStrategy.VectorEnabled && kb.VectorStoreID != nil {
-		vectors, err := s.gateway.BuildEmbeddings(context.Background(), kb.EmbeddingModelID, vectorTexts)
-		if err != nil {
-			s.markKnowledgeFailed(item, err)
-			return
-		}
-		for idx, chunkID := range chunkIDs {
-			record := &entity.ChunkVector{
-				UserID:          0,
-				VectorStoreID:   *kb.VectorStoreID,
-				KnowledgeBaseID: item.KnowledgeBaseID,
-				KnowledgeID:     item.ID,
-				ChunkID:         chunkID,
-				Embedding:       pgvector.NewVector(vectors[idx]),
-				ContentHash:     "",
-				IsEnabled:       true,
-			}
-			if err := s.db.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "chunk_id"}},
-				UpdateAll: true,
-			}).Create(record).Error; err != nil {
-				s.markKnowledgeFailed(item, err)
-				return
-			}
-		}
-	}
-
-	item.ParseStatus = entity.KnowledgeParseStatusCompleted
-	item.ProcessingStage = "done"
-	item.ErrorMessage = ""
-	_ = s.knowledgeRepo.Update(item)
-}
-
-func (s *knowledgeBaseService) markKnowledgeFailed(item *entity.Knowledge, err error) {
-	item.ParseStatus = entity.KnowledgeParseStatusFailed
-	item.ProcessingStage = "failed"
-	item.ErrorMessage = err.Error()
-	_ = s.knowledgeRepo.Update(item)
 }
 
 func (s *knowledgeBaseService) validateVectorStore(userID uint, id *uint) error {
@@ -685,14 +511,6 @@ func decodeInto(input interface{}, out interface{}) error {
 		return nil
 	}
 	return json.Unmarshal(raw, out)
-}
-
-func filepathExt(name string) string {
-	idx := strings.LastIndex(name, ".")
-	if idx == -1 {
-		return ""
-	}
-	return name[idx:]
 }
 
 func parseUintCSV(raw string) []uint {

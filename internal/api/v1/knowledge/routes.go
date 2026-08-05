@@ -15,7 +15,6 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("knowledge/:id", ctrl.GetKnowledge)
 	r.GET("knowledge/:id/preview", ctrl.PreviewKnowledgeFile)
 	r.GET("knowledge/:id/spans", ctrl.GetKnowledgeSpans)
-	r.POST("knowledge/:id/reparse", ctrl.ReparseKnowledge)
 	r.DELETE("knowledge/:id", ctrl.DeleteKnowledge)
 	r.GET("chunks/:id", ctrl.ListKnowledgeChunks)
 

@@ -91,7 +91,7 @@ func (d *postgresVectorDriver) Search(ctx context.Context, params VectorSearchPa
 		Select("cv.chunk_id, cv.knowledge_id, cv.knowledge_base_id, c.content, k.title AS knowledge_title, "+scoreSQL+" AS score", queryVector).
 		Joins("LEFT JOIN chunks AS c ON cv.chunk_id = c.id AND c.deleted_at IS NULL").
 		Joins("LEFT JOIN knowledges AS k ON cv.knowledge_id = k.id AND k.deleted_at IS NULL").
-		Where("cv.user_id = ? AND cv.vector_store_id = ? AND cv.is_enabled = ?", params.UserID, params.VectorStoreID, true)
+		Where("cv.user_id = ? AND cv.vector_store_id = ? AND cv.is_enabled = ? AND cv.deleted_at IS NULL", params.UserID, params.VectorStoreID, true)
 
 	if len(params.KnowledgeBaseIDs) > 0 {
 		query = query.Where("cv.knowledge_base_id IN ?", params.KnowledgeBaseIDs)

@@ -241,8 +241,7 @@ func (a *App) initDependencies() error {
 		logger.Warn("图片存储服务初始化失败，文档图片将保留原始引用", zap.Error(err))
 		imageStorageSvc = service.NewNoopImageStorageService()
 	}
-	pipelineGateway := service.NewKnowledgePipelineGatewayMock()
-	knowledgeBaseSvc := service.NewKnowledgeBaseService(a.pgDB, knowledgeBaseRepo, knowledgeRepo, faqRepo, tagRepo, vectorStoreRepo, pipelineGateway)
+	knowledgeBaseSvc := service.NewKnowledgeBaseService(a.pgDB, knowledgeBaseRepo, knowledgeRepo, faqRepo, tagRepo, vectorStoreRepo)
 	faqSvc := service.NewFAQService(a.pgDB, knowledgeBaseRepo, faqRepo)
 	tagSvc := service.NewTagService(a.pgDB, knowledgeBaseRepo, tagRepo, faqRepo)
 

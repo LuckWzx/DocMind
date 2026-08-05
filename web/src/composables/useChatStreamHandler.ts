@@ -82,6 +82,12 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
     if (message.isAgentMode) {
       if (!message.agentEventStream) message.agentEventStream = []
       const stream = message.agentEventStream as ChatMessage[]
+      // 将尚未收尾的 answer 事件标记为 done，确保工具栏按钮正常显示
+      for (const ev of stream) {
+        if (ev.type === 'answer' && !ev.done && !ev.superseded) {
+          ev.done = true
+        }
+      }
       if (!stream.some((e) => e.type === 'stop')) {
         stream.push({
           type: 'stop',
@@ -977,7 +983,16 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
         fullContent.value = ''
         currentAssistantMessageId.value = ''
         if (message.agentEventStream) {
-          ;(message.agentEventStream as ChatMessage[]).push({
+          // 后端在流式回答时不会给 answer 事件发送 done=true，
+          // complete 到达时统一将尚未标记的 answer 事件收尾，
+          // 否则 AgentStreamDisplay 的工具栏（复制、添加到知识库）因 event.done=false 而隐藏。
+          const stream = message.agentEventStream as ChatMessage[]
+          for (const ev of stream) {
+            if (ev.type === 'answer' && !ev.done && !ev.superseded) {
+              ev.done = true
+            }
+          }
+          stream.push({
             type: 'agent_complete',
             total_duration_ms: dataPayload?.total_duration_ms || 0,
             total_steps: dataPayload?.total_steps || 0,
@@ -988,7 +1003,15 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
       case 'stop': {
         log('[Agent] Stop event received')
         if (!message.agentEventStream) message.agentEventStream = []
-        ;(message.agentEventStream as ChatMessage[]).push({
+        // 与 complete 同理：将尚未收尾的 answer 事件标记为 done，
+        // 避免用户手动停止后工具栏按钮丢失。
+        const stopStream = message.agentEventStream as ChatMessage[]
+        for (const ev of stopStream) {
+          if (ev.type === 'answer' && !ev.done && !ev.superseded) {
+            ev.done = true
+          }
+        }
+        stopStream.push({
           type: 'stop',
           timestamp: Date.now(),
           reason: dataPayload?.reason || 'user_requested',
