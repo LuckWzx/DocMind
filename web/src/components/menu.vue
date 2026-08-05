@@ -671,7 +671,7 @@ const menuChildToSessionRow = (item: Record<string, unknown>): SessionForGroupin
 };
 
 const sessionExistsInBuckets = (sessionId: string) =>
-    Object.values(sessionBuckets.value).some((bucket) => bucket.items.some((row) => row.id === sessionId));
+    Object.values(sessionBuckets.value).some((bucket) => bucket.items.some((row) => String(row.id) === sessionId));
 
 /** 创建会话后 menuStore 已乐观写入，但列表实际渲染自 sessionBuckets，需补齐。 */
 const ensureSessionInSidebar = (sessionId: string) => {
@@ -682,7 +682,7 @@ const ensureSessionInSidebar = (sessionId: string) => {
 
     const chatMenu = (menuArr.value as unknown as MenuItem[]).find((item) => item.path === 'creatChat');
     const fromStore = (chatMenu?.children as Record<string, unknown>[] | undefined)
-        ?.find((item) => item.id === sessionId);
+        ?.find((item) => String(item.id) === sessionId);
     if (!fromStore) return;
 
     sessionBuckets.value = {
@@ -783,7 +783,7 @@ const syncActiveBucketFromChat = async (sessionId: string | undefined) => {
     if (!bucketKey) {
         const chatMenu = (menuArr.value as unknown as MenuItem[]).find((item) => item.path === 'creatChat');
         const fromStore = (chatMenu?.children as Record<string, unknown>[] | undefined)
-            ?.find((item) => item.id === sessionId);
+            ?.find((item) => String(item.id) === sessionId);
         if (fromStore) {
             bucketKey = originGroupKey(resolveSessionOrigin(menuChildToSessionRow(fromStore)));
         }

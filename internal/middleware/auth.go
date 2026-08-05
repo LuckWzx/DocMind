@@ -53,7 +53,20 @@ func Auth() gin.HandlerFunc {
 // GetUserID 从上下文获取用户 ID
 func GetUserID(c *gin.Context) uint {
 	if userID, exists := c.Get(ContextUserID); exists {
-		return userID.(uint)
+		if id, ok := userID.(uint); ok {
+			return id
+		}
+		// 安全处理：如果类型不是 uint，尝试转换
+		switch v := userID.(type) {
+		case uint:
+			return v
+		case int:
+			return uint(v)
+		case float64:
+			return uint(v)
+		case int64:
+			return uint(v)
+		}
 	}
 	return 0
 }
@@ -61,7 +74,10 @@ func GetUserID(c *gin.Context) uint {
 // GetUsername 从上下文获取用户名
 func GetUsername(c *gin.Context) string {
 	if username, exists := c.Get(ContextUsername); exists {
-		return username.(string)
+		if name, ok := username.(string); ok {
+			return name
+		}
+		return ""
 	}
 	return ""
 }

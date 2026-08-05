@@ -28,11 +28,11 @@ export function buildSessionSourceOptions(
 }
 
 export function findSessionBucketKey(
-  buckets: Record<string, { items: Array<{ id: string }> }>,
+  buckets: Record<string, { items: Array<{ id: string | number }> }>,
   sessionId: string,
 ): string | null {
   for (const [key, bucket] of Object.entries(buckets)) {
-    if (bucket.items.some((row) => row.id === sessionId)) return key
+    if (bucket.items.some((row) => String(row.id) === sessionId)) return key
   }
   return null
 }

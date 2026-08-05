@@ -957,6 +957,7 @@ export default {
     replyingPleaseWait: "正在回复，请稍后再试！",
     createSessionFailed: "创建会话失败",
     createSessionError: "创建会话出错",
+    loadMessagesFailed: "加载消息失败，请刷新重试",
     unableToGetKnowledgeBaseId: "无法获取知识库ID",
     summaryInProgress: "正在总结答案……",
     thinkingAlt: "正在思考",

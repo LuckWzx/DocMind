@@ -16,6 +16,33 @@ import (
 // MessageImages 消息附带的图片列表
 type MessageImages []MessageImage
 
+// Scan implements sql.Scanner interface for database deserialization
+func (m *MessageImages) Scan(value interface{}) error {
+	if value == nil {
+		*m = make(MessageImages, 0)
+		return nil
+	}
+	var b []byte
+	switch v := value.(type) {
+	case []byte:
+		b = v
+	case string:
+		b = []byte(v)
+	default:
+		*m = make(MessageImages, 0)
+		return fmt.Errorf("unsupported type: %T", value)
+	}
+	return json.Unmarshal(b, m)
+}
+
+// Value implements driver.Valuer interface for database serialization
+func (m MessageImages) Value() (driver.Value, error) {
+	if m == nil {
+		return json.Marshal([]MessageImage{})
+	}
+	return json.Marshal(m)
+}
+
 // MessageImage 消息中的单张图片
 type MessageImage struct {
 	URL     string `json:"url"`               // 图片URL
@@ -49,6 +76,33 @@ type ReferenceJSON struct {
 
 // ReferenceJSONs 引用列表的JSON序列化类型
 type ReferenceJSONs []ReferenceJSON
+
+// Scan implements sql.Scanner interface for database deserialization
+func (r *ReferenceJSONs) Scan(value interface{}) error {
+	if value == nil {
+		*r = make(ReferenceJSONs, 0)
+		return nil
+	}
+	var b []byte
+	switch v := value.(type) {
+	case []byte:
+		b = v
+	case string:
+		b = []byte(v)
+	default:
+		*r = make(ReferenceJSONs, 0)
+		return fmt.Errorf("unsupported type: %T", value)
+	}
+	return json.Unmarshal(b, r)
+}
+
+// Value implements driver.Valuer interface for database serialization
+func (r ReferenceJSONs) Value() (driver.Value, error) {
+	if r == nil {
+		return json.Marshal([]ReferenceJSON{})
+	}
+	return json.Marshal(r)
+}
 
 // ============================================================================
 // Agent 执行步骤相关类型（参考 WeKnora 实现）

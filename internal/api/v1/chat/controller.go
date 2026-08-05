@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -12,9 +13,11 @@ import (
 	"docmind/internal/model/entity"
 
 	"docmind/internal/service"
+	"docmind/pkg/logger"
 	"docmind/pkg/response"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // Controller 会话与对话控制器
@@ -238,12 +241,27 @@ func (ctrl *Controller) GenerateTitle(c *gin.Context) {
 
 // LoadMessages 加载消息历史
 func (ctrl *Controller) LoadMessages(c *gin.Context) {
+	// 防止 panic 导致500错误
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("LoadMessages panic recovered",
+				zap.Any("error", r),
+				zap.String("stack", string(debug.Stack())),
+				zap.String("path", c.Request.URL.Path),
+			)
+			response.InternalError(c, "加载消息失败")
+		}
+	}()
+
 	userID := middleware.GetUserID(c)
 	sessionID, ok := parseUintFromPath(c, "session_id")
 	if !ok {
 		return
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
 	beforeTimeStr := c.Query("before_time")
 
 	var beforeTime *time.Time
@@ -253,10 +271,24 @@ func (ctrl *Controller) LoadMessages(c *gin.Context) {
 		}
 	}
 
+	logger.Info("LoadMessages request",
+		zap.Uint("session_id", sessionID),
+		zap.Uint("user_id", userID),
+		zap.Int("limit", limit),
+	)
+
 	messages, err := ctrl.chatService.LoadMessages(c.Request.Context(), sessionID, userID, limit, beforeTime)
 	if err != nil {
+		logger.Error("LoadMessages service error",
+			zap.Error(err),
+			zap.Uint("session_id", sessionID),
+			zap.Uint("user_id", userID),
+		)
 		response.BizError(c, err)
 		return
+	}
+	if messages == nil {
+		messages = []*entity.Message{}
 	}
 	response.Success(c, messages)
 }

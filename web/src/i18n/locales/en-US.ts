@@ -3142,6 +3142,7 @@ export default {
     replyingPleaseWait: 'Replying, please try again later!',
     createSessionFailed: 'Failed to create session',
     createSessionError: 'Session creation error',
+    loadMessagesFailed: 'Failed to load messages, please refresh and try again',
     unableToGetKnowledgeBaseId: 'Unable to get knowledge base ID',
     summaryInProgress: 'Summarizing answer…',
     thinkingAlt: 'Thinking in progress',

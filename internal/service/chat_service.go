@@ -223,6 +223,12 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 		RerankTopK:         defaultTopK,
 	}
 
+	// 如果请求中没有携带知识库 ID，从 Session 的 AgentConfig 中补充
+	// （前端创建会话时会将选中的知识库存入 session.agent_config.knowledge_bases）
+	if len(config.KnowledgeBaseIDs) == 0 && session.AgentConfig != nil && len(session.AgentConfig.KnowledgeBases) > 0 {
+		config.KnowledgeBaseIDs = session.AgentConfig.KnowledgeBases
+	}
+
 	// 如果 Session 关联了 Agent，从 Agent 配置中解析
 	if session.AgentID != "" {
 		agent, err := s.agentRepo.FindByIDStr(session.AgentID)
@@ -290,6 +296,17 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 			if agent.Config.VectorThreshold > 0 {
 				config.VectorThreshold = agent.Config.VectorThreshold
 			}
+		}
+	}
+
+	// 兜底：如果经过以上所有解析后仍然没有知识库 ID，则自动检索用户的所有知识库
+	if len(config.KnowledgeBaseIDs) == 0 {
+		if allKBs, err := s.kbRepo.ListByUser(userID); err == nil && len(allKBs) > 0 {
+			kbIDs := make([]string, 0, len(allKBs))
+			for _, kb := range allKBs {
+				kbIDs = append(kbIDs, fmt.Sprintf("%d", kb.ID))
+			}
+			config.KnowledgeBaseIDs = kbIDs
 		}
 	}
 

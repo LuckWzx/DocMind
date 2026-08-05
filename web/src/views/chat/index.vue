@@ -598,6 +598,17 @@ const getmsgList = (data, isScrollType = false, scrollHeight) => {
         historyLoadingMore.value = true;
     }
     fetchMessageList(data).then(async (res) => {
+        // 后端所有响应都返回 HTTP 200，业务错误在 body 中：{ success: false, code: 500, ... }
+        if (res && res.success === false) {
+            console.error('Failed to load messages:', res.message || '服务器内部错误');
+            if (!isScrollType) {
+                MessagePlugin.error({ content: t('chat.loadMessagesFailed') || '加载消息失败，请刷新重试', duration: 3000 });
+            }
+            if (isScrollType) {
+                hasMoreHistory.value = false;
+            }
+            return;
+        }
         const batch = res?.data;
         if (!batch?.length) {
             if (isScrollType) {
@@ -620,6 +631,9 @@ const getmsgList = (data, isScrollType = false, scrollHeight) => {
         await handleMsgList(batch, isScrollType, scrollHeight);
     }).catch((err) => {
         console.error('Failed to load messages:', err);
+        if (!isScrollType) {
+            MessagePlugin.error({ content: t('chat.loadMessagesFailed') || '加载消息失败，请刷新重试', duration: 3000 });
+        }
         if (isScrollType) {
             hasMoreHistory.value = false;
         }
