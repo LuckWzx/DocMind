@@ -69,6 +69,9 @@ DocMind/
 │   └── service/                      # 业务逻辑层
 │       ├── *_interface.go            # 服务接口（13个模块）
 │       ├── *_service.go              # 服务实现
+│       ├── model_service_http.go     # 模型服务 HTTP 工具（JSON/Multipart 请求、认证头、URL 拼接）
+│       ├── model_service_ollama.go   # 模型服务 Ollama（状态、模型列表、异步下载、embed/chat）
+│       ├── model_service_utils.go    # 模型服务工具（JSON 响应解析、类型转换、文件读取）
 │       ├── chat_model_factory.go     # Eino ChatModel 工厂（Agent 核心依赖）
 │       ├── embedder_factory.go       # Eino Embedder 工厂（查询向量化）
 │       ├── knowledge_embedder.go     # 知识分块自动向量化（分批处理）
@@ -201,11 +204,11 @@ export async function listKnowledgeBases() {
 | **标签** | 标签独立 CRUD，支持按知识库筛选 | `internal/api/v1/tag/` |
 | **聊天** | 会话管理、消息收发、SSE 流式响应 | `internal/api/v1/chat/` |
 | **Agent** | 智能体 CRUD、复制、内置 Agent 种子数据（快速问答） | `internal/api/v1/agent/` |
-| **模型** | LLM / Embedding / Rerank / VLM / ASR 多类型模型统一管理 | `internal/api/v1/models/` |
+| **模型** | LLM / Embedding / Rerank / VLLM / ASR 多类型模型 CRUD、凭据管理、连通性探测、调试调用 | `internal/api/v1/models/` |
 | **向量存储** | PostgreSQL（pgvector）向量引擎配置与语义检索 | `internal/api/v1/vectorstore/` |
 | **认证** | 登录、注册、Token 刷新、登出 | `internal/api/v1/auth/` |
 | **分块** | 多策略文档分块（heading / heuristic / legacy / auto） | `internal/api/v1/chunker/` |
-| **初始化** | 系统初始化配置向导 | `internal/api/v1/initialization/` |
+| **初始化** | 系统初始化配置向导、Ollama 状态/下载/模型列表、供应商列表 | `internal/api/v1/initialization/` |
 
 ## 🛠️ 技术栈
 
@@ -244,7 +247,7 @@ export async function listKnowledgeBases() {
 ✅ **Eino Agent 编排** — Eino ChatModel + Embedder 工厂，ReAct 推理循环，Tool Calling 支持  
 ✅ **SSE 流式对话** — 知识问答流式响应，检索结果引用溯源  
 ✅ **15 张数据表** — AutoMigrate 自动迁移，PostgreSQL JSONB + pgvector 支持  
-✅ **多模型管理** — LLM / Embedding / Rerank / VLM / ASR 多类型统一管理  
+✅ **多模型管理** — 6 个供应商（OpenAI / 阿里云 / SiliconFlow / 智谱 / Jina / 自定义），5 类模型统一管理，凭据脱敏存储，Ollama 本地模型下载与管理  
 ✅ **11 个 API 模块** — 按功能模块分离，完整的前后端类型定义  
 ✅ **Go 后端** — Gin + GORM 分层架构（API → Service → Repository），Swagger 文档，JWT 双 Token  
 ✅ **文档解析服务** — Python gRPC 微服务，支持 PDF/DOCX/MD/Excel/Web/Image  
