@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	BuiltinQuickAnswerID = "builtin-quick-answer"
+	BuiltinQuickAnswerID    = "builtin-quick-answer"
+	BuiltinSmartReasoningID = "builtin-smart-reasoning"
 )
 
 // AgentService 智能体服务接口
@@ -216,6 +217,10 @@ func SeedBuiltinAgents(agentRepo repository.AgentRepository) error {
 	defaultTemp := 0.7
 	defaultMaxTokens := 2048
 	defaultFalse := false
+	defaultTrue := true
+	smartTemp := 0.8
+	smartMaxTokens := 4096
+	smartMaxIter := 10
 
 	quickAnswer := &entity.Agent{
 		UserID:      0,
@@ -236,5 +241,29 @@ func SeedBuiltinAgents(agentRepo repository.AgentRepository) error {
 		},
 	}
 
-	return agentRepo.EnsureBuiltin(quickAnswer)
+	smartReasoning := &entity.Agent{
+		UserID:      0,
+		IDStr:       BuiltinSmartReasoningID,
+		Name:        "智能推理",
+		Description: "ReAct 推理框架，支持多步思考与工具调用",
+		IsBuiltin:   true,
+		Config: entity.AgentConfig{
+			AgentMode:           "smart-reasoning",
+			SystemPrompt:        "你是一个智能推理助手，能够进行多步思考和推理。当需要查询知识库中的信息时，请使用知识库搜索工具获取相关内容，然后基于检索结果进行分析和回答。请先思考、再检索、最后给出结论。",
+			Temperature:         &smartTemp,
+			MaxCompletionTokens: &smartMaxTokens,
+			MaxIterations:       &smartMaxIter,
+			ReflectionEnabled:   &defaultTrue,
+			EmbeddingTopK:       5,
+			VectorThreshold:     0.5,
+			RerankTopK:          5,
+			MultiTurnEnabled:    &defaultTrue,
+			HistoryTurns:        3,
+		},
+	}
+
+	if err := agentRepo.EnsureBuiltin(quickAnswer); err != nil {
+		return err
+	}
+	return agentRepo.EnsureBuiltin(smartReasoning)
 }
