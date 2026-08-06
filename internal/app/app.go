@@ -231,6 +231,11 @@ func (a *App) initDependencies() error {
 	tagRepo := repository.NewTagRepository(a.pgDB)
 	chunkRepo := repository.NewChunkRepository(a.pgDB)
 
+	// 确保系统全局默认向量存储存在（user_id=0，使用主库 pgvector）
+	if _, err := vectorStoreRepo.FirstOrCreateGlobalDefault(); err != nil {
+		logger.Warn("创建系统默认向量存储失败", zap.Error(err))
+	}
+
 	// 创建 Service
 	userSvc := service.NewUserService(userRepo)
 	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, userSvc)

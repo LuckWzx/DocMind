@@ -11,6 +11,8 @@ type VectorStoreResponse struct {
 	ConnectionConfig string    `json:"connection_config"`
 	IndexConfig      string    `json:"index_config"`
 	Status           int       `json:"status"`
+	Source           string    `json:"source"`
+	Readonly         bool      `json:"readonly"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }

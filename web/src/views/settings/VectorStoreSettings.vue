@@ -586,7 +586,10 @@ const indexNumberTextProxy = new Proxy(indexNumberText, {
 const loadStores = async () => {
   try {
     const response = await listVectorStores()
-    if (response.data && Array.isArray(response.data)) {
+    const list = response.data?.list
+    if (list && Array.isArray(list)) {
+      stores.value = list
+    } else if (response.data && Array.isArray(response.data)) {
       stores.value = response.data
     }
   } catch (error) {

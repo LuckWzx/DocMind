@@ -130,20 +130,44 @@ func (s *vectorStoreService) Delete(userID, id uint) error {
 	return s.vectorStoreRepo.Delete(store.ID)
 }
 
-// List 分页获取向量存储
+// List 分页获取向量存储（系统全局默认 + 当前用户自建）
 func (s *vectorStoreService) List(userID uint, req *request.VectorStoreListRequest) (*pkgresponse.PageResponse, error) {
-	offset := (req.Page - 1) * req.Size
-	stores, total, err := s.vectorStoreRepo.ListByUser(userID, offset, req.Size)
+	page := req.Page
+	if page <= 0 {
+		page = 1
+	}
+	size := req.Size
+	if size <= 0 {
+		size = 20
+	}
+	offset := (page - 1) * size
+	stores, total, err := s.vectorStoreRepo.ListByUser(userID, offset, size)
 	if err != nil {
 		return nil, err
 	}
 
-	list := make([]*dto.VectorStoreResponse, 0, len(stores))
-	for _, store := range stores {
-		list = append(list, toVectorStoreResponse(store))
+	list := make([]*dto.VectorStoreResponse, 0, len(stores)+1)
+
+	// 系统全局默认存储（配置文件 database.postgresql），对任何用户只读展示
+	global, err := s.vectorStoreRepo.FindGlobalDefault()
+	if err != nil {
+		return nil, err
+	}
+	if global != nil {
+		globalResp := toVectorStoreResponse(global)
+		globalResp.Source = "env"
+		globalResp.Readonly = true
+		list = append(list, globalResp)
 	}
 
-	return pkgresponse.NewPageResponse(list, total, req.Page, req.Size), nil
+	for _, store := range stores {
+		resp := toVectorStoreResponse(store)
+		resp.Source = "user"
+		resp.Readonly = false
+		list = append(list, resp)
+	}
+
+	return pkgresponse.NewPageResponse(list, total+1, page, size), nil
 }
 
 // TestConnection 测试向量存储连接
@@ -404,6 +428,8 @@ func toVectorStoreResponse(store *entity.VectorStore) *dto.VectorStoreResponse {
 		ConnectionConfig: jsonString(store.ConnectionConfig),
 		IndexConfig:      jsonString(store.IndexConfig),
 		Status:           store.Status,
+		Source:           "user",
+		Readonly:         false,
 		CreatedAt:        store.CreatedAt,
 		UpdatedAt:        store.UpdatedAt,
 	}

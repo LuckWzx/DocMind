@@ -31,10 +31,10 @@ func (r *vectorStoreRepository) FindByID(id uint) (*entity.VectorStore, error) {
 	return &store, nil
 }
 
-// FindByUserAndID 根据用户与 ID 查询向量存储
+// FindByUserAndID 根据用户与 ID 查询向量存储（user_id=0 的全局存储对任何用户可见）
 func (r *vectorStoreRepository) FindByUserAndID(userID, id uint) (*entity.VectorStore, error) {
 	var store entity.VectorStore
-	err := r.db.Where("user_id = ? AND id = ?", userID, id).First(&store).Error
+	err := r.db.Where("(user_id = ? OR user_id = 0) AND id = ?", userID, id).First(&store).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -78,4 +78,46 @@ func (r *vectorStoreRepository) ListByUser(userID uint, offset, limit int) ([]*e
 	}
 
 	return stores, total, nil
+}
+
+// FirstOrCreateGlobalDefault 获取或创建系统全局默认向量存储。
+// user_id=0 表示系统级，使用主数据库 pgvector 连接（即配置文件 database.postgresql）。
+func (r *vectorStoreRepository) FirstOrCreateGlobalDefault() (*entity.VectorStore, error) {
+	var store entity.VectorStore
+	err := r.db.Where("user_id = 0 AND engine_type = ?", entity.VectorStoreEnginePostgres).
+		Order("id ASC").
+		First(&store).Error
+	if err == nil {
+		return &store, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	store = entity.VectorStore{
+		UserID:           0,
+		Name:             "System Default (PostgreSQL)",
+		EngineType:       entity.VectorStoreEnginePostgres,
+		ConnectionConfig: entity.JSON(`{"use_default_connection":true}`),
+		Status:           entity.VectorStoreStatusActive,
+	}
+	if err := r.db.Create(&store).Error; err != nil {
+		return nil, err
+	}
+	return &store, nil
+}
+
+// FindGlobalDefault 查询系统全局默认向量存储
+func (r *vectorStoreRepository) FindGlobalDefault() (*entity.VectorStore, error) {
+	var store entity.VectorStore
+	err := r.db.Where("user_id = 0 AND engine_type = ?", entity.VectorStoreEnginePostgres).
+		Order("id ASC").
+		First(&store).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &store, nil
 }

@@ -1,10 +1,9 @@
 package request
 
-import "docmind/pkg/response"
-
 // VectorStoreListRequest 向量存储列表请求
 type VectorStoreListRequest struct {
-	response.PageRequest
+	Page int `form:"page"` // 页码，从1开始，默认1
+	Size int `form:"size"` // 每页大小，默认20
 }
 
 // CreateVectorStoreRequest 创建向量存储请求
