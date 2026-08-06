@@ -320,7 +320,7 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 	stream, searchResults, err := ctrl.chatService.KnowledgeChat(c.Request.Context(), sessionID, userID, &req)
 	if err != nil {
 		writeSSEEvent(c.Writer, sseEvent{
-			ResponseType: "error",
+			ResponseType: SSEEventError,
 			Content:      err.Error(),
 		})
 		c.Writer.Flush()
@@ -339,7 +339,7 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 		})
 	}
 	writeSSEEvent(c.Writer, sseEvent{
-		ResponseType: "references",
+		ResponseType: SSEEventReferences,
 		References:   refs,
 	})
 	c.Writer.Flush()
@@ -356,7 +356,7 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 		}
 		if err != nil {
 			writeSSEEvent(c.Writer, sseEvent{
-				ResponseType: "error",
+				ResponseType: SSEEventError,
 				Content:      fmt.Sprintf("流式读取失败: %v", err),
 			})
 			c.Writer.Flush()
@@ -365,7 +365,7 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 		if chunk.Content != "" {
 			fullContent += chunk.Content
 			writeSSEEvent(c.Writer, sseEvent{
-				ResponseType: "answer",
+				ResponseType: SSEEventAnswer,
 				Content:      chunk.Content,
 			})
 			c.Writer.Flush()
@@ -429,7 +429,7 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 	if req.Query != "" {
 		if newTitle, err := ctrl.chatService.GenerateSessionTitle(c.Request.Context(), sessionID, userID, req.Query); err == nil && newTitle != "" && newTitle != "新对话" {
 			writeSSEEvent(c.Writer, sseEvent{
-				ResponseType: "session_title",
+				ResponseType: SSEEventSessionTitle,
 				Content:      newTitle,
 				SessionID:    strconv.FormatUint(uint64(sessionID), 10),
 			})
@@ -439,7 +439,7 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 
 	// 发送完成事件
 	writeSSEEvent(c.Writer, sseEvent{
-		ResponseType: "complete",
+		ResponseType: SSEEventComplete,
 		Done:         true,
 		SessionID:    strconv.FormatUint(uint64(sessionID), 10),
 	})
@@ -454,7 +454,7 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 	c.Writer.Flush()
 
 	writeSSEEvent(c.Writer, sseEvent{
-		ResponseType: "error",
+		ResponseType: SSEEventError,
 		ErrorMessage: "Agent 模式暂未实现，将在阶段二支持",
 	})
 	c.Writer.Flush()
@@ -464,7 +464,7 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 
 func writeSSEEvent(w http.ResponseWriter, event sseEvent) {
 	data, _ := json.Marshal(event)
-	fmt.Fprintf(w, "event: message\ndata: %s\n\n", string(data))
+	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sseProtocolEvent, string(data))
 }
 
 func parseSessionID(c *gin.Context) (uint, bool) {

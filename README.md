@@ -27,6 +27,9 @@ DocMind/
 │   │       ├── agent/                # AI Agent 模块
 │   │       ├── auth/                 # 认证模块（注册/登录/刷新Token）
 │   │       ├── chat/                 # 对话模块（SSE 流式问答）
+│   │       │   ├── controller.go     # 会话 CRUD + SSE 流式问答
+│   │       │   ├── routes.go         # 路由注册
+│   │       │   └── sse_event.go      # SSE 事件类型常量池
 │   │       ├── chunker/              # 分块配置模块
 │   │       ├── initialization/       # 系统初始化
 │   │       ├── knowledge/            # 知识条目（文件上传/解析/向量化）
