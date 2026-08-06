@@ -53,25 +53,24 @@ web/
 │   ├── weknora-widget.js          # Embed 窗口小部件
 │   └── tdesign-icons/             # TDesign 图标本地副本（离线兼容）
 ├── src/
-│   ├── api/                       # API 接口层（按模块拆分）
+│   ├── api/                       # API 接口层（按模块拆分，已对接后端）
 │   │   ├── auth/                  # 认证（登录/注册/OIDC）
 │   │   ├── agent/                 # 智能体管理
 │   │   ├── chat/                  # 聊天会话与流式消息
 │   │   ├── knowledge-base/        # 知识库 CRUD、文件上传
-│   │   ├── model/                 # LLM 模型与提供商配置
+│   │   ├── model/                 # LLM 模型与提供商配置（6 家供应商 / 5 类模型）
 │   │   ├── chunker/               # 文档分块配置
+│   │   ├── initialization/        # 系统初始化与 Ollama 模型管理
 │   │   ├── datasource/            # 数据源接入
 │   │   ├── embed/                 # 嵌入式聊天
-│   │   ├── initialization/        # 系统初始化
-│   │   ├── mcp-service.ts         # MCP 服务管理
-│   │   ├── organization/          # 组织管理
 │   │   ├── skill/                 # 技能管理
 │   │   ├── system/                # 系统管理
-│   │   ├── tenant/                # 租户（成员/邀请/审计日志）
 │   │   ├── wiki/                  # 知识库 Wiki
+│   │   ├── index.ts               # 统一导出
 │   │   ├── retrieval.ts           # 检索配置
 │   │   ├── vector-store.ts        # 向量存储配置
 │   │   ├── web-search.ts          # 网页搜索
+│   │   ├── mcp-service.ts         # MCP 服务管理
 │   │   └── ...                    # 其他 API 模块
 │   ├── assets/                    # 静态资源（图片/字体/主题 CSS）
 │   │   ├── fonts/                 # 字体文件
@@ -92,21 +91,30 @@ web/
 │   ├── i18n/                      # 国际化
 │   │   └── locales/               # 语言包（zh-CN / en-US / ko-KR / ru-RU）
 │   ├── router/                    # 路由配置与导航守卫
-│   ├── stores/                    # Pinia 状态管理
+│   ├── stores/                    # Pinia 状态管理（14 个 store）
+│   │   ├── app.ts                 # 应用全局状态
+│   │   ├── auth.ts                # 认证状态
+│   │   ├── chat.ts                # 聊天消息与会话
+│   │   ├── chatResources.ts       # 聊天资源（Web 搜索/文件）
+│   │   ├── knowledge.ts           # 知识条目状态
+│   │   ├── settings.ts            # 系统设置
+│   │   ├── ui.ts                  # UI 状态（侧边栏等）
+│   │   └── ...                    # 其他 store
 │   ├── styles/                    # 全局样式
-│   ├── types/                     # TypeScript 类型定义
+│   ├── types/                     # TypeScript 类型定义（agent / chat / chunker / knowledge 等）
 │   ├── utils/                     # 工具函数
 │   ├── views/                     # 页面组件
 │   │   ├── agent/                 # 智能体管理页
 │   │   ├── auth/                  # 登录/注册页
 │   │   ├── chat/                  # 聊天页（含工具结果渲染等子组件）
 │   │   ├── creatChat/             # 新建会话
+│   │   ├── dev/                   # 开发者调试页
 │   │   ├── embed/                 # 嵌入式聊天页面
 │   │   ├── integrations/         # 集成管理
 │   │   ├── knowledge/             # 知识库（列表/详情/Wiki/设置）
 │   │   ├── platform/              # 平台布局（侧边栏 + 主内容区）
 │   │   ├── settings/              # 系统/租户/个人设置
-│   │   └── system/                # 系统管理（运行时队列等）
+│   │   ├── system/                # 系统管理（运行时队列等）
 │   ├── wailsjs/                   # Wails 桌面端桥接
 │   ├── App.vue                    # 根组件（OIDC 回调/主题/TDesign 配置）
 │   └── main.ts                    # 应用入口
@@ -149,9 +157,12 @@ web/
 - Agent 选择器与对话切换
 
 ### 模型管理
-- LLM 提供商配置（OpenAI 兼容接口）
-- 模型列表管理
-- 模型测试与调试
+- 6 家模型供应商（OpenAI / 阿里云 / SiliconFlow / 智谱 / Jina / 自定义）
+- 5 类模型统一管理（LLM / Embedding / Rerank / VLLM / ASR）
+- 模型 CRUD、凭据脱敏存储（API Key / App Secret）
+- 4 种连通性探测（Chat / Embedding / Rerank / ASR）
+- 模型调试调用（含 Vision 图片、Thinking 推理控制）
+- Ollama 本地模型状态检测、列表浏览、异步下载
 
 ### 设置中心
 - 通用设置（语言/主题/自动更新）
@@ -194,21 +205,18 @@ export VITE_DEV_PROXY_TARGET=http://your-backend:3888
 
 ### TypeScript 类型
 
-- `src/types/` 下定义业务类型（agent / chat / knowledge / model 等）
+- `src/types/` 下定义业务类型（agent / chat / chunker / knowledge / knowledgeProcess / mention / tool-results 等）
 - `src/env.d.ts` 声明 `.vue` 模块类型和构建常量
 - 接口对接时以 `src/types/` 下的类型定义为准
 
 ### API 对接
 
-当后端接口就绪后，将 `src/api/` 下对应模块的 Mock 返回值替换为实际 HTTP 请求即可：
+`src/api/` 已对接后端服务，通过 `src/api/index.ts` 统一导出的 Axios 实例发起请求。新增接口时按模块在对应目录下添加即可：
 
 ```typescript
-// 修改前（Mock）
-export async function listKnowledgeBases() {
-  return Promise.resolve(mockKnowledgeBases)
-}
+// 示例：知识库列表
+import { get } from '../index'
 
-// 修改后（实际调用）
 export async function listKnowledgeBases() {
   return get('/v1/knowledge-bases')
 }

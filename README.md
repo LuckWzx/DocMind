@@ -107,9 +107,12 @@ DocMind/
 │   ├── API.md                        # API 文档
 │   ├── ARCHITECTURE.md               # 架构文档
 │   ├── DEVELOPMENT.md                # 开发指南
-│   ├── swagger.yaml / swagger.json   # Swagger 规范
+│   ├── swagger.yaml / swagger.json / swagger.md # Swagger 规范
+│   ├── agent沟通注意事项.md            # Agent 对话设计要点
 │   ├── 甲.md / 乙.md                 # 数据库结构体设计 & 数据流交互
+│   ├── 乙模块结构体评审.md             # 乙模块结构体评审
 │   ├── 阶段一.md / 阶段二.md          # 分阶段开发规划
+│   ├── 阶段二排期与逻辑.md             # 阶段二排期与核心逻辑
 │   ├── 知识库api.md                   # 知识库 API 规范
 │   ├── 标签crud.md                   # 标签 CRUD 设计
 │   ├── 模型集成.md                   # LLM 模型集成方案
