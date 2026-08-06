@@ -62,12 +62,16 @@ func newVectorSearchNode(deps *PipelineDeps) func(ctx context.Context, input *Co
 			queryVector[i] = float32(v)
 		}
 
-		// 4. 查找向量存储：优先用户自建，没有则回退到系统全局默认存储
-		stores, _, err := deps.VectorStoreRepo.ListByUser(input.UserID, 0, 1)
+		// 4. 查找向量存储：优先知识库配置的向量存储，没有则回退到系统全局默认存储
+		//    知识库的 VectorStoreID 是权威配置，不做用户可见性过滤，与写入侧 persistVectors 保持一致
 		var store *entity.VectorStore
-		if err == nil && len(stores) > 0 {
-			store = stores[0]
-		} else {
+		if kb.VectorStoreID != nil && *kb.VectorStoreID > 0 {
+			store, err = deps.VectorStoreRepo.FindByID(*kb.VectorStoreID)
+			if err != nil {
+				return nil, fmt.Errorf("向量检索: 查询知识库向量存储失败: %w", err)
+			}
+		}
+		if store == nil {
 			store, err = deps.VectorStoreRepo.FirstOrCreateGlobalDefault()
 			if err != nil {
 				return nil, fmt.Errorf("向量检索: 获取默认向量存储失败: %w", err)

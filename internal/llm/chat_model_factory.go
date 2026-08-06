@@ -34,9 +34,15 @@ func (f *ChatModelFactory) CreateChatModel(ctx context.Context, modelID string) 
 		return nil, err
 	}
 
+	// 确定模型名称：优先使用 model_name，其次使用 name（与 pipeline 保持一致）
+	modelName := model.Parameters.ModelName
+	if modelName == "" {
+		modelName = model.Name
+	}
+
 	cfg := &openai.ChatModelConfig{
 		APIKey:  model.Parameters.APIKey,
-		Model:   model.Parameters.ModelName,
+		Model:   modelName,
 		BaseURL: model.Parameters.BaseURL,
 	}
 

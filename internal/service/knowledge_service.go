@@ -178,12 +178,15 @@ func (s *knowledgeService) processUploadAsync(knowledge *entity.Knowledge, fileB
 		return
 	}
 
-	// 向量化存储（非关键路径，失败不阻塞）
-	if err := s.embedChunks(ctx, userID, knowledge, chunks, kb); err != nil {
-		logger.Warnf("[UploadAsync] 向量化失败 knowledge=%d: %v", knowledge.ID, err)
+	// 向量化存储（非关键路径，失败不阻塞，但记录错误信息便于排查）
+	vectorizeErr := s.embedChunks(ctx, userID, knowledge, chunks, kb)
+	errMsg := ""
+	if vectorizeErr != nil {
+		logger.Warnf("[UploadAsync] 向量化失败 knowledge=%d: %v", knowledge.ID, vectorizeErr)
+		errMsg = fmt.Sprintf("向量化失败: %v", vectorizeErr)
 	}
 
-	if err := s.updateKnowledgeStatus(knowledge, parseStatusCompleted, ""); err != nil {
+	if err := s.updateKnowledgeStatus(knowledge, parseStatusCompleted, errMsg); err != nil {
 		logger.Warnf("[UploadAsync] 更新状态失败 knowledge=%d: %v", knowledge.ID, err)
 	}
 }

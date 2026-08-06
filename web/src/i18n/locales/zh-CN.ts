@@ -641,6 +641,7 @@ export default {
     statusFinalizing: "优化中",
     statusPending: "等待中",
     statusFailed: "失败",
+    statusVectorizeFailed: "已完成（向量化失败）",
     statusCancelled: "已取消",
     statusDraft: "草稿",
     selectKnowledgeBaseFirst: "请先选择知识库",

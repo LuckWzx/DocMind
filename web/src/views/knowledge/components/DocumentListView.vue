@@ -20,6 +20,7 @@ interface KnowledgeItem {
   tags?: Tag[];
   parse_status?: string;
   summary_status?: string;
+  error_message?: string;
   updated_at?: string;
   source?: string;
   description?: string;
@@ -144,6 +145,9 @@ const computeStatus = (item: KnowledgeItem): StatusInfo => {
     (item.summary_status === 'pending' || item.summary_status === 'processing')
   ) {
     return { label: t('knowledgeBase.generatingSummary'), theme: 'primary', icon: 'loading', spin: true };
+  }
+  if (item.parse_status === 'completed' && item.error_message) {
+    return { label: t('knowledgeBase.statusVectorizeFailed'), theme: 'warning', icon: 'info-circle' };
   }
   if (item.parse_status === 'completed') {
     return { label: t('knowledgeBase.statusCompleted'), theme: 'success' };

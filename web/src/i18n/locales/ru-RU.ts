@@ -565,6 +565,7 @@ export default {
     statusFinalizing: 'Оптимизация',
     statusPending: 'Ожидание',
     statusFailed: 'Ошибка',
+    statusVectorizeFailed: 'Завершено (ошибка векторизации)',
     statusCancelled: 'Отменено',
     statusDraft: 'Черновик',
     selectKnowledgeBaseFirst: 'Пожалуйста, сначала выберите базу знаний',

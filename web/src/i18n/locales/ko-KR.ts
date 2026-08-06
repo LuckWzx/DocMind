@@ -643,6 +643,7 @@ export default {
     statusFinalizing: "최적화 중",
     statusPending: "대기 중",
     statusFailed: "실패",
+    statusVectorizeFailed: "완료됨 (벡터화 실패)",
     statusCancelled: "취소됨",
     statusDraft: "초안",
     selectKnowledgeBaseFirst: "먼저 지식베이스를 선택하세요",

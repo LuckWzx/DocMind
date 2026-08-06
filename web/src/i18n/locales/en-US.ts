@@ -640,6 +640,7 @@ export default {
     statusFinalizing: 'Optimizing',
     statusPending: 'Pending',
     statusFailed: 'Failed',
+    statusVectorizeFailed: 'Completed (embedding failed)',
     statusCancelled: 'Cancelled',
     statusDraft: 'Draft',
     selectKnowledgeBaseFirst: 'Please select a knowledge base first',

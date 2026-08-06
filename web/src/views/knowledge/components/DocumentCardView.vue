@@ -434,6 +434,10 @@ const handleAction = (action: 'edit' | 'view-trace' | 'reparse' | 'cancel-parse'
             <t-icon name="chart-bar" />
           </button>
         </div>
+        <div v-else-if="item.parse_status === 'completed' && item.error_message" class="card-analyze failure">
+          <t-icon name="info-circle" class="card-analyze-loading failure"></t-icon>
+          <span class="card-analyze-txt failure" :title="item.error_message">{{ $t('knowledgeBase.statusVectorizeFailed') }}</span>
+        </div>
         <div v-else-if="item.parse_status === 'draft'" class="card-draft">
           <t-tag size="small" theme="warning" variant="light-outline">{{ $t('knowledgeBase.draft') }}</t-tag>
           <span class="card-draft-tip">{{ $t('knowledgeBase.draftTip') }}</span>
@@ -555,6 +559,9 @@ const handleAction = (action: 'edit' | 'view-trace' | 'reparse' | 'cancel-parse'
         </div>
         <template v-else>
           <div v-if="hoveredCardItem.description" class="card-popover-desc">{{ hoveredCardItem.description }}</div>
+          <div v-if="hoveredCardItem.error_message" class="card-popover-desc" :title="hoveredCardItem.error_message">
+            {{ $t('knowledgeBase.statusVectorizeFailed') }}: {{ hoveredCardItem.error_message }}
+          </div>
           <div v-if="(hoveredCardItem as any).source" class="card-popover-source" :title="(hoveredCardItem as any).source">
             <t-icon name="link" size="12px" /> {{ (hoveredCardItem as any).source }}
           </div>

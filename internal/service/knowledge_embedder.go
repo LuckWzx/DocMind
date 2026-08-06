@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"docmind/internal/model/entity"
 	"docmind/pkg/logger"
 
 	pgvector "github.com/pgvector/pgvector-go"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -24,8 +26,7 @@ func (s *knowledgeService) embedChunks(ctx context.Context, userID uint, knowled
 		return nil
 	}
 	if kb.EmbeddingModelID == "" {
-		logger.Warnf("[embedChunks] 知识库 %d 未配置 EmbeddingModelID，跳过向量化", kb.ID)
-		return nil
+		return fmt.Errorf("知识库 %d 未配置 EmbeddingModelID，未进行向量化", kb.ID)
 	}
 	if len(chunks) == 0 {
 		return nil
@@ -85,10 +86,24 @@ func (s *knowledgeService) persistVectors(userID uint, knowledge *entity.Knowled
 
 	vectorStoreID := kb.VectorStoreID
 	if vectorStoreID == nil {
+		// 与检索侧保持一致的默认存储选择：系统全局 pgvector 存储（user_id=0），不存在则创建
 		var defaultStore entity.VectorStore
-		if err := s.db.Where("status = ?", entity.VectorStoreStatusActive).First(&defaultStore).Error; err != nil {
-			logger.Warnf("[embedChunks] 知识库 %d 未配置 VectorStoreID 且未找到可用向量存储，跳过向量化", kb.ID)
-			return nil
+		err := s.db.Where("user_id = ? AND engine_type = ?", 0, entity.VectorStoreEnginePostgres).
+			Order("id ASC").First(&defaultStore).Error
+		if err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("查询默认向量存储失败: %w", err)
+			}
+			defaultStore = entity.VectorStore{
+				UserID:           0,
+				Name:             "System Default (PostgreSQL)",
+				EngineType:       entity.VectorStoreEnginePostgres,
+				ConnectionConfig: entity.JSON(`{"use_default_connection":true}`),
+				Status:           entity.VectorStoreStatusActive,
+			}
+			if err := s.db.Create(&defaultStore).Error; err != nil {
+				return fmt.Errorf("创建默认向量存储失败: %w", err)
+			}
 		}
 		id := defaultStore.ID
 		vectorStoreID = &id

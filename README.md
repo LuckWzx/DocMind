@@ -15,6 +15,8 @@ DocMind 是一个现代化的智能知识管理平台，提供文档解析、语
 ```
 DocMind/
 ├── cmd/                              # 应用入口
+│   ├── agentdemo/                    # Agent 引擎最小 Demo（internal/agent 骨架验证）
+│   │   └── main.go                   # 引擎端到端验证入口
 │   └── server/
 │       └── main.go                   # 服务启动入口
 ├── configs/                          # 配置文件
@@ -44,6 +46,11 @@ DocMind/
 │   │   ├── chat_model_factory.go       # Eino ChatModel 工厂（Agent 核心依赖）
 │   │   ├── embedder_factory.go         # Eino Embedder 工厂（文档/查询向量化）
 │   │   └── reranker_factory.go         # Rerank 模型工厂（检索结果重排）
+│   ├── agent/                         # Agent 引擎层（ADK 封装，模块5）
+│   │   ├── config.go                  # entity.AgentConfig → 引擎配置映射
+│   │   ├── engine.go                  # 引擎接口与 ADK ChatModelAgent 封装
+│   │   ├── runner.go                  # EventStream 事件展开层（ADK → 统一事件）
+│   │   └── types.go                   # 统一事件类型与 RunRequest
 │   ├── middleware/                    # 中间件
 │   │   ├── auth.go                   # JWT 鉴权
 │   │   ├── cors.go                   # 跨域
