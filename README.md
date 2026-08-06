@@ -27,6 +27,9 @@ DocMind/
 │   │       ├── agent/                # AI Agent 模块
 │   │       ├── auth/                 # 认证模块（注册/登录/刷新Token）
 │   │       ├── chat/                 # 对话模块（SSE 流式问答）
+│   │       │   ├── controller.go     # 会话 CRUD + SSE 流式问答
+│   │       │   ├── routes.go         # 路由注册
+│   │       │   └── sse_event.go      # SSE 事件类型常量池
 │   │       ├── chunker/              # 分块配置模块
 │   │       ├── initialization/       # 系统初始化
 │   │       ├── knowledge/            # 知识条目（文件上传/解析/向量化）
@@ -37,6 +40,10 @@ DocMind/
 │   │       └── vectorstore/          # 向量存储配置
 │   ├── app/                          # 应用生命周期管理
 │   │   └── app.go                    # 初始化、依赖注入、AutoMigrate、自动启动DocReader
+│   ├── llm/                           # LLM 模型工厂层
+│   │   ├── chat_model_factory.go       # Eino ChatModel 工厂（Agent 核心依赖）
+│   │   ├── embedder_factory.go         # Eino Embedder 工厂（文档/查询向量化）
+│   │   └── reranker_factory.go         # Rerank 模型工厂（检索结果重排）
 │   ├── middleware/                    # 中间件
 │   │   ├── auth.go                   # JWT 鉴权
 │   │   ├── cors.go                   # 跨域
@@ -72,8 +79,6 @@ DocMind/
 │       ├── model_service_http.go     # 模型服务 HTTP 工具（JSON/Multipart 请求、认证头、URL 拼接）
 │       ├── model_service_ollama.go   # 模型服务 Ollama（状态、模型列表、异步下载、embed/chat）
 │       ├── model_service_utils.go    # 模型服务工具（JSON 响应解析、类型转换、文件读取）
-│       ├── chat_model_factory.go     # Eino ChatModel 工厂（Agent 核心依赖）
-│       ├── embedder_factory.go       # Eino Embedder 工厂（查询向量化）
 │       ├── knowledge_embedder.go     # 知识分块自动向量化（分批处理）
 │       ├── vector_driver_postgres.go # pgvector 向量检索驱动
 │       ├── image_storage_*.go        # 文档图片存储（MinIO / Noop）
@@ -105,9 +110,12 @@ DocMind/
 │   ├── API.md                        # API 文档
 │   ├── ARCHITECTURE.md               # 架构文档
 │   ├── DEVELOPMENT.md                # 开发指南
-│   ├── swagger.yaml / swagger.json   # Swagger 规范
+│   ├── swagger.yaml / swagger.json / swagger.md # Swagger 规范
+│   ├── agent沟通注意事项.md            # Agent 对话设计要点
 │   ├── 甲.md / 乙.md                 # 数据库结构体设计 & 数据流交互
+│   ├── 乙模块结构体评审.md             # 乙模块结构体评审
 │   ├── 阶段一.md / 阶段二.md          # 分阶段开发规划
+│   ├── 阶段二排期与逻辑.md             # 阶段二排期与核心逻辑
 │   ├── 知识库api.md                   # 知识库 API 规范
 │   ├── 标签crud.md                   # 标签 CRUD 设计
 │   ├── 模型集成.md                   # LLM 模型集成方案

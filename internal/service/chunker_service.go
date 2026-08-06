@@ -31,6 +31,21 @@ var (
 	chinesePattern         = regexp.MustCompile(`[\p{Han}]`)
 	englishPattern         = regexp.MustCompile(`[A-Za-z]`)
 	germanPattern          = regexp.MustCompile(`[ÄÖÜäöüß]`)
+
+	// 受保护内容模式：分块时保持整体，避免路径/引用被切断
+	protectedInlinePattern      = regexp.MustCompile(`!?\[[^\]]*\]\([^)]*\)`)                 // Markdown 图片/链接
+	protectedCodeFencePattern   = regexp.MustCompile("(?s)```.*?```")                         // 成对代码块
+	protectedTableRowPattern    = regexp.MustCompile(`(?m)^[ \t]*\|[^\n]*\|[ \t]*$`)          // 表格行
+	protectedURLPattern         = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s)\]}]+`) // URL
+	protectedWindowsPathPattern = regexp.MustCompile(`[A-Za-z]:\\[^\s)\]}]+`)                 // Windows 路径
+
+	// 结构化文本标题模式（无 Markdown # 语法时的标题识别，如 PDF 解析结果）
+	chineseChapterPattern = regexp.MustCompile(`^第[一二三四五六七八九十百千0-9]+[章节部分篇]`)
+	englishChapterPattern = regexp.MustCompile(`(?i)^chapter\s+\d+`)
+	germanChapterPattern  = regexp.MustCompile(`(?i)^kapitel\s+\d+`)
+	numberedTitlePattern  = regexp.MustCompile(`^\d+(?:\.\d+){0,3}[\.、)]?\s+\S`)
+	numberedPrefixPattern = regexp.MustCompile(`^\d+(?:\.\d+){0,3}`)
+	allCapsTitlePattern   = regexp.MustCompile(`^[A-Z][A-Z0-9 &'\-:()/.,]{1,38}$`)
 )
 
 type chunkerService struct{}
@@ -43,6 +58,19 @@ type chunkUnit struct {
 type headingSection struct {
 	HeadingPath []string
 	Content     string
+}
+
+// textPiece 分块原子段：protected=true 表示受保护内容（不可切分）
+type textPiece struct {
+	content   string
+	protected bool
+}
+
+// headingLine 标题行（Markdown # 标题或结构化文本标题）
+type headingLine struct {
+	start int    // 标题在原文中的起始字节位置
+	level int    // 标题层级（1~6）
+	title string // 标题文本
 }
 
 // NewChunkerService 创建 Markdown 分块服务
@@ -193,9 +221,14 @@ func selectChunkingTier(cfg entity.ChunkingConfig, profile dto.DocProfile) (dto.
 
 	tierChain := []dto.StrategyTier{dto.StrategyTierHeading, dto.StrategyTierHeuristic, dto.StrategyTierLegacy}
 	rejected := make([]dto.TierRejection, 0, 2)
-	if profile.MDHeadingTotal >= 2 {
+	// auto 策略：检测到足够的结构化标题信号（Markdown # 标题、中/英/德章节、
+	// 编号标题、全大写短行）时按标题切分
+	chapterSignals := profile.MDHeadingTotal +
+		profile.ChineseChapterCount + profile.EnglishChapterCount + profile.GermanChapterCount
+	if chapterSignals >= 2 || profile.NumberedSectionCount >= 3 ||
+		(profile.AllCapsShortLineCount >= 3 && profile.AllCapsShortLineCount > profile.RepeatedFooterCount) {
 		rejected = append(rejected,
-			dto.TierRejection{Tier: dto.StrategyTierHeuristic, Reason: "auto 检测到稳定 Markdown 标题结构，优先按标题切分"},
+			dto.TierRejection{Tier: dto.StrategyTierHeuristic, Reason: "auto 检测到稳定标题结构，优先按标题切分"},
 			dto.TierRejection{Tier: dto.StrategyTierLegacy, Reason: "已命中更高优先级的结构化策略"},
 		)
 		return dto.StrategyTierHeading, tierChain, rejected
@@ -214,7 +247,8 @@ func selectChunkingTier(cfg entity.ChunkingConfig, profile dto.DocProfile) (dto.
 	return dto.StrategyTierLegacy, tierChain, rejected
 }
 
-func splitPreviewUnits(text string, cfg entity.ChunkingConfig, tier dto.StrategyTier) []chunkUnit {
+// splitUnits 按配置切分文本为分块单元，不限制数量（入库链路使用）
+func splitUnits(text string, cfg entity.ChunkingConfig, tier dto.StrategyTier) []chunkUnit {
 	if text == "" {
 		return nil
 	}
@@ -229,9 +263,14 @@ func splitPreviewUnits(text string, cfg entity.ChunkingConfig, tier dto.Strategy
 				})
 			}
 		}
-		return limitPreviewUnits(children)
+		return children
 	}
-	return limitPreviewUnits(splitTierUnits(text, cfg, tier, cfg.ChunkSize, cfg.ChunkOverlap))
+	return splitTierUnits(text, cfg, tier, cfg.ChunkSize, cfg.ChunkOverlap)
+}
+
+// splitPreviewUnits 预览分块效果，限制返回数量（预览接口使用）
+func splitPreviewUnits(text string, cfg entity.ChunkingConfig, tier dto.StrategyTier) []chunkUnit {
+	return limitPreviewUnits(splitUnits(text, cfg, tier))
 }
 
 func splitTierUnits(text string, cfg entity.ChunkingConfig, tier dto.StrategyTier, size int, overlap int) []chunkUnit {
@@ -273,25 +312,23 @@ func splitHeuristicUnits(text string, size int, overlap int, separators []string
 }
 
 func parseMarkdownSections(text string) []headingSection {
-	matches := markdownHeadingPattern.FindAllStringSubmatchIndex(text, -1)
-	if len(matches) == 0 {
+	headings := findHeadingLines(text)
+	if len(headings) == 0 {
 		return nil
 	}
 
-	sections := make([]headingSection, 0, len(matches))
+	sections := make([]headingSection, 0, len(headings))
 	stack := make([]string, 0, 6)
-	for idx, match := range matches {
-		level := len(text[match[2]:match[3]])
-		title := strings.TrimSpace(text[match[4]:match[5]])
-		for len(stack) >= level {
+	for idx, h := range headings {
+		for len(stack) >= h.level {
 			stack = stack[:len(stack)-1]
 		}
-		stack = append(stack, title)
+		stack = append(stack, h.title)
 
-		start := match[0]
+		start := h.start
 		end := len(text)
-		if idx+1 < len(matches) {
-			end = matches[idx+1][0]
+		if idx+1 < len(headings) {
+			end = headings[idx+1].start
 		}
 		content := strings.TrimSpace(text[start:end])
 		if content == "" {
@@ -304,6 +341,74 @@ func parseMarkdownSections(text string) []headingSection {
 		})
 	}
 	return sections
+}
+
+// findHeadingLines 识别文档标题行：优先 Markdown # 标题，无 # 标题时
+// 回退识别结构化文本标题（中文章节/英文章节/编号标题/全大写短行）
+func findHeadingLines(text string) []headingLine {
+	if lines := findMarkdownHeadingLines(text); len(lines) > 0 {
+		return lines
+	}
+	return findTextHeadingLines(text)
+}
+
+func findMarkdownHeadingLines(text string) []headingLine {
+	matches := markdownHeadingPattern.FindAllStringSubmatchIndex(text, -1)
+	lines := make([]headingLine, 0, len(matches))
+	for _, m := range matches {
+		lines = append(lines, headingLine{
+			start: m[0],
+			level: len(text[m[2]:m[3]]),
+			title: strings.TrimSpace(text[m[4]:m[5]]),
+		})
+	}
+	return lines
+}
+
+// findTextHeadingLines 识别无 Markdown 语法的结构化标题（PDF 等解析结果常见）。
+// 全大写短行需排除重复行，避免把页眉页脚当作标题。
+func findTextHeadingLines(text string) []headingLine {
+	rawLines := strings.Split(text, "\n")
+	upperCounts := make(map[string]int)
+	for _, line := range rawLines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" && runeLen(trimmed) <= 40 && allCapsTitlePattern.MatchString(trimmed) {
+			upperCounts[trimmed]++
+		}
+	}
+
+	var headings []headingLine
+	offset := 0
+	for i, line := range rawLines {
+		start := offset
+		if i < len(rawLines)-1 {
+			offset += len(line) + 1
+		} else {
+			offset = len(text)
+		}
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		title := ""
+		level := 1
+		switch {
+		case chineseChapterPattern.MatchString(trimmed):
+			title = trimmed
+		case englishChapterPattern.MatchString(trimmed), germanChapterPattern.MatchString(trimmed):
+			title = trimmed
+		case numberedTitlePattern.MatchString(trimmed):
+			title = trimmed
+			level = 1 + strings.Count(numberedPrefixPattern.FindString(trimmed), ".")
+		case upperCounts[trimmed] == 1 && allCapsTitlePattern.MatchString(trimmed):
+			title = trimmed
+		default:
+			continue
+		}
+		headings = append(headings, headingLine{start: start, level: level, title: title})
+	}
+	return headings
 }
 
 func splitParagraphs(text string) []string {
@@ -325,6 +430,19 @@ func splitRecursive(text string, size int, overlap int, separators []string) []s
 	}
 	if runeLen(trimmed) <= size {
 		return []string{trimmed}
+	}
+
+	// 受保护内容（图片/链接/代码块/表格）作为不可切分单元，避免被拦腰切断
+	if pieces := splitProtectedPieces(trimmed); len(pieces) > 1 {
+		segments := make([]string, 0, len(pieces))
+		for _, piece := range pieces {
+			if piece.protected || runeLen(piece.content) <= size {
+				segments = append(segments, piece.content)
+			} else {
+				segments = append(segments, splitRecursive(piece.content, size, overlap, separators)...)
+			}
+		}
+		return packSegments(segments, size, overlap)
 	}
 
 	for _, separator := range separators {
@@ -412,11 +530,19 @@ func splitByRunes(text string, size int, overlap int) []string {
 		step = size
 	}
 
+	// 受保护片段区间（rune 下标），切分点尽量避开，避免切断路径/引用
+	protected := protectedRunesRanges(text, size)
+
 	chunks := make([]string, 0, int(math.Ceil(float64(len(runes))/float64(step))))
-	for start := 0; start < len(runes); start += step {
+	start := 0
+	for start < len(runes) {
 		end := start + size
 		if end > len(runes) {
 			end = len(runes)
+		}
+		// 切分点落在受保护区间内时，前移到区间起点，保证片段完整
+		if segStart, ok := protectedStartBefore(protected, end); ok && segStart > start && segStart < end {
+			end = segStart
 		}
 		chunk := strings.TrimSpace(string(runes[start:end]))
 		if chunk != "" {
@@ -425,6 +551,11 @@ func splitByRunes(text string, size int, overlap int) []string {
 		if end == len(runes) {
 			break
 		}
+		next := end - overlap
+		if next <= start {
+			next = end // 避开受保护片段时放弃重叠，保证向前推进
+		}
+		start = next
 	}
 	return compactChunks(chunks)
 }
@@ -505,11 +636,110 @@ func tailRunes(text string, limit int) string {
 	if limit <= 0 {
 		return ""
 	}
-	runes := []rune(strings.TrimSpace(text))
+	trimmed := strings.TrimSpace(text)
+	runes := []rune(trimmed)
 	if len(runes) <= limit {
 		return string(runes)
 	}
-	return string(runes[len(runes)-limit:])
+	cutoff := len(runes) - limit
+	// 截断点落在受保护区间内时前移到区间起点，避免 overlap 处切断路径/引用
+	if segStart, ok := protectedStartBefore(protectedRunesRanges(trimmed, limit*2), cutoff); ok && segStart < cutoff {
+		cutoff = segStart
+	}
+	return string(runes[cutoff:])
+}
+
+// protectedRanges 提取受保护内容的字节区间，合并重叠或仅隔换行的相邻片段
+// （连续表格行合并为一个整体）
+func protectedRanges(text string) [][2]int {
+	var ranges [][2]int
+	collect := func(pattern *regexp.Regexp) {
+		for _, m := range pattern.FindAllStringSubmatchIndex(text, -1) {
+			ranges = append(ranges, [2]int{m[0], m[1]})
+		}
+	}
+	collect(protectedInlinePattern)
+	collect(protectedCodeFencePattern)
+	collect(protectedTableRowPattern)
+	collect(protectedURLPattern)
+	collect(protectedWindowsPathPattern)
+	if len(ranges) == 0 {
+		return nil
+	}
+	sort.Slice(ranges, func(i, j int) bool { return ranges[i][0] < ranges[j][0] })
+
+	merged := make([][2]int, 0, len(ranges))
+	cur := ranges[0]
+	for _, r := range ranges[1:] {
+		if r[0] <= cur[1]+2 { // 重叠或仅隔一个换行（含 \r\n）
+			if r[1] > cur[1] {
+				cur[1] = r[1]
+			}
+		} else {
+			merged = append(merged, cur)
+			cur = r
+		}
+	}
+	return append(merged, cur)
+}
+
+// splitProtectedPieces 将文本按受保护内容拆分为原子段序列（无保护内容时返回 nil）
+func splitProtectedPieces(text string) []textPiece {
+	ranges := protectedRanges(text)
+	if len(ranges) == 0 {
+		return nil
+	}
+	pieces := make([]textPiece, 0, len(ranges)*2+1)
+	last := 0
+	for _, r := range ranges {
+		if r[0] > last {
+			pieces = append(pieces, textPiece{content: text[last:r[0]]})
+		}
+		pieces = append(pieces, textPiece{content: text[r[0]:r[1]], protected: true})
+		last = r[1]
+	}
+	if last < len(text) {
+		pieces = append(pieces, textPiece{content: text[last:]})
+	}
+	return pieces
+}
+
+// protectedRunesRanges 返回受保护片段的 rune 下标区间，超长片段（>= maxLen）不保护
+func protectedRunesRanges(text string, maxLen int) [][2]int {
+	byteRanges := protectedRanges(text)
+	if len(byteRanges) == 0 {
+		return nil
+	}
+	ranges := make([][2]int, 0, len(byteRanges))
+	for _, r := range byteRanges {
+		start, end := runeIndexAt(text, r[0]), runeIndexAt(text, r[1])
+		if end-start >= maxLen {
+			continue // 超长片段无法整体保留，允许硬切
+		}
+		ranges = append(ranges, [2]int{start, end})
+	}
+	return ranges
+}
+
+// protectedStartBefore 若 cutoff（rune 下标）落在受保护区间内，返回区间起点
+func protectedStartBefore(ranges [][2]int, cutoff int) (int, bool) {
+	for _, r := range ranges {
+		if cutoff > r[0] && cutoff < r[1] {
+			return r[0], true
+		}
+	}
+	return 0, false
+}
+
+// runeIndexAt 将字节下标换算为 rune 下标
+func runeIndexAt(text string, bytePos int) int {
+	if bytePos <= 0 {
+		return 0
+	}
+	if bytePos >= len(text) {
+		return len([]rune(text))
+	}
+	return len([]rune(text[:bytePos]))
 }
 
 func estimateRepeatedFooterCount(lines []string) int {

@@ -51,7 +51,7 @@ func llmClassifyIntent(ctx context.Context, input *Context) (string, error) {
 	}
 
 	// 创建 ChatModel
-	chatModel, err := createChatModel(ctx, input.ModelRepo, input.AgentConfig.ModelID)
+	chatModel, err := createChatModel(ctx, input.ModelRepo, input.AgentConfig.ModelID, input.UserID)
 	if err != nil {
 		return "", fmt.Errorf("创建 ChatModel 失败: %w", err)
 	}
