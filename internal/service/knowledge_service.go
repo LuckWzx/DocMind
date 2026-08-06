@@ -291,7 +291,8 @@ func (s *knowledgeService) buildMarkdownChunks(markdownContent string, parserEng
 	cfg := normalizeChunkingConfig(kb.ChunkingConfig)
 	profile := buildDocProfile(markdownContent, cfg.Languages)
 	selectedTier, _, _ := selectChunkingTier(cfg, profile)
-	units := splitPreviewUnits(markdownContent, cfg, selectedTier)
+	// 入库链路使用无数量限制的分块（预览接口才截断）
+	units := splitUnits(markdownContent, cfg, selectedTier)
 	if len(units) == 0 {
 		units = []chunkUnit{{Content: markdownContent}}
 	}

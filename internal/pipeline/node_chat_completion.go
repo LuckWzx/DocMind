@@ -15,7 +15,7 @@ import (
 // ChatCompletionNode LLM 调用节点
 func chatCompletionNode(ctx context.Context, input *Context) (*Context, error) {
 	// 1. 创建 ChatModel
-	chatModel, err := createChatModel(ctx, input.ModelRepo, input.AgentConfig.ModelID)
+	chatModel, err := createChatModel(ctx, input.ModelRepo, input.AgentConfig.ModelID, input.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("创建 ChatModel 失败: %w", err)
 	}
@@ -34,17 +34,20 @@ func chatCompletionNode(ctx context.Context, input *Context) (*Context, error) {
 }
 
 // createChatModel 创建 ChatModel
-func createChatModel(ctx context.Context, modelRepo repository.ModelRepository, modelID string) (einomodel.ToolCallingChatModel, error) {
+func createChatModel(ctx context.Context, modelRepo repository.ModelRepository, modelID string, userID uint) (einomodel.ToolCallingChatModel, error) {
 	var model *entity.Model
 	var err error
 
 	// 如果是 "default"，查找默认模型
 	if modelID == "default" || modelID == "" {
-		// 查找所有 KnowledgeQA 类型的模型
-		models, listErr := modelRepo.List(entity.ModelTypeKnowledgeQA, 0)
-		if listErr != nil || len(models) == 0 {
-			// 如果 user_id=0 查不到，尝试查询所有模型
-			models, listErr = modelRepo.ListAll(entity.ModelTypeKnowledgeQA)
+		// 优先查找当前用户自己的 KnowledgeQA 模型
+		models, listErr := modelRepo.List(entity.ModelTypeKnowledgeQA, userID)
+		if listErr != nil {
+			return nil, fmt.Errorf("查询模型列表失败: %w", listErr)
+		}
+		// 当前用户未配置，回退到系统级默认模型（user_id=0），避免跨用户使用他人模型
+		if len(models) == 0 {
+			models, listErr = modelRepo.List(entity.ModelTypeKnowledgeQA, 0)
 			if listErr != nil {
 				return nil, fmt.Errorf("查询模型列表失败: %w", listErr)
 			}

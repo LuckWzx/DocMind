@@ -37,6 +37,10 @@ DocMind/
 │   │       └── vectorstore/          # 向量存储配置
 │   ├── app/                          # 应用生命周期管理
 │   │   └── app.go                    # 初始化、依赖注入、AutoMigrate、自动启动DocReader
+│   ├── llm/                           # LLM 模型工厂层
+│   │   ├── chat_model_factory.go       # Eino ChatModel 工厂（Agent 核心依赖）
+│   │   ├── embedder_factory.go         # Eino Embedder 工厂（文档/查询向量化）
+│   │   └── reranker_factory.go         # Rerank 模型工厂（检索结果重排）
 │   ├── middleware/                    # 中间件
 │   │   ├── auth.go                   # JWT 鉴权
 │   │   ├── cors.go                   # 跨域
@@ -72,8 +76,6 @@ DocMind/
 │       ├── model_service_http.go     # 模型服务 HTTP 工具（JSON/Multipart 请求、认证头、URL 拼接）
 │       ├── model_service_ollama.go   # 模型服务 Ollama（状态、模型列表、异步下载、embed/chat）
 │       ├── model_service_utils.go    # 模型服务工具（JSON 响应解析、类型转换、文件读取）
-│       ├── chat_model_factory.go     # Eino ChatModel 工厂（Agent 核心依赖）
-│       ├── embedder_factory.go       # Eino Embedder 工厂（查询向量化）
 │       ├── knowledge_embedder.go     # 知识分块自动向量化（分批处理）
 │       ├── vector_driver_postgres.go # pgvector 向量检索驱动
 │       ├── image_storage_*.go        # 文档图片存储（MinIO / Noop）
