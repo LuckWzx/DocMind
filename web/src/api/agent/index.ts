@@ -131,10 +131,14 @@ export interface CustomAgentConfig {
 // 智能体
 export interface CustomAgent {
   id: string;
+  /** 后端字符串 ID（agents.id_str，内置/自定义均唯一，接口参数使用） */
+  id_str?: string;
   name: string;
   description?: string;
   avatar?: string;
   is_builtin: boolean;
+  /** 当前用户是否已个性化覆盖该内置智能体（仅内置智能体可能为 true） */
+  has_override?: boolean;
   tenant_id?: number;
   created_by?: string;
   // creator_name 由后端 list 接口批量回填，仅用于列表卡片来源徽章。
@@ -211,6 +215,11 @@ export function deleteAgent(id: string) {
 // 复制智能体
 export function copyAgent(id: string) {
   return post<{ data: CustomAgent }>(`/api/v1/agents/${id}/copy`);
+}
+
+// 恢复内置智能体默认配置（删除当前用户的个性化覆盖）
+export function resetAgentOverride(id: string) {
+  return del<{ data: CustomAgent }>(`/api/v1/agents/${id}/override`);
 }
 
 // 判断是否为内置智能体（通过 agent.is_builtin 字段或 ID 前缀判断）

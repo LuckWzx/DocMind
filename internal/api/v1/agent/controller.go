@@ -35,8 +35,9 @@ func (ctrl *Controller) ListAgents(c *gin.Context) {
 
 // GetAgent 获取单个智能体
 func (ctrl *Controller) GetAgent(c *gin.Context) {
+	userID := middleware.GetUserID(c)
 	idStr := c.Param("id")
-	agent, err := ctrl.agentService.GetByIDStr(idStr)
+	agent, err := ctrl.agentService.GetByIDStr(userID, idStr)
 	if err != nil {
 		response.BizError(c, err)
 		return
@@ -103,6 +104,18 @@ func (ctrl *Controller) CopyAgent(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	idStr := c.Param("id")
 	agent, err := ctrl.agentService.Copy(idStr, userID)
+	if err != nil {
+		response.BizError(c, err)
+		return
+	}
+	response.Success(c, agent)
+}
+
+// ResetAgentOverride 恢复内置智能体默认（删除当前用户覆盖）
+func (ctrl *Controller) ResetAgentOverride(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	idStr := c.Param("id")
+	agent, err := ctrl.agentService.ResetOverride(userID, idStr)
 	if err != nil {
 		response.BizError(c, err)
 		return

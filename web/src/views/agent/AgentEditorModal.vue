@@ -1615,6 +1615,11 @@
                 <t-button variant="outline" @click="handleClose">{{ props.readOnly ? $t('common.close') :
                   $t('common.cancel')
                   }}</t-button>
+                <!-- 内置智能体且已个性化时，可一键恢复默认配置（删除当前用户覆盖） -->
+                <t-button v-if="!props.readOnly && isBuiltinAgent && formData.has_override" theme="danger"
+                  variant="outline" :loading="resettingOverride" @click="handleResetOverride">{{
+                  $t('agentEditor.resetOverride')
+                  }}</t-button>
                 <t-button v-if="!props.readOnly" theme="primary" data-guide="agent-create-submit" :loading="saving"
                   @click="handleSave">{{
                   $t('common.save')
@@ -1639,10 +1644,11 @@ import {
   markContextualGuideDone,
 } from '@/config/contextualGuides';
 import { useI18n } from 'vue-i18n';
-import { MessagePlugin } from 'tdesign-vue-next';
+import { DialogPlugin, MessagePlugin } from 'tdesign-vue-next';
 import {
   createAgent,
   updateAgent,
+  resetAgentOverride,
   listIMChannels,
   type CustomAgent,
   type PlaceholderDefinition,
@@ -2892,6 +2898,71 @@ const needsRerankModel = computed(() => {
   return false;
 });
 
+// 将智能体数据填充到表单（编辑打开 / 恢复默认后复用）
+const applyAgentToForm = (agentData: any) => {
+  // 确保 config 对象存在
+  if (!agentData.config) {
+    agentData.config = JSON.parse(JSON.stringify(defaultFormData.config));
+  }
+
+  // 补全可能缺失的字段
+  agentData.config = { ...defaultFormData.config, ...agentData.config };
+  if (agentData.config.thinking == null) {
+    agentData.config.thinking = false;
+  }
+
+  agentData.config.question_suggestions = {
+    starters: {
+      ...defaultFormData.config.question_suggestions.starters,
+      ...(agentData.config.question_suggestions?.starters || {}),
+      items: agentData.config.question_suggestions?.starters?.items || [],
+    },
+    follow_ups: {
+      ...defaultFormData.config.question_suggestions.follow_ups,
+      ...(agentData.config.question_suggestions?.follow_ups || {}),
+      categories: agentData.config.question_suggestions?.follow_ups?.categories
+        || [...defaultFormData.config.question_suggestions.follow_ups.categories],
+    },
+  };
+  // 确保数组字段存在
+  if (!agentData.config.knowledge_bases) agentData.config.knowledge_bases = [];
+  if (!agentData.config.allowed_tools) agentData.config.allowed_tools = [];
+  if (!agentData.config.mcp_services) agentData.config.mcp_services = [];
+  // 授权等待超时：旧数据缺省时用默认 600 秒
+  if (agentData.config.mcp_auth_wait_timeout == null || agentData.config.mcp_auth_wait_timeout <= 0) {
+    agentData.config.mcp_auth_wait_timeout = 600;
+  }
+  if (!agentData.config.selected_skills) agentData.config.selected_skills = [];
+  if (!agentData.config.supported_file_types) agentData.config.supported_file_types = [];
+  if (!agentData.config.chat_parser_engine_rules) agentData.config.chat_parser_engine_rules = [];
+  // 附件解析调优字段：旧数据缺省时置 0（表示使用全局默认）
+  if (agentData.config.attachment_ocr_max_pages == null) agentData.config.attachment_ocr_max_pages = 0;
+  if (agentData.config.attachment_parse_wait_timeout_sec == null) agentData.config.attachment_parse_wait_timeout_sec = 0;
+
+  // 兼容旧数据：如果没有 agent_mode 字段，根据 allowed_tools 推断
+  if (!agentData.config.agent_mode) {
+    const isAgent = agentData.config.max_iterations > 1 || (agentData.config.allowed_tools && agentData.config.allowed_tools.length > 0);
+    agentData.config.agent_mode = isAgent ? 'smart-reasoning' : 'quick-answer';
+  }
+
+  // 设置初始化标志，防止 watch 自动添加工具
+  isInitializing.value = true;
+  formData.value = agentData;
+  // 初始化知识库选择模式
+  initKbSelectionMode();
+  initMcpSelectionMode();
+  initSkillsSelectionMode();
+  // 初始化完成后重置标志
+  nextTick(() => {
+    isInitializing.value = false;
+  });
+  // 内置智能体：如果提示词为空，填入系统默认值
+  if (agentData.is_builtin) {
+    fillBuiltinAgentDefaults();
+  }
+  void loadAgentIntegrationCounts(agentData.id);
+};
+
 // 监听可见性变化，重置表单
 watch(() => props.visible, async (val) => {
   if (val) {
@@ -2902,69 +2973,7 @@ watch(() => props.visible, async (val) => {
 
     if (props.mode === 'edit' && props.agent) {
       // 深度复制对象以避免引用问题
-      const agentData = JSON.parse(JSON.stringify(props.agent));
-
-      // 确保 config 对象存在
-      if (!agentData.config) {
-        agentData.config = JSON.parse(JSON.stringify(defaultFormData.config));
-      }
-
-      // 补全可能缺失的字段
-      agentData.config = { ...defaultFormData.config, ...agentData.config };
-      if (agentData.config.thinking == null) {
-        agentData.config.thinking = false;
-      }
-
-      agentData.config.question_suggestions = {
-        starters: {
-          ...defaultFormData.config.question_suggestions.starters,
-          ...(agentData.config.question_suggestions?.starters || {}),
-          items: agentData.config.question_suggestions?.starters?.items || [],
-        },
-        follow_ups: {
-          ...defaultFormData.config.question_suggestions.follow_ups,
-          ...(agentData.config.question_suggestions?.follow_ups || {}),
-          categories: agentData.config.question_suggestions?.follow_ups?.categories
-            || [...defaultFormData.config.question_suggestions.follow_ups.categories],
-        },
-      };
-      // 确保数组字段存在
-      if (!agentData.config.knowledge_bases) agentData.config.knowledge_bases = [];
-      if (!agentData.config.allowed_tools) agentData.config.allowed_tools = [];
-      if (!agentData.config.mcp_services) agentData.config.mcp_services = [];
-      // 授权等待超时：旧数据缺省时用默认 600 秒
-      if (agentData.config.mcp_auth_wait_timeout == null || agentData.config.mcp_auth_wait_timeout <= 0) {
-        agentData.config.mcp_auth_wait_timeout = 600;
-      }
-      if (!agentData.config.selected_skills) agentData.config.selected_skills = [];
-      if (!agentData.config.supported_file_types) agentData.config.supported_file_types = [];
-      if (!agentData.config.chat_parser_engine_rules) agentData.config.chat_parser_engine_rules = [];
-      // 附件解析调优字段：旧数据缺省时置 0（表示使用全局默认）
-      if (agentData.config.attachment_ocr_max_pages == null) agentData.config.attachment_ocr_max_pages = 0;
-      if (agentData.config.attachment_parse_wait_timeout_sec == null) agentData.config.attachment_parse_wait_timeout_sec = 0;
-
-      // 兼容旧数据：如果没有 agent_mode 字段，根据 allowed_tools 推断
-      if (!agentData.config.agent_mode) {
-        const isAgent = agentData.config.max_iterations > 1 || (agentData.config.allowed_tools && agentData.config.allowed_tools.length > 0);
-        agentData.config.agent_mode = isAgent ? 'smart-reasoning' : 'quick-answer';
-      }
-
-      // 设置初始化标志，防止 watch 自动添加工具
-      isInitializing.value = true;
-      formData.value = agentData;
-      // 初始化知识库选择模式
-      initKbSelectionMode();
-      initMcpSelectionMode();
-      initSkillsSelectionMode();
-      // 初始化完成后重置标志
-      nextTick(() => {
-        isInitializing.value = false;
-      });
-      // 内置智能体：如果提示词为空，填入系统默认值
-      if (agentData.is_builtin) {
-        fillBuiltinAgentDefaults();
-      }
-      void loadAgentIntegrationCounts(agentData.id);
+      applyAgentToForm(JSON.parse(JSON.stringify(props.agent)));
     } else {
       // 创建新智能体，使用系统默认值
       const newFormData = JSON.parse(JSON.stringify(defaultFormData));
@@ -4181,6 +4190,35 @@ const handleFallbackPromptTemplateSelect = (template: PromptTemplate) => {
 const hasPlaceholder = (text: string | undefined, placeholder: string): boolean => {
   if (!text) return false;
   return text.includes(`{{${placeholder}}}`);
+};
+
+// 恢复内置智能体默认配置（删除当前用户覆盖，表单回填模板配置）
+const resettingOverride = ref(false);
+const handleResetOverride = async () => {
+  const agent = editorAgent.value;
+  const id = agent?.id_str || (agent?.id ? String(agent.id) : '');
+  if (!id) return;
+  const dialog = DialogPlugin.confirm({
+    header: t('agentEditor.resetOverride'),
+    body: t('agent.messages.resetOverrideConfirm', { name: formData.value.name || '' }),
+    confirmBtn: { content: t('agentEditor.resetOverride'), theme: 'danger' },
+    cancelBtn: t('common.cancel'),
+    onConfirm: async () => {
+      dialog.destroy();
+      resettingOverride.value = true;
+      try {
+        const res: any = await resetAgentOverride(id);
+        MessagePlugin.success(t('agent.messages.resetOverrideSuccess'));
+        // 用返回的模板配置重新填充表单，并通知父组件刷新列表（徽章消失）
+        applyAgentToForm(JSON.parse(JSON.stringify(res?.data)));
+        emit('success', res?.data as CustomAgent);
+      } catch (e: any) {
+        MessagePlugin.error(e?.message || t('agent.messages.resetOverrideFailed'));
+      } finally {
+        resettingOverride.value = false;
+      }
+    },
+  });
 };
 
 const handleSave = async () => {

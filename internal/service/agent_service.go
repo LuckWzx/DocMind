@@ -16,27 +16,71 @@ const (
 // AgentService 智能体服务接口
 type AgentService interface {
 	ListByUser(userID uint) ([]*entity.Agent, error)
-	GetByIDStr(idStr string) (*entity.Agent, error)
+	GetByIDStr(userID uint, idStr string) (*entity.Agent, error)
 	Create(userID uint, name, description, avatar string, config *entity.AgentConfig) (*entity.Agent, error)
 	Update(idStr string, userID uint, name, description, avatar string, config *entity.AgentConfig) (*entity.Agent, error)
 	Delete(idStr string, userID uint) error
 	Copy(idStr string, userID uint) (*entity.Agent, error)
+	// ResolveForUser 按用户视角解析智能体：内置模板为基底，叠加该用户覆盖
+	ResolveForUser(userID uint, idStr string) (*entity.Agent, error)
+	// ResetOverride 恢复内置智能体默认（删除用户覆盖）
+	ResetOverride(userID uint, idStr string) (*entity.Agent, error)
 }
 
 type agentService struct {
-	agentRepo repository.AgentRepository
+	agentRepo    repository.AgentRepository
+	overrideRepo repository.AgentOverrideRepository
 }
 
 // NewAgentService 创建智能体服务
-func NewAgentService(agentRepo repository.AgentRepository) AgentService {
-	return &agentService{agentRepo: agentRepo}
+func NewAgentService(agentRepo repository.AgentRepository, overrideRepo repository.AgentOverrideRepository) AgentService {
+	return &agentService{agentRepo: agentRepo, overrideRepo: overrideRepo}
+}
+
+// applyOverride 将用户覆盖合并到内置智能体模板上（返回新的合并结果）
+func applyOverride(agent *entity.Agent, ov *entity.AgentOverride) *entity.Agent {
+	merged := *agent
+	merged.HasOverride = true
+	if ov.Name != "" {
+		merged.Name = ov.Name
+	}
+	merged.Description = ov.Description
+	merged.Avatar = ov.Avatar
+	merged.Config = ov.Config
+	return &merged
 }
 
 func (s *agentService) ListByUser(userID uint) ([]*entity.Agent, error) {
-	return s.agentRepo.ListByUser(userID)
+	agents, err := s.agentRepo.ListByUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	// 批量加载当前用户对内置智能体的覆盖
+	overrides, err := s.overrideRepo.ListByUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	ovMap := make(map[string]*entity.AgentOverride, len(overrides))
+	for _, ov := range overrides {
+		ovMap[ov.AgentID] = ov
+	}
+	for _, agent := range agents {
+		if !agent.IsBuiltin {
+			continue
+		}
+		if ov, ok := ovMap[agent.IDStr]; ok {
+			merged := applyOverride(agent, ov)
+			*agent = *merged
+		}
+	}
+	return agents, nil
 }
 
-func (s *agentService) GetByIDStr(idStr string) (*entity.Agent, error) {
+func (s *agentService) GetByIDStr(userID uint, idStr string) (*entity.Agent, error) {
+	return s.ResolveForUser(userID, idStr)
+}
+
+func (s *agentService) ResolveForUser(userID uint, idStr string) (*entity.Agent, error) {
 	agent, err := s.agentRepo.FindByIDStr(idStr)
 	if err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "查询智能体失败", err)
@@ -44,7 +88,18 @@ func (s *agentService) GetByIDStr(idStr string) (*entity.Agent, error) {
 	if agent == nil {
 		return nil, bizerrors.New(bizerrors.CodeResourceNotFound, "智能体不存在")
 	}
-	return agent, nil
+	// 仅内置智能体参与用户覆盖合并；自定义智能体直接返回
+	if !agent.IsBuiltin {
+		return agent, nil
+	}
+	ov, err := s.overrideRepo.Find(userID, idStr)
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "查询智能体覆盖失败", err)
+	}
+	if ov == nil {
+		return agent, nil
+	}
+	return applyOverride(agent, ov), nil
 }
 
 func (s *agentService) Create(userID uint, name, description, avatar string, config *entity.AgentConfig) (*entity.Agent, error) {
@@ -77,14 +132,14 @@ func (s *agentService) Update(idStr string, userID uint, name, description, avat
 		return nil, bizerrors.New(bizerrors.CodeResourceNotFound, "智能体不存在")
 	}
 	if agent.IsBuiltin {
-		// 内置智能体允许更新配置，但不允许修改 id_str
-		if config != nil {
-			agent.Config = *config
+		// 内置智能体：个性化配置写入用户覆盖表，不修改全局模板（避免影响其他用户）
+		if config == nil {
+			return s.ResolveForUser(userID, idStr)
 		}
-		if err := s.agentRepo.Update(agent); err != nil {
+		if err := s.overrideRepo.Upsert(userID, idStr, name, description, avatar, config); err != nil {
 			return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "更新智能体失败", err)
 		}
-		return agent, nil
+		return s.ResolveForUser(userID, idStr)
 	}
 	if agent.UserID != userID {
 		return nil, bizerrors.New(bizerrors.CodeForbidden, "无权操作")
@@ -105,6 +160,20 @@ func (s *agentService) Update(idStr string, userID uint, name, description, avat
 	return agent, nil
 }
 
+func (s *agentService) ResetOverride(userID uint, idStr string) (*entity.Agent, error) {
+	agent, err := s.agentRepo.FindByIDStr(idStr)
+	if err != nil || agent == nil {
+		return nil, bizerrors.New(bizerrors.CodeResourceNotFound, "智能体不存在")
+	}
+	if !agent.IsBuiltin {
+		return nil, bizerrors.New(bizerrors.CodeInvalidParam, "仅内置智能体支持恢复默认")
+	}
+	if err := s.overrideRepo.Delete(userID, idStr); err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "恢复默认失败", err)
+	}
+	return agent, nil
+}
+
 func (s *agentService) Delete(idStr string, userID uint) error {
 	agent, err := s.agentRepo.FindByIDStr(idStr)
 	if err != nil || agent == nil {
@@ -120,7 +189,7 @@ func (s *agentService) Delete(idStr string, userID uint) error {
 }
 
 func (s *agentService) Copy(idStr string, userID uint) (*entity.Agent, error) {
-	src, err := s.agentRepo.FindByIDStr(idStr)
+	src, err := s.ResolveForUser(userID, idStr)
 	if err != nil || src == nil {
 		return nil, bizerrors.New(bizerrors.CodeResourceNotFound, "智能体不存在")
 	}

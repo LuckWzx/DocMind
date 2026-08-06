@@ -1094,6 +1094,11 @@ export default {
       builtinReadonly: 'Built-in agents cannot be edited',
       copied: 'Agent copied successfully',
       copyFailed: 'Copy failed',
+      // Персонализация встроенных агентов
+      customized: 'Настроено',
+      resetOverrideSuccess: 'Конфигурация восстановлена по умолчанию',
+      resetOverrideFailed: 'Не удалось восстановить настройки по умолчанию',
+      resetOverrideConfirm: 'Восстановить конфигурацию «{name}» по умолчанию? Ваши персональные изменения будут удалены.',
       disabled: 'Agent disabled',
       enabled: 'Agent enabled'
     },
@@ -5162,6 +5167,7 @@ export default {
   },
   agentEditor: {
     builtinHint: 'Это встроенный агент. Имя и описание нельзя изменить, но можно настроить параметры конфигурации.',
+    resetOverride: 'Сбросить',
     navGroups: {
       basic: 'Основное',
       knowledge: 'Знания и поиск',

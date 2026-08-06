@@ -17,5 +17,6 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 		group.PUT("agents/:id", ctrl.UpdateAgent)
 		group.DELETE("agents/:id", ctrl.DeleteAgent)
 		group.POST("agents/:id/copy", ctrl.CopyAgent)
+		group.DELETE("agents/:id/override", ctrl.ResetAgentOverride)
 	}
 }

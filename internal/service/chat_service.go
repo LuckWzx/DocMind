@@ -33,7 +33,7 @@ type chatService struct {
 	sessionRepo  repository.SessionRepository
 	messageRepo  repository.MessageRepository
 	modelFactory *llm.ChatModelFactory
-	agentRepo    repository.AgentRepository
+	agentSvc     AgentService
 	kbRepo       repository.KnowledgeBaseRepository
 	ragPipeline  *pipeline.Pipeline
 }
@@ -47,7 +47,7 @@ func NewChatService(
 	rerankerFactory pipeline.PipelineRerankerFactory,
 	kbRepo repository.KnowledgeBaseRepository,
 	vectorStoreRepo repository.VectorStoreRepository,
-	agentRepo repository.AgentRepository,
+	agentSvc AgentService,
 	primaryDB *gorm.DB,
 ) (ChatService, error) {
 	// 构建 Pipeline 依赖
@@ -81,7 +81,7 @@ func NewChatService(
 		sessionRepo:  sessionRepo,
 		messageRepo:  messageRepo,
 		modelFactory: modelFactory,
-		agentRepo:    agentRepo,
+		agentSvc:     agentSvc,
 		kbRepo:       kbRepo,
 		ragPipeline:  ragPipeline,
 	}, nil
@@ -221,9 +221,9 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 		config.KnowledgeBaseIDs = session.AgentConfig.KnowledgeBases
 	}
 
-	// 如果 Session 关联了 Agent，从 Agent 配置中解析
+	// 如果 Session 关联了 Agent，从 Agent 配置中解析（按用户视角：内置模板 + 用户覆盖）
 	if session.AgentID != "" {
-		agent, err := s.agentRepo.FindByIDStr(session.AgentID)
+		agent, err := s.agentSvc.ResolveForUser(userID, session.AgentID)
 		if err == nil && agent != nil {
 			if agent.Config.ModelID != "" {
 				config.ModelID = agent.Config.ModelID

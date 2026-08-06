@@ -168,6 +168,7 @@ func (a *App) initDatabase() error {
 	//&entity.Session{},
 	//&entity.Message{},
 	//&entity.Agent{},
+	//&entity.AgentOverride{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {
@@ -260,17 +261,19 @@ func (a *App) initDependencies() error {
 	messageRepo := repository.NewMessageRepository(a.pgDB)
 	chatModelFactory := llm.NewChatModelFactory(modelRepo)
 	agentRepo := repository.NewAgentRepository(a.pgDB)
+	agentOverrideRepo := repository.NewAgentOverrideRepository(a.pgDB)
 	rerankerFactory := llm.NewRerankerFactory(modelRepo, &http.Client{Timeout: 30 * time.Second})
-	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentRepo, a.pgDB)
-	if err != nil {
-		return fmt.Errorf("创建 ChatService 失败: %w", err)
-	}
 
-	// 智能体
-	agentSvc := service.NewAgentService(agentRepo)
+	// 智能体（需在 ChatService 之前创建，对话解析智能体配置时按用户视角合并覆盖）
+	agentSvc := service.NewAgentService(agentRepo, agentOverrideRepo)
 	// 确保内置智能体存在
 	if err := service.SeedBuiltinAgents(agentRepo); err != nil {
 		logger.Warn("创建内置智能体失败", zap.Error(err))
+	}
+
+	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB)
+	if err != nil {
+		return fmt.Errorf("创建 ChatService 失败: %w", err)
 	}
 
 	// 创建 Router

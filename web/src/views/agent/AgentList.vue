@@ -299,6 +299,7 @@
                 <div v-else-if="showAgentBuiltinBadge(agent)" class="builtin-badge">
                   <t-icon name="lock-on" size="12px" />
                   <span>{{ $t('agent.builtin') }}</span>
+                  <span v-if="agent.has_override" class="builtin-badge-customized">{{ $t('agent.messages.customized') }}</span>
                 </div>
                 <ResourceOriginBadge v-else-if="showAgentOriginBadge(agent)" :variant="agentOriginVariant(agent)"
                   :creator-name="(agent as any).creator_name" />
@@ -486,6 +487,7 @@
                 <div v-if="showAgentBuiltinBadge(agent)" class="builtin-badge">
                   <t-icon name="lock-on" size="12px" />
                   <span>{{ $t('agent.builtin') }}</span>
+                  <span v-if="agent.has_override" class="builtin-badge-customized">{{ $t('agent.messages.customized') }}</span>
                 </div>
                 <ResourceOriginBadge v-else-if="showAgentOriginBadge(agent)" :variant="agentOriginVariant(agent)"
                   :creator-name="(agent as any).creator_name" />
@@ -2166,6 +2168,13 @@ defineExpose({
   font-size: 11px;
   font-weight: 500;
   flex-shrink: 0;
+}
+
+.builtin-badge-customized {
+  padding-left: 4px;
+  margin-left: 2px;
+  border-left: 1px solid var(--td-border-level-2-color);
+  color: var(--td-brand-color);
 }
 
 .builtin-avatar {

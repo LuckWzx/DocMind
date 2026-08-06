@@ -123,6 +123,9 @@ type Agent struct {
 	Avatar      string      `gorm:"type:varchar(512);comment:头像" json:"avatar"`
 	IsBuiltin   bool        `gorm:"default:false;comment:是否内置" json:"is_builtin"`
 	Config      AgentConfig `gorm:"type:json;comment:智能体配置" json:"config"`
+
+	// HasOverride 当前用户是否已个性化覆盖该内置智能体（不落库，仅接口返回）
+	HasOverride bool `gorm:"-" json:"has_override"`
 }
 
 // TableName 指定表名

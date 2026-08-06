@@ -2081,6 +2081,11 @@ export default {
       builtinReadonly: "기본 제공 에이전트는 편집할 수 없습니다.",
       copied: "에이전트가 복사되었습니다.",
       copyFailed: "복사 실패",
+      // 내장 에이전트 개인화 덮어쓰기
+      customized: "개인화됨",
+      resetOverrideSuccess: "기본 설정으로 복원되었습니다.",
+      resetOverrideFailed: "기본 설정 복원 실패",
+      resetOverrideConfirm: "「{name}」의 기본 설정으로 복원하시겠습니까? 개인화된 수정 사항이 삭제됩니다.",
       disabled: "비활성화됨",
       enabled: "활성화됨",
     },
@@ -5662,6 +5667,7 @@ export default {
   },
   agentEditor: {
     builtinHint: '내장 에이전트입니다. 이름과 설명은 수정할 수 없지만, 설정 매개변수는 조정할 수 있습니다.',
+    resetOverride: '기본값으로 초기화',
     navGroups: {
       basic: '기본',
       knowledge: '지식 검색',

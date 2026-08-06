@@ -2089,6 +2089,11 @@ export default {
       copyFailed: "复制失败",
       disabled: "已停用",
       enabled: "已启用",
+      // 内置智能体个性化覆盖
+      customized: "已个性化",
+      resetOverrideSuccess: "已恢复默认配置",
+      resetOverrideFailed: "恢复默认失败",
+      resetOverrideConfirm: "确定恢复「{name}」的默认配置吗？你的个性化修改将被清除。",
     },
     editor: {
       createTitle: "创建智能体",
@@ -5381,6 +5386,7 @@ export default {
   },
   agentEditor: {
     builtinHint: "这是内置智能体，名称和描述不可修改，但可以调整配置参数",
+    resetOverride: "恢复默认",
     navGroups: {
       basic: "基础",
       knowledge: "知识检索",

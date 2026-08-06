@@ -1048,6 +1048,11 @@ export default {
       builtinReadonly: 'Built-in agents cannot be edited',
       copied: 'Agent copied successfully',
       copyFailed: 'Copy failed',
+      // Built-in agent personalization overrides
+      customized: 'Personalized',
+      resetOverrideSuccess: 'Restored to default configuration',
+      resetOverrideFailed: 'Failed to restore defaults',
+      resetOverrideConfirm: 'Reset "{name}" to its default configuration? Your personalization will be cleared.',
       disabled: 'Agent disabled',
       enabled: 'Agent enabled',
     },
@@ -5641,6 +5646,7 @@ export default {
   },
   agentEditor: {
     builtinHint: 'This is a built-in agent. Name and description cannot be modified, but configuration parameters can be adjusted.',
+    resetOverride: 'Reset to default',
     navGroups: {
       basic: 'Basics',
       knowledge: 'Knowledge & Retrieval',
