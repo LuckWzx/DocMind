@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"docmind/internal/llm"
 	"docmind/internal/model/entity"
 	"docmind/internal/pipeline"
 	"docmind/internal/repository"
@@ -31,7 +32,7 @@ const (
 type chatService struct {
 	sessionRepo  repository.SessionRepository
 	messageRepo  repository.MessageRepository
-	modelFactory *ChatModelFactory
+	modelFactory *llm.ChatModelFactory
 	agentRepo    repository.AgentRepository
 	kbRepo       repository.KnowledgeBaseRepository
 	ragPipeline  *pipeline.Pipeline
@@ -41,8 +42,8 @@ type chatService struct {
 func NewChatService(
 	sessionRepo repository.SessionRepository,
 	messageRepo repository.MessageRepository,
-	modelFactory *ChatModelFactory,
-	embedderFactory *EmbedderFactory,
+	modelFactory *llm.ChatModelFactory,
+	embedderFactory *llm.EmbedderFactory,
 	rerankerFactory pipeline.PipelineRerankerFactory,
 	kbRepo repository.KnowledgeBaseRepository,
 	vectorStoreRepo repository.VectorStoreRepository,
@@ -51,7 +52,7 @@ func NewChatService(
 ) (ChatService, error) {
 	// 构建 Pipeline 依赖
 	pipelineDeps := &pipeline.PipelineDeps{
-		EmbedderFactory: &pipelineEmbedderFactoryAdapter{factory: embedderFactory},
+		EmbedderFactory: llm.NewPipelineEmbedderFactory(embedderFactory),
 		RerankerFactory: rerankerFactory,
 		KBRepo:          kbRepo,
 		VectorStoreRepo: vectorStoreRepo,
@@ -84,15 +85,6 @@ func NewChatService(
 		kbRepo:       kbRepo,
 		ragPipeline:  ragPipeline,
 	}, nil
-}
-
-// pipelineEmbedderFactoryAdapter 适配 pipeline.PipelineEmbedderFactory 接口
-type pipelineEmbedderFactoryAdapter struct {
-	factory *EmbedderFactory
-}
-
-func (a *pipelineEmbedderFactoryAdapter) CreateEmbedder(ctx context.Context, modelID string) (pipeline.PipelineEmbedder, error) {
-	return a.factory.CreatePipelineEmbedder(ctx, modelID)
 }
 
 // KnowledgeChat 单步 RAG 对话
@@ -159,7 +151,7 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 		UserID:          userID,
 		AgentConfig:     agentConfig,
 		HistoryMessages: history,
-		ModelRepo:       s.modelFactory.modelRepo,
+		ModelRepo:       s.modelFactory.ModelRepo(),
 	}
 
 	// 5. 执行 Pipeline

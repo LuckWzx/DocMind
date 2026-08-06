@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"docmind/internal/api"
+	"docmind/internal/llm"
 	"docmind/internal/repository"
 	"docmind/internal/service"
 	"docmind/pkg/config"
@@ -246,15 +247,15 @@ func (a *App) initDependencies() error {
 	tagSvc := service.NewTagService(a.pgDB, knowledgeBaseRepo, tagRepo, faqRepo)
 
 	// 创建 Embedder 工厂（需在 knowledgeSvc 之前）
-	embedderFactory := service.NewEmbedderFactory(modelRepo)
+	embedderFactory := llm.NewEmbedderFactory(modelRepo)
 	knowledgeSvc := service.NewKnowledgeService(knowledgeRepo, knowledgeBaseRepo, chunkRepo, a.docReaderClient, imageStorageSvc, a.cfg, a.pgDB, embedderFactory)
 
 	// 会话与对话相关
 	sessionRepo := repository.NewSessionRepository(a.pgDB)
 	messageRepo := repository.NewMessageRepository(a.pgDB)
-	chatModelFactory := service.NewChatModelFactory(modelRepo)
+	chatModelFactory := llm.NewChatModelFactory(modelRepo)
 	agentRepo := repository.NewAgentRepository(a.pgDB)
-	rerankerFactory := service.NewRerankerFactory(modelRepo, &http.Client{Timeout: 30 * time.Second})
+	rerankerFactory := llm.NewRerankerFactory(modelRepo, &http.Client{Timeout: 30 * time.Second})
 	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentRepo, a.pgDB)
 	if err != nil {
 		return fmt.Errorf("创建 ChatService 失败: %w", err)

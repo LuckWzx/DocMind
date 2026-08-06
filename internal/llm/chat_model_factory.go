@@ -1,4 +1,4 @@
-package service
+package llm
 
 import (
 	"context"
@@ -20,6 +20,11 @@ type ChatModelFactory struct {
 // NewChatModelFactory 创建 ChatModel 工厂
 func NewChatModelFactory(modelRepo repository.ModelRepository) *ChatModelFactory {
 	return &ChatModelFactory{modelRepo: modelRepo}
+}
+
+// ModelRepo 返回模型仓库（供 Pipeline 构建上下文使用）
+func (f *ChatModelFactory) ModelRepo() repository.ModelRepository {
+	return f.modelRepo
 }
 
 // CreateChatModel 根据模型 ID 创建 eino ChatModel

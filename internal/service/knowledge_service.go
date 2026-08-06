@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"docmind/internal/llm"
 	dto "docmind/internal/model/dto/response"
 	"docmind/internal/model/entity"
 	"docmind/internal/repository"
@@ -43,7 +44,7 @@ type knowledgeService struct {
 	imageStorage      ImageStorageService
 	cfg               *config.Config
 	db                *gorm.DB
-	embedderFactory   *EmbedderFactory
+	embedderFactory   *llm.EmbedderFactory
 }
 
 // NewKnowledgeService 创建知识条目服务
@@ -55,7 +56,7 @@ func NewKnowledgeService(
 	imageStorage ImageStorageService,
 	cfg *config.Config,
 	db *gorm.DB,
-	embedderFactory *EmbedderFactory,
+	embedderFactory *llm.EmbedderFactory,
 ) KnowledgeService {
 	return &knowledgeService{
 		knowledgeRepo:     knowledgeRepo,

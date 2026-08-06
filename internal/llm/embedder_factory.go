@@ -1,4 +1,4 @@
-package service
+package llm
 
 import (
 	"context"
@@ -60,6 +60,11 @@ func (f *EmbedderFactory) CreatePipelineEmbedder(ctx context.Context, modelID st
 	return &pipelineEmbedderAdapter{inner: embedder}, nil
 }
 
+// NewPipelineEmbedderFactory 创建适配 pipeline.PipelineEmbedderFactory 接口的工厂
+func NewPipelineEmbedderFactory(factory *EmbedderFactory) pipeline.PipelineEmbedderFactory {
+	return &pipelineEmbedderFactoryAdapter{factory: factory}
+}
+
 // pipelineEmbedderAdapter 适配器：将 eino Embedder 适配为 pipeline.PipelineEmbedder
 type pipelineEmbedderAdapter struct {
 	inner einoembedding.Embedder
@@ -74,6 +79,15 @@ func (a *pipelineEmbedderAdapter) EmbedStrings(ctx context.Context, texts []stri
 		return nil, fmt.Errorf("Embedding 返回空结果")
 	}
 	return results[0], nil
+}
+
+// pipelineEmbedderFactoryAdapter 适配 pipeline.PipelineEmbedderFactory 接口
+type pipelineEmbedderFactoryAdapter struct {
+	factory *EmbedderFactory
+}
+
+func (a *pipelineEmbedderFactoryAdapter) CreateEmbedder(ctx context.Context, modelID string) (pipeline.PipelineEmbedder, error) {
+	return a.factory.CreatePipelineEmbedder(ctx, modelID)
 }
 
 // resolveModel 根据模型 ID 查找 Embedding 模型记录
