@@ -54,6 +54,7 @@ func NewChatService(
 	pipelineDeps := &pipeline.PipelineDeps{
 		EmbedderFactory: llm.NewPipelineEmbedderFactory(embedderFactory),
 		RerankerFactory: rerankerFactory,
+		KeywordSearch:   NewPostgresKeywordDriver(primaryDB),
 		KBRepo:          kbRepo,
 		VectorStoreRepo: vectorStoreRepo,
 		PrimaryDB:       primaryDB,
@@ -212,6 +213,7 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 		EnableQueryRewrite: false,
 		EmbeddingTopK:      defaultTopK,
 		VectorThreshold:    0.5,
+		KeywordTopK:        defaultTopK,
 		RerankTopK:         defaultTopK,
 	}
 
@@ -287,6 +289,13 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 			}
 			if agent.Config.VectorThreshold > 0 {
 				config.VectorThreshold = agent.Config.VectorThreshold
+			}
+			// 解析关键词检索配置
+			if agent.Config.KeywordTopK > 0 {
+				config.KeywordTopK = agent.Config.KeywordTopK
+			}
+			if agent.Config.KeywordThreshold != nil {
+				config.KeywordThreshold = *agent.Config.KeywordThreshold
 			}
 		}
 	}

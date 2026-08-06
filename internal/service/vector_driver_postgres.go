@@ -107,8 +107,13 @@ func (d *postgresVectorDriver) Search(ctx context.Context, params VectorSearchPa
 	}
 
 	var results []VectorSearchResult
+	// 注意：gorm 的 Order() 仅支持 clause.OrderBy / clause.OrderByColumn / string，
+	// 直接传 clause.Expr 会被静默忽略导致不生成 ORDER BY（结果退化为物理顺序）。
+	// 必须包一层 clause.OrderBy{Expression: ...} 才能正确生成带参数绑定的排序子句。
 	err := query.
-		Order(clause.Expr{SQL: orderSQL, Vars: []interface{}{queryVector}}).
+		Order(clause.OrderBy{
+			Expression: clause.Expr{SQL: orderSQL, Vars: []interface{}{queryVector}},
+		}).
 		Limit(params.TopK).
 		Scan(&results).Error
 	if err != nil {

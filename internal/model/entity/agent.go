@@ -62,6 +62,7 @@ type AgentConfig struct {
 	// 检索策略
 	EnableQueryExpansion *bool    `json:"enable_query_expansion,omitempty"`
 	EmbeddingTopK        int      `json:"embedding_top_k"`
+	KeywordTopK          int      `json:"keyword_top_k,omitempty"`
 	KeywordThreshold     *float64 `json:"keyword_threshold,omitempty"`
 	VectorThreshold      float64  `json:"vector_threshold"`
 	RerankTopK           int      `json:"rerank_top_k"`

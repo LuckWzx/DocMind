@@ -37,6 +37,20 @@ type PipelineRerankResult struct {
 	RelevanceScore float64 // 相关度分数（0~1）
 }
 
+// PipelineKeywordDriver BM25 关键词检索驱动接口，由 service 层实现（基于 pg_search）
+type PipelineKeywordDriver interface {
+	EnsureIndex(ctx context.Context) error
+	Search(ctx context.Context, params PipelineKeywordSearchParams) ([]SearchResult, error)
+}
+
+// PipelineKeywordSearchParams BM25 关键词检索参数
+type PipelineKeywordSearchParams struct {
+	KnowledgeBaseIDs []uint  // 知识库过滤（已按用户隔离）
+	Query            string  // 检索文本（改写后的查询）
+	TopK             int     // 返回条数
+	Threshold        float64 // BM25 分数阈值，<=0 不过滤
+}
+
 // PipelineVectorSearchParams 向量检索参数
 type PipelineVectorSearchParams struct {
 	UserID           uint
@@ -60,6 +74,7 @@ type PipelineVectorSearchResult struct {
 type PipelineDeps struct {
 	EmbedderFactory PipelineEmbedderFactory
 	RerankerFactory PipelineRerankerFactory
+	KeywordSearch   PipelineKeywordDriver
 	KBRepo          repository.KnowledgeBaseRepository
 	VectorStoreRepo repository.VectorStoreRepository
 	PrimaryDB       interface{} // *gorm.DB，使用 interface 避免导入 gorm
@@ -90,6 +105,7 @@ type Context struct {
 	RewrittenQuery  string            // 改写后的查询
 	Intent          string            // 意图分类结果
 	SearchResults   []SearchResult    // 向量检索结果
+	KeywordResults  []SearchResult    // BM25 关键词检索结果（供 RRF 融合使用）
 	RerankedResults []SearchResult    // 重排序后的结果
 	Messages        []*schema.Message // 拼接后的 Prompt
 
@@ -117,6 +133,8 @@ type AgentConfig struct {
 	RewritePromptUser      string // 改写用户提示词模板（为空使用默认）
 	EmbeddingTopK          int
 	VectorThreshold        float64
+	KeywordTopK            int     // BM25 检索返回条数
+	KeywordThreshold       float64 // BM25 分数阈值（非 0~1 量纲，<=0 不过滤）
 	RerankTopK             int
 	RerankThreshold        float64 // Rerank 相关度阈值，低于此值的结果将被过滤（0~1）
 }
