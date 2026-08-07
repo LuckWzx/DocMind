@@ -38,20 +38,16 @@ type chatService struct {
 	ragPipeline  *pipeline.Pipeline
 }
 
-// NewChatService 创建对话服务
-func NewChatService(
-	sessionRepo repository.SessionRepository,
-	messageRepo repository.MessageRepository,
-	modelFactory *llm.ChatModelFactory,
+// BuildPipelineDeps 构建 RAG Pipeline 依赖
+// 提取为导出函数，供 chat_service 与 Agent 引擎（kb_search 工具）共用
+func BuildPipelineDeps(
 	embedderFactory *llm.EmbedderFactory,
 	rerankerFactory pipeline.PipelineRerankerFactory,
 	kbRepo repository.KnowledgeBaseRepository,
 	vectorStoreRepo repository.VectorStoreRepository,
-	agentSvc AgentService,
 	primaryDB *gorm.DB,
-) (ChatService, error) {
-	// 构建 Pipeline 依赖
-	pipelineDeps := &pipeline.PipelineDeps{
+) *pipeline.PipelineDeps {
+	return &pipeline.PipelineDeps{
 		EmbedderFactory: llm.NewPipelineEmbedderFactory(embedderFactory),
 		RerankerFactory: rerankerFactory,
 		KeywordSearch:   NewPostgresKeywordDriver(primaryDB),
@@ -71,6 +67,22 @@ func NewChatService(
 			return &pipelineVectorDriverAdapter{inner: driver}, cleanup, nil
 		},
 	}
+}
+
+// NewChatService 创建对话服务
+func NewChatService(
+	sessionRepo repository.SessionRepository,
+	messageRepo repository.MessageRepository,
+	modelFactory *llm.ChatModelFactory,
+	embedderFactory *llm.EmbedderFactory,
+	rerankerFactory pipeline.PipelineRerankerFactory,
+	kbRepo repository.KnowledgeBaseRepository,
+	vectorStoreRepo repository.VectorStoreRepository,
+	agentSvc AgentService,
+	primaryDB *gorm.DB,
+) (ChatService, error) {
+	// 构建 Pipeline 依赖（Agent kb_search 工具复用同一套依赖）
+	pipelineDeps := BuildPipelineDeps(embedderFactory, rerankerFactory, kbRepo, vectorStoreRepo, primaryDB)
 
 	// 创建 RAG Pipeline
 	ragPipeline, err := pipeline.NewPipeline(pipelineDeps)
