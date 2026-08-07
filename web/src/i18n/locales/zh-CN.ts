@@ -5474,7 +5474,7 @@ export default {
       thinking: "启用模型的扩展思考能力（需要模型支持）",
       conversationSection: "配置多轮对话开关与问题改写开关（改写提示词见「提示词」）",
       multiTurn: "开启后将保留历史对话上下文",
-      historyRounds: "保留最近几轮对话作为上下文",
+      historyRounds: "对话过长触发压缩时，最近几轮对话以原文保留不压缩（与摘要一起发给模型）",
       rewrite: "多轮对话时自动改写用户问题，消解指代和补全省略",
       queryUnderstandModel: "用于问题理解（改写与意图识别）的模型，留空则复用主对话模型",
       rewriteSystemPrompt: "用于问题改写的系统提示词（留空使用默认）",

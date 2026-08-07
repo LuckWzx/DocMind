@@ -15,6 +15,7 @@ import (
 	"docmind/internal/model/entity"
 	"docmind/internal/repository"
 	pkgerrors "docmind/pkg/errors"
+	"docmind/pkg/logger"
 )
 
 const docMindCloudCredentialKey = "docmindcloud_credentials"
@@ -25,6 +26,8 @@ type modelService struct {
 	modelRepo   repository.ModelRepository
 	settingRepo repository.SystemSettingRepository
 	httpClient  *http.Client
+	// missingRepo 上下文大小缺失记录（厂商接口与映射表均未命中时写入，供定期补足映射表）
+	missingRepo repository.ModelContextWindowMissingRepository
 
 	taskMu sync.RWMutex
 	tasks  map[string]*ollamaDownloadTask
@@ -35,11 +38,13 @@ func NewModelService(
 	modelRepo repository.ModelRepository,
 	settingRepo repository.SystemSettingRepository,
 	httpClient *http.Client,
+	missingRepo repository.ModelContextWindowMissingRepository,
 ) ModelService {
 	return &modelService{
 		modelRepo:   modelRepo,
 		settingRepo: settingRepo,
 		httpClient:  httpClient,
+		missingRepo: missingRepo,
 		tasks:       make(map[string]*ollamaDownloadTask),
 	}
 }
@@ -70,10 +75,25 @@ func (s *modelService) CreateModel(userID uint, request *req.UpsertModelRequest)
 		Status:      "active",
 		IsDefault:   request.IsDefault,
 		IsBuiltin:   false,
-		Parameters:  toEntityParameters(request.Parameters, entity.ModelParameters{}),
 	}
+	params := toEntityParameters(request.Parameters, entity.ModelParameters{})
+	var ctxWindowReason string
+	if params.ContextWindow <= 0 {
+		// 未显式配置时自动获取：元数据接口优先，内置映射表兜底；失败不阻塞创建
+		var w int
+		w, ctxWindowReason = s.resolveContextWindow(&model)
+		if w > 0 {
+			params.ContextWindow = w
+		}
+	}
+	model.Parameters = params
 	if err := s.modelRepo.Create(&model); err != nil {
 		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "创建模型失败", err)
+	}
+	if params.ContextWindow <= 0 {
+		// 记录缺失清单（需模型入库拿到 ID），供后续定期补足映射表
+		logger.Warnf("[ModelContextWindow] 模型 %s 上下文大小获取失败: %s", model.Name, ctxWindowReason)
+		s.recordMissingContextWindow(&model, ctxWindowReason)
 	}
 	return s.buildModelResponse(&model), nil
 }
@@ -139,8 +159,24 @@ func (s *modelService) UpdateModel(userID uint, id uint, request *req.UpsertMode
 	model.Description = strings.TrimSpace(request.Description)
 	model.IsDefault = request.IsDefault
 	model.Parameters = toEntityParameters(request.Parameters, model.Parameters)
+	var ctxWindowReason string
+	if model.Parameters.ContextWindow <= 0 {
+		// 未显式配置时重新自动获取（更新可能变更了模型名/BaseURL，需刷新缓存值）
+		var w int
+		w, ctxWindowReason = s.resolveContextWindow(model)
+		if w > 0 {
+			model.Parameters.ContextWindow = w
+		}
+	}
 	if err := s.modelRepo.Update(model); err != nil {
 		return nil, pkgerrors.NewWithErr(pkgerrors.CodeInternalError, "更新模型失败", err)
+	}
+	if model.Parameters.ContextWindow > 0 {
+		// 上下文已确定：清理历史缺失记录
+		s.clearMissingContextWindow(model.ID)
+	} else {
+		logger.Warnf("[ModelContextWindow] 模型 %s 上下文大小获取失败: %s", model.Name, ctxWindowReason)
+		s.recordMissingContextWindow(model, ctxWindowReason)
 	}
 	return s.buildModelResponse(model), nil
 }
@@ -157,7 +193,12 @@ func (s *modelService) DeleteModel(userID uint, id uint) error {
 	if model.IsBuiltin {
 		return pkgerrors.New(pkgerrors.CodeForbidden, "内置模型不可删除")
 	}
-	return s.modelRepo.Delete(id)
+	if err := s.modelRepo.Delete(id); err != nil {
+		return err
+	}
+	// 联动清理上下文大小缺失记录
+	s.clearMissingContextWindow(id)
+	return nil
 }
 
 // PutModelCredentials 更新模型的 API Key / App Secret 凭据字段。
@@ -627,7 +668,7 @@ func (s *modelService) debugEmbeddingModel(model *entity.Model, input string) ([
 		return nil, map[string]interface{}{}, err
 	}
 	if status < 200 || status >= 300 {
-		return nil, body, fmt.Errorf(extractErrorMessage(body, status))
+		return nil, body, fmt.Errorf("%s", extractErrorMessage(body, status))
 	}
 	return extractEmbeddingVector(body), body, nil
 }
@@ -707,7 +748,7 @@ func (s *modelService) debugRerankModel(model *entity.Model, query string, docum
 			return body, extractResultsCount(body), nil
 		}
 		if status != http.StatusNotFound {
-			return body, 0, fmt.Errorf(extractErrorMessage(body, status))
+			return body, 0, fmt.Errorf("%s", extractErrorMessage(body, status))
 		}
 	}
 	return map[string]interface{}{}, 0, fmt.Errorf("未找到可用的 Rerank 接口")
@@ -733,7 +774,7 @@ func (s *modelService) debugASRModel(model *entity.Model, fileHeader *multipart.
 		return map[string]interface{}{}, "", err
 	}
 	if status < 200 || status >= 300 {
-		return body, "", fmt.Errorf(extractErrorMessage(body, status))
+		return body, "", fmt.Errorf("%s", extractErrorMessage(body, status))
 	}
 	return body, stringValue(body["text"]), nil
 }
@@ -836,6 +877,7 @@ func (s *modelService) buildModelResponse(model *entity.Model) *dto.ModelRespons
 		ParameterSize:  model.Parameters.ParameterSize,
 		Temperature:    model.Parameters.Temperature,
 		MaxTokens:      model.Parameters.MaxTokens,
+		ContextWindow:  model.Parameters.ContextWindow,
 		Dimension:      model.Parameters.Dimension,
 		KeepAlive:      model.Parameters.KeepAlive,
 		ExtraConfig:    model.Parameters.ExtraConfig,
@@ -907,6 +949,7 @@ func toEntityParameters(request req.ModelParametersRequest, existing entity.Mode
 	params.ParameterSize = strings.TrimSpace(request.ParameterSize)
 	params.Temperature = request.Temperature
 	params.MaxTokens = request.MaxTokens
+	params.ContextWindow = request.ContextWindow
 	params.Dimension = request.Dimension
 	params.KeepAlive = strings.TrimSpace(request.KeepAlive)
 	params.SupportsVision = request.SupportsVision

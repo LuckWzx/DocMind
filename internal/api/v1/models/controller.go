@@ -99,6 +99,16 @@ func (ctrl *Controller) ListProviders(c *gin.Context) {
 	response.Success(c, data)
 }
 
+// ListMissingContextWindows 上下文大小缺失模型清单（供定期补足内置映射表）
+func (ctrl *Controller) ListMissingContextWindows(c *gin.Context) {
+	data, err := ctrl.modelService.ListMissingContextWindows()
+	if err != nil {
+		response.BizError(c, err)
+		return
+	}
+	response.Success(c, data)
+}
+
 func (ctrl *Controller) PutModelCredentials(c *gin.Context) {
 	id, ok := parseUintParam(c, "id")
 	if !ok {

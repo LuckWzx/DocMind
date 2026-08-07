@@ -125,7 +125,8 @@ type AgentConfig struct {
 	EnableQueryRewrite bool
 	// 多轮对话配置
 	MultiTurnEnabled bool // 是否启用多轮对话
-	HistoryTurns     int  // 保留的历史对话轮数
+	// HistoryTurns 压缩时保底保留的最近完整轮数（原文不压缩，直接随摘要一起发给模型）
+	HistoryTurns int
 
 	// 查询改写配置
 	QueryUnderstandModelID string // 用于问题改写的模型ID（可选，为空则复用 ModelID）

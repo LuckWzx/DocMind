@@ -27,6 +27,7 @@ type ModelParametersResponse struct {
 	ParameterSize       string                       `json:"parameter_size,omitempty"`
 	Temperature         float64                      `json:"temperature,omitempty"`
 	MaxTokens           int                          `json:"max_tokens,omitempty"`
+	ContextWindow       int                          `json:"context_window,omitempty"`
 	Dimension           int                          `json:"dimension,omitempty"`
 	KeepAlive           string                       `json:"keep_alive,omitempty"`
 	EmbeddingParameters *EmbeddingParametersResponse `json:"embedding_parameters,omitempty"`
@@ -106,4 +107,17 @@ type ModelDebugResult struct {
 	RawResponse  interface{}            `json:"raw_response"`
 	Observations map[string]interface{} `json:"observations"`
 	Error        string                 `json:"error,omitempty"`
+}
+
+// ModelContextWindowMissingResponse 上下文大小缺失记录响应（待补足映射表的模型清单）
+type ModelContextWindowMissingResponse struct {
+	ID        uint   `json:"id"`
+	ModelID   uint   `json:"model_id"`
+	ModelName string `json:"model_name"`
+	Provider  string `json:"provider,omitempty"`
+	BaseURL   string `json:"base_url,omitempty"`
+	Source    string `json:"source,omitempty"`
+	Type      string `json:"type,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	CreatedAt string `json:"created_at"`
 }

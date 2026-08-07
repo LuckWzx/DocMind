@@ -864,7 +864,7 @@
                       </div>
                     </div>
 
-                    <!-- 保留轮数 -->
+                    <!-- 保留轮数（压缩时保底保留的最近完整轮数） -->
                     <div v-if="formData.config.multi_turn_enabled" class="setting-row">
                       <div class="setting-info">
                         <label>{{ $t('agent.editor.historyTurns') }}</label>

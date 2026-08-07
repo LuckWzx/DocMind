@@ -52,6 +52,16 @@ func (r *messageRepository) ListBySession(sessionID uint, limit int, beforeTime 
 	return messages, err
 }
 
+func (r *messageRepository) ListAfterID(sessionID uint, afterID uint, limit int) ([]*entity.Message, error) {
+	var messages []*entity.Message
+	// 按时间正序排列（最早的在前，最新的在后）
+	err := r.db.Where("session_id = ? AND id > ?", sessionID, afterID).
+		Order("created_at ASC").
+		Limit(limit).
+		Find(&messages).Error
+	return messages, err
+}
+
 func (r *messageRepository) DeleteBySession(sessionID uint) error {
 	return r.db.Where("session_id = ?", sessionID).Delete(&entity.Message{}).Error
 }

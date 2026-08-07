@@ -81,7 +81,9 @@ type AgentConfig struct {
 	WebFetchTopN        *int   `json:"web_fetch_top_n,omitempty"`
 
 	// 多轮对话设置
-	MultiTurnEnabled       *bool  `json:"multi_turn_enabled,omitempty"`
+	MultiTurnEnabled *bool `json:"multi_turn_enabled,omitempty"`
+	// HistoryTurns 压缩时保底保留的最近完整轮数：对话过长触发短期记忆压缩时，
+	// 最近 N 轮对话以原文保留不压缩（与摘要一起发给模型），更早的历史才被压缩。
 	HistoryTurns           int    `json:"history_turns"`
 	EnableRewrite          *bool  `json:"enable_rewrite,omitempty"`
 	QueryUnderstandModelID string `json:"query_understand_model_id,omitempty"`

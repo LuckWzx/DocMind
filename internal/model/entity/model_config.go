@@ -26,6 +26,7 @@ type ModelParameters struct {
 	ParameterSize       string              `json:"parameter_size,omitempty"`
 	Temperature         float64             `json:"temperature,omitempty"`
 	MaxTokens           int                 `json:"max_tokens,omitempty"`
+	ContextWindow       int                 `json:"context_window,omitempty"`
 	Dimension           int                 `json:"dimension,omitempty"`
 	KeepAlive           string              `json:"keep_alive,omitempty"`
 	EmbeddingParameters EmbeddingParameters `json:"embedding_parameters,omitempty"`

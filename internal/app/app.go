@@ -169,6 +169,10 @@ func (a *App) initDatabase() error {
 	//&entity.Message{},
 	//&entity.Agent{},
 	//&entity.AgentOverride{},
+	//// 短期记忆增量摘要表（会话摘要持久化，见 internal/memory 增量压缩设计）
+	//&entity.SessionSummary{},
+	//// 模型上下文大小缺失记录表（待补足内置映射表的模型清单）
+	//&entity.ModelContextWindowMissing{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {
@@ -240,7 +244,19 @@ func (a *App) initDependencies() error {
 	// 创建 Service
 	userSvc := service.NewUserService(userRepo)
 	authSvc := service.NewAuthService(userRepo, refreshTokenRepo, userSvc)
-	modelSvc := service.NewModelService(modelRepo, systemSettingRepo, &http.Client{Timeout: 30 * time.Second})
+	modelMissingRepo := repository.NewModelContextWindowMissingRepository(a.pgDB)
+	modelSvc := service.NewModelService(modelRepo, systemSettingRepo, &http.Client{Timeout: 30 * time.Second}, modelMissingRepo)
+	// 存量模型 context_window 补全：后台执行，不阻塞启动（仅补聊天类且字段为空的模型）
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		filled, err := modelSvc.BackfillContextWindows(ctx)
+		if err != nil {
+			logger.Warn("存量模型上下文大小补全失败", zap.Error(err))
+			return
+		}
+		logger.Info("存量模型上下文大小补全完成", zap.Int("filled", filled))
+	}()
 	chunkerSvc := service.NewChunkerService()
 	vectorStoreSvc := service.NewVectorStoreService(vectorStoreRepo, knowledgeBaseRepo, chunkRepo, modelSvc, a.pgDB, a.cfg)
 	imageStorageSvc, err := service.NewImageStorageService(a.cfg.MinIO)
@@ -259,6 +275,7 @@ func (a *App) initDependencies() error {
 	// 会话与对话相关
 	sessionRepo := repository.NewSessionRepository(a.pgDB)
 	messageRepo := repository.NewMessageRepository(a.pgDB)
+	summaryRepo := repository.NewSummaryRepository(a.pgDB)
 	chatModelFactory := llm.NewChatModelFactory(modelRepo)
 	agentRepo := repository.NewAgentRepository(a.pgDB)
 	agentOverrideRepo := repository.NewAgentOverrideRepository(a.pgDB)
@@ -271,7 +288,7 @@ func (a *App) initDependencies() error {
 		logger.Warn("创建内置智能体失败", zap.Error(err))
 	}
 
-	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB)
+	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB)
 	if err != nil {
 		return fmt.Errorf("创建 ChatService 失败: %w", err)
 	}

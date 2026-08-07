@@ -232,7 +232,7 @@ func (s *modelService) runOllamaDownload(task *ollamaDownloadTask) {
 			return
 		}
 		if errorText := stringValue(event["error"]); errorText != "" {
-			s.failTask(task.ID, fmt.Errorf(errorText))
+			s.failTask(task.ID, fmt.Errorf("%s", errorText))
 			return
 		}
 	}
@@ -294,7 +294,7 @@ func (s *modelService) callOllamaEmbed(modelName, input string) ([]float64, map[
 		return nil, map[string]interface{}{}, err
 	}
 	if status < 200 || status >= 300 {
-		return nil, body, fmt.Errorf(extractErrorMessage(body, status))
+		return nil, body, fmt.Errorf("%s", extractErrorMessage(body, status))
 	}
 	return extractEmbeddingVector(body), body, nil
 }
@@ -337,7 +337,7 @@ func (s *modelService) callOllamaChat(modelName, input string, options map[strin
 		return map[string]interface{}{}, "", err
 	}
 	if status < 200 || status >= 300 {
-		return body, "", fmt.Errorf(extractErrorMessage(body, status))
+		return body, "", fmt.Errorf("%s", extractErrorMessage(body, status))
 	}
 	answer := ""
 	if msg, ok := body["message"].(map[string]interface{}); ok {

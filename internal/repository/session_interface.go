@@ -24,6 +24,8 @@ type MessageRepository interface {
 	BatchCreate(messages []*entity.Message) error
 	FindByID(id uint) (*entity.Message, error)
 	ListBySession(sessionID uint, limit int, beforeTime *time.Time) ([]*entity.Message, error)
+	// ListAfterID 加载 ID 大于 afterID 的消息（增量加载：短期记忆压缩边界之后的消息）
+	ListAfterID(sessionID uint, afterID uint, limit int) ([]*entity.Message, error)
 	DeleteBySession(sessionID uint) error
 	CountBySession(sessionID uint) (int64, error)
 }

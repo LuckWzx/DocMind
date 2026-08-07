@@ -16,6 +16,7 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 		modelGroup.GET("", ctrl.ListModels)
 		modelGroup.POST("", ctrl.CreateModel)
 		modelGroup.GET("/docmindcloud/status", ctrl.GetDocMindCloudStatus)
+		modelGroup.GET("/context-window/missing", ctrl.ListMissingContextWindows)
 		modelGroup.GET("/:id", ctrl.GetModel)
 		modelGroup.PUT("/:id", ctrl.UpdateModel)
 		modelGroup.DELETE("/:id", ctrl.DeleteModel)

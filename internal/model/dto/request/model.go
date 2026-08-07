@@ -13,6 +13,7 @@ type ModelParametersRequest struct {
 	ParameterSize       string                      `json:"parameter_size"`
 	Temperature         float64                     `json:"temperature"`
 	MaxTokens           int                         `json:"max_tokens"`
+	ContextWindow       int                         `json:"context_window"`
 	Dimension           int                         `json:"dimension"`
 	KeepAlive           string                      `json:"keep_alive"`
 	EmbeddingParameters *EmbeddingParametersRequest `json:"embedding_parameters"`

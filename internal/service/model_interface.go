@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"mime/multipart"
 
 	req "docmind/internal/model/dto/request"
@@ -9,6 +10,10 @@ import (
 
 // ModelService 模型管理服务接口
 type ModelService interface {
+	// BackfillContextWindows 存量模型 context_window 补全（启动时后台调用），返回补全成功数
+	BackfillContextWindows(ctx context.Context) (int, error)
+	// ListMissingContextWindows 上下文大小缺失模型清单（供定期补足内置映射表）
+	ListMissingContextWindows() ([]*dto.ModelContextWindowMissingResponse, error)
 	CreateModel(userID uint, request *req.UpsertModelRequest) (*dto.ModelResponse, error)
 	ListModels(userID uint, modelType string) ([]*dto.ModelResponse, error)
 	GetModel(userID uint, id uint) (*dto.ModelResponse, error)

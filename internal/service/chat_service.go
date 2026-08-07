@@ -7,11 +7,15 @@ import (
 	"time"
 
 	"docmind/internal/llm"
+	"docmind/internal/memory"
 	"docmind/internal/model/entity"
 	"docmind/internal/pipeline"
 	"docmind/internal/repository"
 	bizerrors "docmind/pkg/errors"
+	"docmind/pkg/logger"
+	"docmind/pkg/token"
 
+	"github.com/cloudwego/eino/components/model"
 	einoschema "github.com/cloudwego/eino/schema"
 	"gorm.io/gorm"
 )
@@ -19,6 +23,10 @@ import (
 const (
 	defaultTopK        = 5
 	defaultTemperature = 0.7
+
+	// maxIncrementalMessages 增量加载上限：摘要边界之后的增量消息数理论上不受轮数限制，
+	// 但设上限防止极端情况下单次请求加载过多（摘要本身已覆盖历史）
+	maxIncrementalMessages = 500
 
 	knowledgeQASystemPrompt = `你是一个知识库问答助手。请根据以下检索到的文档内容回答用户的问题。
 
@@ -32,10 +40,13 @@ const (
 type chatService struct {
 	sessionRepo  repository.SessionRepository
 	messageRepo  repository.MessageRepository
+	summaryRepo  repository.SummaryRepository
 	modelFactory *llm.ChatModelFactory
 	agentSvc     AgentService
 	kbRepo       repository.KnowledgeBaseRepository
 	ragPipeline  *pipeline.Pipeline
+	// tokenEstimator 历史 Token 估算器（短期记忆触发判定用）
+	tokenEstimator *token.Estimator
 }
 
 // BuildPipelineDeps 构建 RAG Pipeline 依赖
@@ -73,6 +84,7 @@ func BuildPipelineDeps(
 func NewChatService(
 	sessionRepo repository.SessionRepository,
 	messageRepo repository.MessageRepository,
+	summaryRepo repository.SummaryRepository,
 	modelFactory *llm.ChatModelFactory,
 	embedderFactory *llm.EmbedderFactory,
 	rerankerFactory pipeline.PipelineRerankerFactory,
@@ -90,14 +102,36 @@ func NewChatService(
 		return nil, fmt.Errorf("创建 RAG Pipeline 失败: %w", err)
 	}
 
+	// 创建 Token 估算器（短期记忆触发判定用）
+	tokenEstimator, err := token.NewEstimator()
+	if err != nil {
+		return nil, fmt.Errorf("初始化 Token 估算器失败: %w", err)
+	}
+
 	return &chatService{
-		sessionRepo:  sessionRepo,
-		messageRepo:  messageRepo,
-		modelFactory: modelFactory,
-		agentSvc:     agentSvc,
-		kbRepo:       kbRepo,
-		ragPipeline:  ragPipeline,
+		sessionRepo:    sessionRepo,
+		messageRepo:    messageRepo,
+		summaryRepo:    summaryRepo,
+		modelFactory:   modelFactory,
+		agentSvc:       agentSvc,
+		kbRepo:         kbRepo,
+		ragPipeline:    ragPipeline,
+		tokenEstimator: tokenEstimator,
 	}, nil
+}
+
+// toSchemaMessage 将数据库消息转换为 eino schema 消息（短期记忆增量加载用）
+func toSchemaMessage(m *entity.Message) *einoschema.Message {
+	role := einoschema.User
+	if m.Role == "assistant" {
+		role = einoschema.Assistant
+	} else if m.Role == "system" {
+		role = einoschema.System
+	}
+	return &einoschema.Message{
+		Role:    role,
+		Content: m.Content,
+	}
 }
 
 // KnowledgeChat 单步 RAG 对话
@@ -126,35 +160,98 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 	// 3. 从 Agent 解析配置（提前，用于确定历史轮数）
 	agentConfig := s.resolveAgentConfig(session, req, userID)
 
-	// 4. 加载最近对话历史（排除刚保存的 userMsg）
-	var historyMsgs []*entity.Message
+	// 4. 加载短期记忆上下文：会话摘要（若有）+ 压缩边界之后的增量消息
+	// 增量压缩设计：摘要持久化在 session_summaries 表（summaryRepo），
+	// LastMessageID 之前的消息已并入摘要，这里只加载边界之后的新消息，
+	// 避免每次请求对全部历史重新压缩
+	var incremental []*einoschema.Message
+	boundaryIDs := make([]uint, 0, 64) // 与 incremental 一一对应的消息 ID（写回压缩边界用）
+	summaryContent := ""
 	if agentConfig.MultiTurnEnabled {
-		// 每轮 = 1 user + 1 assistant，所以消息数 = 轮数 * 2
-		maxHistoryMessages := agentConfig.HistoryTurns * 2
-		if maxHistoryMessages <= 0 {
-			maxHistoryMessages = 10 // 默认 5 轮 = 10 条消息
-		}
-		historyMsgs, err = s.messageRepo.ListBySession(sessionID, maxHistoryMessages+1, nil)
-		if err != nil {
-			historyMsgs = nil // 加载失败不影响对话
+		summary, summaryErr := s.summaryRepo.GetBySession(sessionID)
+		if summaryErr == nil && summary != nil {
+			// 已有摘要：加载边界之后的全部增量消息（含刚保存的 userMsg 当前轮）
+			summaryContent = summary.Content
+			msgs, listErr := s.messageRepo.ListAfterID(sessionID, summary.LastMessageID, maxIncrementalMessages)
+			if listErr == nil {
+				for _, m := range msgs {
+					boundaryIDs = append(boundaryIDs, m.ID)
+					incremental = append(incremental, toSchemaMessage(m))
+				}
+			}
+		} else {
+			// 无摘要（首次）：全量加载历史（上限 maxIncrementalMessages），
+			// 让 Token 自然累积到触发阈值，产生首份摘要后进入增量模式。
+			// 不再受 HistoryTurns 限制（该配置已废弃，见 resolveAgentConfig）。
+			historyMsgs, loadErr := s.messageRepo.ListBySession(sessionID, maxIncrementalMessages, nil)
+			if loadErr == nil {
+				for _, m := range historyMsgs {
+					// 跳过刚保存的 userMsg（稍后作为当前轮追加）
+					if m.ID == userMsg.ID {
+						continue
+					}
+					boundaryIDs = append(boundaryIDs, m.ID)
+					incremental = append(incremental, toSchemaMessage(m))
+				}
+			}
+			// 当前轮（刚保存的 userMsg）作为增量最后一条
+			boundaryIDs = append(boundaryIDs, userMsg.ID)
+			incremental = append(incremental, toSchemaMessage(userMsg))
 		}
 	}
-	var history []*einoschema.Message
-	for _, m := range historyMsgs {
-		// 跳过刚保存的 userMsg
-		if m.ID == userMsg.ID {
-			continue
-		}
-		role := einoschema.User
-		if m.Role == "assistant" {
-			role = einoschema.Assistant
-		} else if m.Role == "system" {
-			role = einoschema.System
-		}
+
+	// 4.1 短期记忆：摘要 + 增量 Token 超限时增量压缩（quick-answer 模式）
+	// pipeline 为 compose.Graph 无法挂载 ADK 中间件，故在加载历史后手动压缩；
+	// 压缩失败时降级为"旧摘要 + 原文归档"，均不影响本次对话
+	history := make([]*einoschema.Message, 0, len(incremental)+1)
+	if summaryContent != "" {
 		history = append(history, &einoschema.Message{
-			Role:    role,
-			Content: m.Content,
+			Role:    einoschema.System,
+			Content: summaryContent,
 		})
+	}
+	history = append(history, incremental...)
+
+	if len(incremental) > 1 {
+		// 上下文窗口：模型配置 context_window > 内置映射表 > 默认值（仅读缓存，不发网络请求）
+		maxContextTokens := memory.DefaultMaxContextTokens
+		if w := s.resolveContextWindowForModel(agentConfig.ModelID, userID); w > 0 {
+			maxContextTokens = w
+		}
+		consolidator := memory.NewConsolidator(
+			func(ctx context.Context) (model.BaseModel[*einoschema.Message], error) {
+				return s.modelFactory.CreateChatModel(ctx, agentConfig.ModelID)
+			},
+			s.tokenEstimator,
+			maxContextTokens,
+			0,                        // 触发比例默认 0.5
+			agentConfig.HistoryTurns, // 压缩时保底保留的最近完整轮数（原文不压缩）
+		)
+		currentTokens := s.tokenEstimator.EstimateString(summaryContent) + s.tokenEstimator.EstimateMessages(incremental)
+		if consolidator.ShouldConsolidate(currentTokens) {
+			newSummary, count, isRaw := consolidator.ConsolidateIncremental(ctx, summaryContent, incremental)
+			if count > 0 {
+				// 写回摘要：边界 = 被压缩增量中最后一条消息的 ID（压缩的是增量前缀）
+				summaryType := entity.SummaryTypeLLM
+				if isRaw {
+					summaryType = entity.SummaryTypeRaw
+				}
+				if err := s.summaryRepo.Upsert(&entity.SessionSummary{
+					SessionID:       sessionID,
+					Content:         newSummary,
+					SummaryType:     summaryType,
+					LastMessageID:   boundaryIDs[count-1],
+					CompressedCount: count,
+				}); err != nil {
+					logger.Warnf("[MemoryConsolidator] 摘要写回失败（不影响本次对话）: %v", err)
+				}
+				// 本次请求使用新摘要 + 保留的增量
+				history = append([]*einoschema.Message{{
+					Role:    einoschema.System,
+					Content: newSummary,
+				}}, incremental[count:]...)
+			}
+		}
 	}
 
 	// 5. 创建 Pipeline 上下文
@@ -221,7 +318,7 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 		Temperature:        defaultTemperature,
 		MaxTokens:          2048,
 		MultiTurnEnabled:   false,
-		HistoryTurns:       5,
+		HistoryTurns:       memory.DefaultPreserveTurns, // 压缩时保底保留的最近轮数
 		EnableQueryRewrite: false,
 		EmbeddingTopK:      defaultTopK,
 		VectorThreshold:    0.5,
@@ -282,6 +379,7 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 			if agent.Config.MultiTurnEnabled != nil {
 				config.MultiTurnEnabled = *agent.Config.MultiTurnEnabled
 			}
+			// HistoryTurns 语义：压缩时保底保留的最近完整轮数（原文不压缩）
 			if agent.Config.HistoryTurns > 0 {
 				config.HistoryTurns = agent.Config.HistoryTurns
 			}
@@ -419,6 +517,7 @@ func (s *chatService) DeleteSession(ctx context.Context, sessionID uint, userID 
 	if err := s.messageRepo.DeleteBySession(sessionID); err != nil {
 		return bizerrors.NewWithErr(bizerrors.CodeInternalError, "删除消息失败", err)
 	}
+	_ = s.summaryRepo.DeleteBySession(sessionID)
 	return s.sessionRepo.Delete(sessionID)
 }
 
@@ -436,6 +535,7 @@ func (s *chatService) BatchDeleteSessions(ctx context.Context, userID uint, sess
 	}
 	for _, id := range sessionIDs {
 		_ = s.messageRepo.DeleteBySession(id)
+		_ = s.summaryRepo.DeleteBySession(id)
 		_ = s.sessionRepo.Delete(id)
 	}
 	return nil
@@ -470,6 +570,7 @@ func (s *chatService) ClearSessionMessages(ctx context.Context, sessionID uint, 
 	if err := s.messageRepo.DeleteBySession(sessionID); err != nil {
 		return bizerrors.NewWithErr(bizerrors.CodeInternalError, "清空消息失败", err)
 	}
+	_ = s.summaryRepo.DeleteBySession(sessionID)
 	session.MessageCount = 0
 	session.LastMessage = ""
 	return s.sessionRepo.Update(session)
