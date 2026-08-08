@@ -15,6 +15,8 @@ type SearchKBParams struct {
 	Query            string
 	EmbeddingTopK    int
 	VectorThreshold  float64
+	KeywordTopK      int
+	KeywordThreshold float64
 	RerankModelID    string
 	RerankTopK       int
 	RerankThreshold  float64
@@ -120,8 +122,96 @@ func SearchKB(ctx context.Context, deps *PipelineDeps, params *SearchKBParams) (
 		})
 	}
 
-	// 6. Rerank 重排（未配置模型或失败时使用原始结果）
+	// 6. 关键字检索（BM25，与向量检索并行一路；失败或未注入时降级为空结果）
+	keywordResults := []SearchResult{}
+	if deps.KeywordSearch != nil {
+		kTopK := params.KeywordTopK
+		if kTopK <= 0 {
+			kTopK = 5
+		}
+		keywordResults, err = deps.KeywordSearch.Search(ctx, PipelineKeywordSearchParams{
+			KnowledgeBaseIDs: uintKBIDs,
+			Query:            params.Query,
+			TopK:             kTopK,
+			Threshold:        params.KeywordThreshold,
+		})
+		if err != nil {
+			fmt.Printf("[SearchKB] KeywordSearch: 检索失败，降级为空结果: %v\n", err)
+			keywordResults = []SearchResult{}
+		}
+		fmt.Printf("[SearchKB] KeywordSearch: query=%s, kbIDs=%v, results=%d\n",
+			params.Query, params.KnowledgeBaseIDs, len(keywordResults))
+	}
+
+	// 7. RRF 融合（只比排名不比分数，融合结果写回后统一进 rerank）
+	effTopK := params.RerankTopK
+	if effTopK <= 0 {
+		effTopK = 5
+	}
+	searchResults = fuseRRFResults(searchResults, keywordResults, effTopK)
+	fmt.Printf("[SearchKB] RRFFusion: vector=%d + keyword=%d → fused=%d (topK=%d)\n",
+		len(results), len(keywordResults), len(searchResults), effTopK)
+
+	// 8. Rerank 重排（未配置模型或失败时使用融合结果）
 	return rerankSearchResults(ctx, deps, params, searchResults), nil
+}
+
+// fuseRRFResults 将向量与关键字两路结果按倒数排名融合（与 node_rrf_fusion 算法一致）
+// RRF(d) = Σ 1/(k + rank_i(d))，只比排名不比分数（两路分数量纲不同），天然去重
+func fuseRRFResults(vectorResults, keywordResults []SearchResult, topK int) []SearchResult {
+	if len(vectorResults) == 0 && len(keywordResults) == 0 {
+		return []SearchResult{}
+	}
+	if len(vectorResults) == 0 {
+		return keywordResults
+	}
+	if len(keywordResults) == 0 {
+		return vectorResults
+	}
+
+	// 1. 按排名累加 RRF 分数（同一 chunk 双路命中自动合并贡献）
+	fused := make(map[uint]float64, len(vectorResults)+len(keywordResults))
+	for rank, r := range vectorResults {
+		fused[r.ChunkID] += 1.0 / (rrfK + float64(rank+1))
+	}
+	for rank, r := range keywordResults {
+		fused[r.ChunkID] += 1.0 / (rrfK + float64(rank+1))
+	}
+
+	// 2. 还原条目信息（双路命中时优先取向量路条目，内容一致）
+	entries := make(map[uint]SearchResult, len(vectorResults)+len(keywordResults))
+	for _, r := range vectorResults {
+		entries[r.ChunkID] = r
+	}
+	for _, r := range keywordResults {
+		if _, ok := entries[r.ChunkID]; !ok {
+			entries[r.ChunkID] = r
+		}
+	}
+
+	// 3. 按 RRF 分数降序排序并截断到 topK
+	chunkIDs := make([]uint, 0, len(fused))
+	for id := range fused {
+		chunkIDs = append(chunkIDs, id)
+	}
+	sort.Slice(chunkIDs, func(i, j int) bool {
+		return fused[chunkIDs[i]] > fused[chunkIDs[j]]
+	})
+	if topK <= 0 {
+		topK = 5
+	}
+	if len(chunkIDs) > topK {
+		chunkIDs = chunkIDs[:topK]
+	}
+
+	// 4. Score 替换为 RRF 分数（下游 rerank 会重新打分）
+	results := make([]SearchResult, 0, len(chunkIDs))
+	for _, id := range chunkIDs {
+		item := entries[id]
+		item.Score = fused[id]
+		results = append(results, item)
+	}
+	return results
 }
 
 // rerankSearchResults 对检索结果重排（与 node_rerank 逻辑一致）

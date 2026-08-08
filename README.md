@@ -17,19 +17,26 @@ DocMind/
 ├── cmd/                              # 应用入口
 │   ├── agentdemo/                    # Agent 引擎最小 Demo（internal/agent 骨架验证）
 │   │   └── main.go                   # 引擎端到端验证入口
+│   ├── detect_bm25/                  # BM25 索引与检索验证工具
+│   │   └── main.go                   # 数据库 BM25 验证入口
+│   ├── memorydemo/                   # 短期记忆中间件验证 Demo（LLM 摘要压缩 + 降级归档）
+│   │   └── main.go                   # 记忆三条主流程验证入口
 │   └── server/
 │       └── main.go                   # 服务启动入口
 ├── configs/                          # 配置文件
 │   ├── config.yaml                   # 主配置（PostgreSQL / Redis / MinIO / DocReader）
-│   └── config.yaml.example           # 配置示例
+│   ├── config.yaml.example           # 配置示例
+│   └── skills/                       # Agent 技能目录（SKILL.md：front matter + 指令）
+│       ├── doc-review/               # 文档质量评审技能
+│       └── rag-optimizer/            # RAG 优化顾问技能
 ├── internal/                         # 内部模块（不对外暴露）
 │   ├── api/                          # HTTP API 层
 │   │   ├── router.go                 # 路由注册
 │   │   └── v1/                       # API v1
 │   │       ├── agent/                # AI Agent 模块
 │   │       ├── auth/                 # 认证模块（注册/登录/刷新Token）
-│   │       ├── chat/                 # 对话模块（SSE 流式问答）
-│   │       │   ├── controller.go     # 会话 CRUD + SSE 流式问答
+│   │       ├── chat/                 # 对话模块（SSE 流式问答：knowledge-chat + agent-chat）
+│   │       │   ├── controller.go     # 会话 CRUD + SSE 流式问答（快速问答/智能推理分流）
 │   │       │   ├── routes.go         # 路由注册
 │   │       │   └── sse_event.go      # SSE 事件类型常量池
 │   │       ├── chunker/              # 分块配置模块
@@ -38,7 +45,6 @@ DocMind/
 │   │       ├── knowledgebase/        # 知识库（CRUD / FAQ / 文件导入）
 │   │       ├── models/               # LLM 模型配置
 │   │       ├── tag/                  # 标签模块（独立 CRUD）
-│   │       ├── user/                 # 用户模块
 │   │       └── vectorstore/          # 向量存储配置
 │   ├── app/                          # 应用生命周期管理
 │   │   └── app.go                    # 初始化、依赖注入、AutoMigrate、自动启动DocReader
@@ -50,7 +56,26 @@ DocMind/
 │   │   ├── config.go                  # entity.AgentConfig → 引擎配置映射
 │   │   ├── engine.go                  # 引擎接口与 ADK ChatModelAgent 封装
 │   │   ├── runner.go                  # EventStream 事件展开层（ADK → 统一事件）
-│   │   └── types.go                   # 统一事件类型与 RunRequest
+│   │   ├── state.go                   # Agent 状态机（Thinking/Searching/Generating/Completed）
+│   │   ├── types.go                   # 统一事件类型与 RunRequest
+│   │   ├── skills/                    # 技能系统（官方 skill middleware 适配层）
+│   │   │   ├── backend.go             # 本地文件系统 Backend（filesystem.Backend 实现）
+│   │   │   └── adapter.go             # SelectedSkills 白名单 + middleware 组装
+│   │   └── tools/                     # Agent 工具集
+│   │       ├── kb_search.go           # 知识库检索工具（向量‖BM25→RRF→rerank）
+│   │       └── registry.go            # 工具注册表（AllowedTools 白名单）
+│   ├── pipeline/                      # RAG 检索管道（节点式编排）
+│   │   ├── node_build_prompt.go       # 提示词构建节点
+│   │   ├── node_chat_completion.go    # 对话补全节点
+│   │   ├── node_intent_classify.go    # 意图分类节点
+│   │   ├── node_keyword_search.go     # 关键字检索节点
+│   │   ├── node_query_rewrite.go      # 查询改写节点
+│   │   ├── node_rerank.go             # 检索结果重排节点
+│   │   ├── node_rrf_fusion.go         # RRF 结果融合节点
+│   │   ├── node_vector_search.go      # 向量检索节点
+│   │   ├── pipeline.go                # 管道编排入口
+│   │   ├── search.go                  # 检索执行
+│   │   └── types.go                   # 管道类型定义
 │   ├── middleware/                    # 中间件
 │   │   ├── auth.go                   # JWT 鉴权
 │   │   ├── cors.go                   # 跨域
@@ -64,6 +89,7 @@ DocMind/
 │   │       ├── base.go               # BaseEntity（自增主键+软删除）
 │   │       ├── user.go               # 用户
 │   │       ├── agent.go              # Agent 配置
+│   │       ├── agent_override.go     # Agent 覆盖配置
 │   │       ├── session.go            # 对话会话
 │   │       ├── message.go            # 对话消息
 │   │       ├── knowledge_base.go     # 知识库
@@ -76,10 +102,12 @@ DocMind/
 │   │       ├── vector_store.go       # 向量存储
 │   │       ├── system_setting.go     # 系统设置
 │   │       ├── web_search_provider.go # 网页搜索
+│   │       ├── session_summary.go     # 会话短期记忆摘要（LLM 增量压缩）
+│   │       ├── model_context_window_missing.go # 模型上下文窗口缺失记录
 │   │       └── types.go              # 通用类型（JSON等）
 │   ├── repository/                   # 数据访问层
-│   │   ├── *_interface.go            # 仓储接口（25个文件，覆盖全部实体）
-│   │   └── *_repository.go           # 仓储实现
+│   │   ├── *_interface.go            # 仓储接口（31个文件，覆盖全部实体）
+│   │   └── *_repository.go           # 仓储实现（含 agent 覆盖 / 会话摘要 / 上下文窗口回填）
 │   └── service/                      # 业务逻辑层
 │       ├── *_interface.go            # 服务接口（13个模块）
 │       ├── *_service.go              # 服务实现
@@ -90,7 +118,8 @@ DocMind/
 │       ├── vector_driver_postgres.go # pgvector 向量检索驱动
 │       ├── image_storage_*.go        # 文档图片存储（MinIO / Noop）
 │       ├── knowledge_image_pipeline.go  # 图片提取与URL替换管道
-│       └── knowledge_pipeline_gateway*.go  # 知识管道网关（接口 + Mock）
+│       ├── keyword_search_driver.go     # BM25 关键字检索驱动
+│       └── model_context_window*.go     # 模型上下文窗口获取/消费与缺失回填
 ├── pkg/                              # 公共工具包
 │   ├── config/                       # 配置加载
 │   ├── database/                     # 数据库驱动（PostgreSQL / MySQL / Redis）
@@ -106,9 +135,12 @@ DocMind/
 │   │   ├── main.py                   # Python 服务入口（gRPC :50051）
 │   │   └── pyproject.toml            # Python 项目配置
 │   ├── errors/                       # 自定义错误码体系
+│   ├── fileutil/                     # 文件工具
 │   ├── jwt/                          # JWT 令牌管理
 │   ├── logger/                       # Zap 日志封装
 │   ├── response/                     # 统一响应格式（分页/成功/错误）
+│   ├── sse/                          # SSE 协议层封装（事件注册表、心跳）
+│   ├── token/                        # LLM Token 估算（cl100k_base，上下文压缩阈值判断）
 │   └── utils/                        # 通用工具（字符串、时间）
 ├── scripts/                          # 脚本
 │   ├── build.sh                      # 编译脚本
@@ -117,26 +149,37 @@ DocMind/
 │   ├── API.md                        # API 文档
 │   ├── ARCHITECTURE.md               # 架构文档
 │   ├── DEVELOPMENT.md                # 开发指南
-│   ├── swagger.yaml / swagger.json / swagger.md # Swagger 规范
-│   ├── agent沟通注意事项.md            # Agent 对话设计要点
+│   ├── docmind-api-docs.json / docs.go / swagger.yaml / swagger.json / swagger.md # Swagger 规范
+│   ├── agent编排注意事项.md            # Agent 编排注意要点
+│   ├── Agent模式增量记忆接入说明.md      # 短期记忆增量压缩接入说明
+│   ├── BM25倒排索引详解.md             # BM25 倒排索引与检索原理
 │   ├── 甲.md / 乙.md                 # 数据库结构体设计 & 数据流交互
 │   ├── 乙模块结构体评审.md             # 乙模块结构体评审
+│   ├── 分割策略.md                    # 文档分割策略
+│   ├── SSE流式连接企业级优化方案.md     # SSE 流式连接优化方案
 │   ├── 阶段一.md / 阶段二.md          # 分阶段开发规划
-│   ├── 阶段二排期与逻辑.md             # 阶段二排期与核心逻辑
+│   ├── 阶段二设计步骤以及逻辑.md        # 阶段二设计步骤与核心逻辑
 │   ├── 知识库api.md                   # 知识库 API 规范
 │   ├── 标签crud.md                   # 标签 CRUD 设计
 │   ├── 模型集成.md                   # LLM 模型集成方案
 │   └── 思维导图.md                   # 系统思维导图
 ├── web/                              # 前端项目（Vue 3 + TypeScript）
 │   ├── src/
-│   │   ├── api/                      # API 接口层（Mock 预留）
-│   │   ├── views/                    # 页面组件
+│   │   ├── api/                      # API 接口层
+│   │   ├── assets/                   # 静态资源
 │   │   ├── components/               # 公共组件
-│   │   ├── stores/                   # Pinia 状态管理
+│   │   ├── composables/              # 组合式函数
+│   │   ├── config/                   # 前端配置
+│   │   ├── directives/               # 自定义指令
+│   │   ├── hooks/                    # 业务 Hooks
+│   │   ├── i18n/                     # 国际化
 │   │   ├── router/                   # Vue Router 路由
+│   │   ├── stores/                   # Pinia 状态管理
+│   │   ├── styles/                   # 全局样式
 │   │   ├── types/                    # TypeScript 类型
 │   │   ├── utils/                    # 工具函数
-│   │   └── composables/              # 组合式函数
+│   │   ├── views/                    # 页面组件
+│   │   └── wailsjs/                  # Wails 桥接代码
 │   ├── package.json
 │   └── vite.config.ts
 ├── go.mod                            # Go 模块定义
@@ -217,8 +260,8 @@ export async function listKnowledgeBases() {
 | **知识条目** | 文件上传、DocReader 解析、Markdown 分块、状态追踪 | `internal/api/v1/knowledge/` |
 | **FAQ** | 问答对管理、批量导入导出 | `internal/api/v1/knowledgebase/` |
 | **标签** | 标签独立 CRUD，支持按知识库筛选 | `internal/api/v1/tag/` |
-| **聊天** | 会话管理、消息收发、SSE 流式响应 | `internal/api/v1/chat/` |
-| **Agent** | 智能体 CRUD、复制、内置 Agent 种子数据（快速问答） | `internal/api/v1/agent/` |
+| **聊天** | 会话管理、消息收发、SSE 流式响应（knowledge-chat 快速问答 / agent-chat 智能推理） | `internal/api/v1/chat/` |
+| **Agent** | 智能体 CRUD、复制、内置 Agent 种子数据（快速问答 + 智能推理）、技能系统（SKILL.md） | `internal/api/v1/agent/` |
 | **模型** | LLM / Embedding / Rerank / VLLM / ASR 多类型模型 CRUD、凭据管理、连通性探测、调试调用 | `internal/api/v1/models/` |
 | **向量存储** | PostgreSQL（pgvector）向量引擎配置与语义检索 | `internal/api/v1/vectorstore/` |
 | **认证** | 登录、注册、Token 刷新、登出 | `internal/api/v1/auth/` |
@@ -260,6 +303,9 @@ export async function listKnowledgeBases() {
 ✅ **FAQ 管理** — 问答对批量导入/导出/增删改查  
 ✅ **标签体系** — 知识库标签管理，支持按标签筛选  
 ✅ **Eino Agent 编排** — Eino ChatModel + Embedder 工厂，ReAct 推理循环，Tool Calling 支持  
+✅ **Agent 智能推理** — ADK 引擎封装 + 状态机 + 事件流自动生成步骤记录，技能系统（SKILL.md 白名单），SSE 全事件推送  
+✅ **混合检索** — 向量 + BM25 + RRF 融合三段式检索，重排序（Rerank）  
+✅ **短期记忆** — 会话摘要增量压缩（LLM / 原文降级归档），上下文窗口缺失回填  
 ✅ **SSE 流式对话** — 知识问答流式响应，检索结果引用溯源  
 ✅ **15 张数据表** — AutoMigrate 自动迁移，PostgreSQL JSONB + pgvector 支持  
 ✅ **多模型管理** — 6 个供应商（OpenAI / 阿里云 / SiliconFlow / 智谱 / Jina / 自定义），5 类模型统一管理，凭据脱敏存储，Ollama 本地模型下载与管理  

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/schema"
 )
 
 // AgentEngine Agent 引擎接口
@@ -37,11 +38,33 @@ func NewEngine(agent adk.Agent, enableStreaming bool) *Engine {
 
 // Run 启动一次 Agent 运行，返回事件流
 func (e *Engine) Run(ctx context.Context, req *RunRequest) (*EventStream, error) {
-	if req == nil || len(req.Messages) == 0 {
-		return nil, fmt.Errorf("RunRequest.Messages 不能为空")
+	if req == nil {
+		return nil, fmt.Errorf("RunRequest 不能为空")
+	}
+	messages := req.Messages
+	if len(messages) == 0 {
+		// Messages 未显式传入：引擎自动组装（多轮对话加载历史 + 追加当前问题）
+		if req.Question == "" {
+			return nil, fmt.Errorf("RunRequest.Messages 与 Question 不能同时为空")
+		}
+		var history []*schema.Message
+		if req.History != nil && req.Agent != nil &&
+			req.Agent.Config.MultiTurnEnabled != nil && *req.Agent.Config.MultiTurnEnabled {
+			historyTurns := req.Agent.Config.HistoryTurns
+			if historyTurns <= 0 {
+				historyTurns = 1
+			}
+			// 每轮 = 1 条用户消息 + 1 条助手消息，上限取最近 N 轮
+			var err error
+			history, err = req.History.LoadHistory(ctx, req.SessionID, historyTurns*2)
+			if err != nil {
+				return nil, fmt.Errorf("加载会话历史失败: %w", err)
+			}
+		}
+		messages = append(history, &schema.Message{Role: schema.User, Content: req.Question})
 	}
 	// EnableStreaming 需在 AgentInput 显式开启（规划 3.2.7 ④）
-	iter := e.runner.Run(ctx, req.Messages)
+	iter := e.runner.Run(ctx, messages)
 	return newEventStream(ctx, iter), nil
 }
 

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"docmind/internal/agent"
 	"docmind/internal/middleware"
 	"docmind/internal/model/entity"
 	"docmind/internal/service"
@@ -56,6 +57,11 @@ type sseEvent struct {
 	References   []reference `json:"references,omitempty"`
 	ErrorMessage string      `json:"error_message,omitempty"`
 	Ts           int64       `json:"ts,omitempty"` // 事件时间戳（毫秒）
+	// Agent 模式事件字段（response_type: state / agent_step）
+	State      string `json:"state,omitempty"`       // 状态机状态（thinking/searching/generating/cancelled）
+	ToolName   string `json:"tool_name,omitempty"`   // 工具名
+	ToolArgs   string `json:"tool_args,omitempty"`   // 工具调用参数（JSON）
+	ToolResult string `json:"tool_result,omitempty"` // 工具执行结果
 }
 
 type reference struct {
@@ -526,18 +532,119 @@ streamDone:
 	stats.close("done")
 }
 
-// AgentChat Agent 聊天桩（阶段二）
+// AgentChat 智能推理对话（AgentMode=smart-reasoning，规划 3.2.7）
+// 消费引擎统一事件流并映射为 SSE 事件：state / agent_step / answer / error / complete
 func (ctrl *Controller) AgentChat(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	sessionID, ok := parseUintFromPath(c, "session_id")
+	if !ok {
+		return
+	}
+
+	var req service.AgentChatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	// 设置 SSE 响应头
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
+	// 调用 ChatService 获取引擎事件流
+	resp, err := ctrl.chatService.AgentChat(c.Request.Context(), sessionID, userID, &req)
+	if err != nil {
+		writeSSEEvent(c.Writer, sseEvent{
+			ResponseType: SSEEventError,
+			Content:      err.Error(),
+		})
+		c.Writer.Flush()
+		return
+	}
+
+	// 记录开始时间，用于计算 agent 执行时长
+	agentStartTime := time.Now()
+
+	// 消费引擎事件流并映射 SSE 事件（规划 3.2.7 ②：一个 AgentEvent ≠ 一条 SSE，
+	// 引擎展开层已处理，此处按统一事件逐条转发）
+	var fullContent string
+	for {
+		ev, ok := resp.Stream.Next()
+		if !ok {
+			break
+		}
+		switch ev.Type {
+		case agent.EventState:
+			writeSSEEvent(c.Writer, sseEvent{ResponseType: SSEEventState, State: ev.State})
+		case agent.EventStep:
+			writeSSEEvent(c.Writer, sseEvent{
+				ResponseType: SSEEventAgentStep,
+				ToolName:     ev.ToolName,
+				ToolArgs:     ev.ToolArgs,
+				ToolResult:   ev.ToolResult,
+			})
+		case agent.EventAnswer:
+			fullContent += ev.Content
+			writeSSEEvent(c.Writer, sseEvent{ResponseType: SSEEventAnswer, Content: ev.Content})
+		case agent.EventError:
+			writeSSEEvent(c.Writer, sseEvent{ResponseType: SSEEventError, Content: ev.Content})
+		}
+		c.Writer.Flush()
+	}
+
+	// 计算 agent 执行时长
+	agentDurationMs := time.Since(agentStartTime).Milliseconds()
+
+	// 引用溯源（kb_search 工具收集，规划 3.2.6 ⑥）+ 步骤记录（事件流自动生成）
+	references := resp.Collector.All()
+	agentSteps := resp.Stream.Steps()
+	refs := make([]reference, 0, len(references))
+	for _, r := range references {
+		refs = append(refs, reference{
+			ChunkID:        r.ChunkID,
+			Content:        r.Content,
+			Score:          r.Score,
+			KnowledgeID:    r.KnowledgeID,
+			KnowledgeTitle: r.KnowledgeTitle,
+		})
+	}
+	// 引用事件（Agent 模式检索在循环中，引用可能迟到；此处流结束后统一推送，
+	// agent_step 已携带每轮工具结果，前端可选任一路径）
+	if len(refs) > 0 {
+		writeSSEEvent(c.Writer, sseEvent{ResponseType: SSEEventReferences, References: refs})
+		c.Writer.Flush()
+	}
+
+	// 保存助手消息（含引用 / agent_steps / 耗时 / 兜底标记）
+	if fullContent != "" {
+		_ = ctrl.chatService.SaveAssistantMessage(
+			c.Request.Context(), sessionID, fullContent, references,
+			agentSteps, true, agentDurationMs, len(references) == 0,
+		)
+	}
+
+	// 首条消息后自动生成会话标题并推送
+	if req.Query != "" {
+		if newTitle, err := ctrl.chatService.GenerateSessionTitle(c.Request.Context(), sessionID, userID, req.Query); err == nil && newTitle != "" && newTitle != "新对话" {
+			writeSSEEvent(c.Writer, sseEvent{
+				ResponseType: SSEEventSessionTitle,
+				Content:      newTitle,
+				SessionID:    strconv.FormatUint(uint64(sessionID), 10),
+			})
+			c.Writer.Flush()
+		}
+	}
+
+	// 发送完成事件
 	writeSSEEvent(c.Writer, sseEvent{
-		ResponseType: SSEEventError,
-		ErrorMessage: "Agent 模式暂未实现，将在阶段二支持",
+		ResponseType: SSEEventComplete,
+		Done:         true,
+		SessionID:    strconv.FormatUint(uint64(sessionID), 10),
+		Ts:           time.Now().UnixMilli(),
 	})
-	c.Writer.Flush()
 }
 
 // ===== 辅助函数 =====

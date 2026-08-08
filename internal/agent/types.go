@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"context"
+
 	"docmind/internal/model/entity"
 
 	"github.com/cloudwego/eino/schema"
@@ -31,12 +33,24 @@ type OutputEvent struct {
 	Done       bool               `json:"done,omitempty"`
 }
 
+// HistoryProvider 会话历史加载（多轮对话，Agent 配置 MultiTurnEnabled 时引擎自动加载）
+// 由调用方（chat_service 等）注入 repository 实现，引擎保持无数据库依赖
+// 返回的 []*schema.Message 需按时间正序（旧 → 新），不含当前用户问题
+type HistoryProvider interface {
+	LoadHistory(ctx context.Context, sessionID uint, limit int) ([]*schema.Message, error)
+}
+
 // RunRequest 一次 Agent 运行的输入
 type RunRequest struct {
 	SessionID uint
 	UserID    uint
-	// Messages 历史消息 + 当前用户问题（由调用方组装，骨架阶段直接透传给 ADK）
+	// Messages 历史消息 + 当前用户问题（由调用方组装，优先级最高）；
+	// 为空时由引擎自动加载：History（若启用多轮）→ 追加 Question
 	Messages []*schema.Message
+	// Question 当前用户问题（Messages 为空时使用）
+	Question string
+	// History 会话历史加载器（可选，多轮对话场景注入）
+	History HistoryProvider
 	// Agent 智能体实体（含 Config，引擎据此构建运行配置）
 	Agent *entity.Agent
 }

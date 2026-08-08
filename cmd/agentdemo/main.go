@@ -1,11 +1,12 @@
-// 最小 Demo：验证 internal/agent 引擎骨架 + 真实知识库检索工具（模块5 Day 6-7）
+// 最小 Demo：验证 internal/agent 引擎骨架 + 真实知识库检索工具 + 技能系统（模块5）
 //
 // 验证点：
 //  1. entity.Agent → NewEngineConfig → BuildAgentConfig（adk.ChatModelAgentConfig）映射链路
 //  2. BuildAgentConfig 内部复用 ChatModelFactory（internal/llm）创建 ToolCallingChatModel
 //  3. tools.Registry 按 Agent 配置构建工具集（AllowedTools 白名单）
-//  4. kb_search 工具走真实检索链路：pipeline.SearchKB（embedding → pgvector → rerank）
-//  5. ResultCollector 收集引用（SSE references 事件数据源）
+//  4. kb_search 工具走真实检索链路：pipeline.SearchKB（向量 ‖ BM25 → RRF → rerank）
+//  5. 技能系统：skills.LoadSkillMiddleware 挂 Handlers，模型可调用 skill 工具加载 SKILL.md 指令
+//  6. ResultCollector 收集引用（SSE references 事件数据源）
 //
 // 运行：go run ./cmd/agentdemo
 package main
@@ -16,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"docmind/internal/agent"
@@ -136,16 +138,20 @@ func main() {
 			AgentMode: "smart-reasoning",
 			SystemPrompt: "你是一个企业知识库问答助手。涉及数学计算时调用 calculator 工具；" +
 				"涉及公司制度/报销/请假等知识库问题时调用 kb_search 工具；" +
+				"用户要求给出 RAG 优化/文档评审等专业方法论时，先调用 skill 工具加载对应技能再回答；" +
 				"根据检索结果组织最终回答，引用来源文档，不要编造工具未提供的信息。",
 			ModelID:       strconv.FormatUint(uint64(picked.ID), 10),
 			MaxIterations: intPtr(6),
 			EmbeddingTopK: 5,
+			// 多轮对话：引擎自动加载会话历史（第二轮验证 HistoryProvider）
+			MultiTurnEnabled: boolPtr(true),
+			HistoryTurns:     3,
 			// KnowledgeBases 为空 + KBSelectionMode 为空 → kb_search 全量检索用户知识库
 		},
 	}
 
 	// 5. 工具集：Registry 按 Agent 配置构建（AllowedTools 白名单）
-	calcTool, err := utils.InferTool[CalculatorArgs, string]("calculator", "计算两个数的四则运算，参数 a、b 为操作数，op 为运算符(+ - * /)", calcFn)
+	calcTool, err := utils.InferTool[CalculatorArgs, string]("calculator", "计算两个整数的四则运算，参数 a、b 必须为整数，op 为运算符(+ - * /)", calcFn)
 	must(err)
 	registry := tools.NewRegistry(pipelineDeps)
 	builtTools, collector, err := registry.Build(agt, userID)
@@ -164,19 +170,66 @@ func main() {
 	must(err)
 	eng := agent.NewEngine(chatAgent, true)
 
-	// 7. 提问：一次触发两个工具（计算 + 真实知识库检索，数据源为 RAG 优化方案文档）
-	question := "请帮我计算 (128+64)*3 的结果，并顺便从知识库检索一下 RAG 优化方案有哪些"
+	// 7. 第一轮提问：触发技能（skill 工具） + 真实知识库检索（kb_search）
+	question1 := "帮我用 RAG 优化顾问技能诊断一下：检索效果不佳时应该怎么优化？顺便从知识库检索一下 RAG 优化方案有哪些"
+	answer1, steps1 := runQuestion(eng, &agent.RunRequest{
+		SessionID: 1,
+		UserID:    userID,
+		Messages:  []*schema.Message{{Role: schema.User, Content: question1}},
+		Agent:     agt,
+	}, question1)
+	printSteps("第一轮", steps1)
+
+	// 8. 第二轮提问：验证多轮历史自动加载（Messages 为空 + History + Question）
+	// 引擎按 Agent.Config.MultiTurnEnabled/HistoryTurns 自动加载历史并追加当前问题
+	historyMsgs := []*schema.Message{{Role: schema.User, Content: question1}}
+	if answer1 != "" {
+		historyMsgs = append(historyMsgs, &schema.Message{Role: schema.Assistant, Content: answer1})
+	}
+	history := &memHistory{msgs: historyMsgs}
+	question2 := "我刚才问你什么问题？你用了哪个技能？"
+	_, steps2 := runQuestion(eng, &agent.RunRequest{
+		SessionID: 1,
+		UserID:    userID,
+		Question:  question2,
+		History:   history,
+		Agent:     agt,
+	}, question2)
+	printSteps("第二轮", steps2)
+
+	// 9. 引用溯源（ResultCollector → SSE references 数据源）
+	refs := collector.All()
+	fmt.Printf("\n📎 检索引用（ResultCollector）: %d 条\n", len(refs))
+	for i, r := range refs {
+		content := r.Content
+		if len(content) > 50 {
+			content = content[:50] + "..."
+		}
+		fmt.Printf("  ref%d: [%s] score=%.3f %s\n", i+1, r.KnowledgeTitle, r.Score, content)
+	}
+	fmt.Println("\n✅ Demo 结束：internal/agent 引擎 + 真实 kb_search + 技能 + 状态机/步骤记录验证通过")
+}
+
+// ===== 事件消费与步骤展示 =====
+
+// memHistory 内存版会话历史（模拟 chat_service 注入的 repository 实现）
+type memHistory struct {
+	msgs []*schema.Message
+}
+
+// LoadHistory 实现 agent.HistoryProvider
+func (h *memHistory) LoadHistory(_ context.Context, _ uint, _ int) ([]*schema.Message, error) {
+	return h.msgs, nil
+}
+
+// runQuestion 执行一次提问并消费事件流，返回回答文本与引擎自动生成的步骤记录
+func runQuestion(eng *agent.Engine, req *agent.RunRequest, question string) (string, entity.AgentSteps) {
 	fmt.Printf("\n👤 提问: %s\n\n", question)
-	stream, err := eng.Run(ctx, &agent.RunRequest{
-		Messages: []*schema.Message{{Role: schema.User, Content: question}},
-		Agent:    agt,
-	})
+	stream, err := eng.Run(context.Background(), req)
 	must(err)
 
-	// 8. 事件消费：EventStream.Next()（引擎内部已展开为统一事件，模拟 SSE 映射）
+	var sb strings.Builder
 	start := time.Now()
-	var steps entity.AgentSteps
-	stepNo := 0
 	for {
 		ev, ok := stream.Next()
 		if !ok {
@@ -185,28 +238,13 @@ func main() {
 		}
 		switch ev.Type {
 		case agent.EventAnswer:
-			// 流式增量（打字机效果）
 			fmt.Print(ev.Content)
+			sb.WriteString(ev.Content)
 		case agent.EventStep:
 			if ev.ToolArgs != "" {
-				// 工具声明（流结束后合并提取的完整参数）
 				fmt.Printf("[tool_call] %s(%s)\n", ev.ToolName, ev.ToolArgs)
 			}
 			if ev.ToolResult != "" {
-				// 工具执行结果 → agent_step（规划 3.2.5：事件流自动生成步骤）
-				stepNo++
-				steps = append(steps, entity.AgentStep{
-					Iteration: stepNo,
-					Timestamp: time.Now(),
-					ToolCalls: []entity.AgentStepToolCall{{
-						ID:   fmt.Sprintf("demo-%d", stepNo),
-						Name: ev.ToolName,
-						Result: &entity.AgentStepToolResult{
-							Success: true,
-							Output:  ev.ToolResult,
-						},
-					}},
-				})
 				result := ev.ToolResult
 				if len(result) > 120 {
 					result = result[:120] + "..."
@@ -219,27 +257,41 @@ func main() {
 			fmt.Printf("\n[error] %s\n", ev.Content)
 		}
 	}
+	return sb.String(), stream.Steps()
+}
 
-	// 9. 步骤汇总 + 引用溯源（ResultCollector → SSE references 数据源）
-	fmt.Printf("\n📋 步骤记录（entity.AgentSteps）: %d 步\n", len(steps))
+// printSteps 打印引擎自动生成的步骤记录（entity.AgentSteps，规划 3.2.5：
+// 事件流自动生成，含 Thought / ToolCalls（参数、结果、耗时））
+func printSteps(label string, steps entity.AgentSteps) {
+	fmt.Printf("\n📋 %s步骤记录（engine 自动生成）: %d 条\n", label, len(steps))
 	for i, s := range steps {
+		thought := s.Thought
+		if len(thought) > 80 {
+			thought = thought[:80] + "..."
+		}
+		if thought != "" {
+			fmt.Printf("  step%d [%.0fms] 💭 %s\n", i+1, float64(s.Duration), thought)
+		} else {
+			fmt.Printf("  step%d [%.0fms]\n", i+1, float64(s.Duration))
+		}
 		for _, tc := range s.ToolCalls {
-			fmt.Printf("  step%d: %s\n", i+1, tc.Name)
+			result := ""
+			if tc.Result != nil {
+				result = tc.Result.Output
+				if len(result) > 60 {
+					result = result[:60] + "..."
+				}
+			}
+			fmt.Printf("     🛠 %s(%s) [%.0fms] → %s\n", tc.Name, tc.Args, float64(tc.Duration), result)
 		}
 	}
-	refs := collector.All()
-	fmt.Printf("📎 检索引用（ResultCollector）: %d 条\n", len(refs))
-	for i, r := range refs {
-		content := r.Content
-		if len(content) > 50 {
-			content = content[:50] + "..."
-		}
-		fmt.Printf("  ref%d: [%s] score=%.3f %s\n", i+1, r.KnowledgeTitle, r.Score, content)
-	}
-	fmt.Println("\n✅ Demo 结束：internal/agent 引擎 + 真实 kb_search 链路验证通过")
 }
 
 func intPtr(v int) *int {
+	return &v
+}
+
+func boolPtr(v bool) *bool {
 	return &v
 }
 
