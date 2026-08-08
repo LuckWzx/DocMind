@@ -866,6 +866,40 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
         }
         break
       }
+      case 'agent_step': {
+        // 处理后端实时发送的步骤事件（query_understand, vector_search 等）
+        if (dataPayload) {
+          const toolCallId = dataPayload.tool_call_id as string | undefined
+          const toolName = dataPayload.tool_name as string | undefined
+          const success = dataPayload.success !== false
+          const duration = dataPayload.duration as number | undefined
+          
+          log('[Agent Step]', {
+            tool_call_id: toolCallId,
+            tool_name: toolName,
+            success,
+            duration,
+          })
+
+          if (!message.agentEventStream) message.agentEventStream = []
+          const stream = message.agentEventStream as ChatMessage[]
+          
+          // 创建或更新步骤事件
+          const stepEvent: ChatMessage = {
+            type: 'tool_call',
+            tool_call_id: toolCallId || `step_${Date.now()}`,
+            tool_name: toolName,
+            pending: false,
+            success,
+            duration,
+            duration_ms: duration,
+            output: dataPayload.data ? JSON.stringify(dataPayload.data) : undefined,
+            timestamp: Date.now(),
+          }
+          stream.push(stepEvent)
+        }
+        break
+      }
       case 'tool_result':
       case 'error': {
         if (dataPayload) {
@@ -1107,7 +1141,8 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
       data.response_type === 'thinking' ||
       data.response_type === 'tool_call' ||
       data.response_type === 'tool_result' ||
-      data.response_type === 'reflection'
+      data.response_type === 'reflection' ||
+      data.response_type === 'agent_step'
 
     const lastMessage = messagesList[messagesList.length - 1]
     const isCurrentlyAgentMode = lastMessage?.isAgentMode === true

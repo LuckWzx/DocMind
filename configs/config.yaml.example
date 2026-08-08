@@ -76,3 +76,16 @@ minio:
   bucket_name: ""           # Bucket 名称
   path_prefix: "knowledge/images"      # 文档图片对象前缀
   use_ssl: false                      # 是否使用 SSL
+
+# Neo4j 图数据库配置（长期记忆存储）
+neo4j:
+  enabled: false        # 开关：false 时整个长期记忆模块降级跳过（不阻塞主流程）
+  uri: bolt://127.0.0.1:7687
+  username: neo4j
+  password: ""
+
+# 长期记忆配置（跨会话记忆，依赖 neo4j.enabled）
+memory:
+  enabled: true         # 长期记忆总开关
+  model_id: ""          # 提取/关键词模型 ID（空 = 由调用方传会话模型）
+  retrieve_limit: 5     # 检索返回的最大 Episode 数

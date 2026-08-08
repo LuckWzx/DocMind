@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"fmt"
 
 	"docmind/internal/model/entity"
 
@@ -43,10 +44,24 @@ func (r *agentRepository) FindByID(id uint) (*entity.Agent, error) {
 
 func (r *agentRepository) FindByIDStr(idStr string) (*entity.Agent, error) {
 	var agent entity.Agent
+	// 首先尝试通过 id_str 字段查找
 	err := r.db.Where("id_str = ?", idStr).First(&agent).Error
+	fmt.Printf("[AgentRepo] FindByIDStr: idStr=%s, err=%v\n", idStr, err)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+			fmt.Printf("[AgentRepo] FindByIDStr: id_str 未找到，尝试用数字 ID 查找\n")
+			// 如果 id_str 没有找到，尝试通过数字 ID 查找（前端可能传递的是数字 ID 的字符串形式）
+			var agentByID entity.Agent
+			errByID := r.db.Where("id = ?", idStr).First(&agentByID).Error
+			fmt.Printf("[AgentRepo] FindByIDStr: id=%s, errByID=%v\n", idStr, errByID)
+			if errByID != nil {
+				if errors.Is(errByID, gorm.ErrRecordNotFound) {
+					fmt.Printf("[AgentRepo] FindByIDStr: 数字 ID 也未找到\n")
+					return nil, nil
+				}
+				return nil, errByID
+			}
+			return &agentByID, nil
 		}
 		return nil, err
 	}

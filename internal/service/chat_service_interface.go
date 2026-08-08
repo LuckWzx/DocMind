@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"docmind/internal/model/entity"
+	"docmind/internal/pipeline"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -12,7 +13,7 @@ import (
 // ChatService 对话服务接口
 type ChatService interface {
 	// KnowledgeChat 单步 RAG 对话，返回流式响应
-	KnowledgeChat(ctx context.Context, sessionID uint, userID uint, req *KnowledgeChatRequest) (*schema.StreamReader[*schema.Message], []VectorSearchResult, error)
+	KnowledgeChat(ctx context.Context, sessionID uint, userID uint, req *KnowledgeChatRequest, stepCallback pipeline.StepCallback) (*schema.StreamReader[*schema.Message], []VectorSearchResult, error)
 	// CreateSession 创建会话
 	CreateSession(ctx context.Context, userID uint, req *CreateSessionRequest) (*entity.Session, error)
 	// GetSession 获取单个会话
@@ -52,6 +53,7 @@ type CreateSessionRequest struct {
 	Source           string              `json:"source"`
 	KnowledgeBaseIDs []string            `json:"knowledge_base_ids"`
 	AgentEnabled     bool                `json:"agent_enabled"`
+	AgentID          string              `json:"agent_id"` // 关联的智能体 ID
 	AgentConfig      *entity.AgentConfig `json:"agent_config,omitempty"`
 }
 

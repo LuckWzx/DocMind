@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"docmind/internal/model/entity"
 )
@@ -11,15 +12,60 @@ import (
 // newVectorSearchNode 创建向量检索节点（闭包注入外部依赖）
 func newVectorSearchNode(deps *PipelineDeps) func(ctx context.Context, input *Context) (*Context, error) {
 	return func(ctx context.Context, input *Context) (*Context, error) {
+		startTime := time.Now()
+		toolCallID := "vector_search"
+
+		// 发送步骤开始回调
+		if input.StepCallback != nil {
+			input.StepCallback(StepInfo{
+				StepName:   "vector_search",
+				StartTime:  startTime,
+				ToolCallID: toolCallID,
+				Success:    true,
+			})
+		}
+
 		// 如果没有知识库，跳过检索
 		if len(input.AgentConfig.KnowledgeBaseIDs) == 0 {
 			input.SearchResults = []SearchResult{}
+			endTime := time.Now()
+			duration := endTime.Sub(startTime).Milliseconds()
+
+			// 发送步骤完成回调
+			if input.StepCallback != nil {
+				input.StepCallback(StepInfo{
+					StepName:   "vector_search",
+					StartTime:  startTime,
+					EndTime:    endTime,
+					Duration:   duration,
+					ToolCallID: toolCallID,
+					Success:    true,
+					Data:       map[string]interface{}{"count": 0},
+				})
+			}
+
 			return input, nil
 		}
 
 		// 依赖未注入时降级为空结果
 		if deps == nil || deps.EmbedderFactory == nil || deps.VectorStoreRepo == nil {
 			input.SearchResults = []SearchResult{}
+			endTime := time.Now()
+			duration := endTime.Sub(startTime).Milliseconds()
+
+			// 发送步骤完成回调
+			if input.StepCallback != nil {
+				input.StepCallback(StepInfo{
+					StepName:   "vector_search",
+					StartTime:  startTime,
+					EndTime:    endTime,
+					Duration:   duration,
+					ToolCallID: toolCallID,
+					Success:    true,
+					Data:       map[string]interface{}{"count": 0},
+				})
+			}
+
 			return input, nil
 		}
 
@@ -33,6 +79,22 @@ func newVectorSearchNode(deps *PipelineDeps) func(ctx context.Context, input *Co
 		kbID := parseUint(input.AgentConfig.KnowledgeBaseIDs[0])
 		kb, err := deps.KBRepo.FindByID(kbID)
 		if err != nil || kb == nil {
+			endTime := time.Now()
+			duration := endTime.Sub(startTime).Milliseconds()
+
+			// 发送步骤完成回调
+			if input.StepCallback != nil {
+				input.StepCallback(StepInfo{
+					StepName:   "vector_search",
+					StartTime:  startTime,
+					EndTime:    endTime,
+					Duration:   duration,
+					ToolCallID: toolCallID,
+					Success:    false,
+					Data:       map[string]interface{}{"error": fmt.Sprintf("知识库不存在: %s", input.AgentConfig.KnowledgeBaseIDs[0])},
+				})
+			}
+
 			return nil, fmt.Errorf("向量检索: 知识库不存在: %s", input.AgentConfig.KnowledgeBaseIDs[0])
 		}
 
@@ -44,15 +106,63 @@ func newVectorSearchNode(deps *PipelineDeps) func(ctx context.Context, input *Co
 		// 3. 创建 Embedder 并生成查询向量
 		embedder, err := deps.EmbedderFactory.CreateEmbedder(ctx, embedderID)
 		if err != nil {
+			endTime := time.Now()
+			duration := endTime.Sub(startTime).Milliseconds()
+
+			// 发送步骤完成回调
+			if input.StepCallback != nil {
+				input.StepCallback(StepInfo{
+					StepName:   "vector_search",
+					StartTime:  startTime,
+					EndTime:    endTime,
+					Duration:   duration,
+					ToolCallID: toolCallID,
+					Success:    false,
+					Data:       map[string]interface{}{"error": fmt.Sprintf("创建 Embedder 失败: %v", err)},
+				})
+			}
+
 			return nil, fmt.Errorf("向量检索: 创建 Embedder 失败: %w", err)
 		}
 
 		// EmbedStrings 返回单条文本的向量 []float64
 		vectors, err := embedder.EmbedStrings(ctx, []string{query})
 		if err != nil {
+			endTime := time.Now()
+			duration := endTime.Sub(startTime).Milliseconds()
+
+			// 发送步骤完成回调
+			if input.StepCallback != nil {
+				input.StepCallback(StepInfo{
+					StepName:   "vector_search",
+					StartTime:  startTime,
+					EndTime:    endTime,
+					Duration:   duration,
+					ToolCallID: toolCallID,
+					Success:    false,
+					Data:       map[string]interface{}{"error": fmt.Sprintf("Embedding 调用失败: %v", err)},
+				})
+			}
+
 			return nil, fmt.Errorf("向量检索: Embedding 调用失败: %w", err)
 		}
 		if len(vectors) == 0 {
+			endTime := time.Now()
+			duration := endTime.Sub(startTime).Milliseconds()
+
+			// 发送步骤完成回调
+			if input.StepCallback != nil {
+				input.StepCallback(StepInfo{
+					StepName:   "vector_search",
+					StartTime:  startTime,
+					EndTime:    endTime,
+					Duration:   duration,
+					ToolCallID: toolCallID,
+					Success:    false,
+					Data:       map[string]interface{}{"error": "Embedding 返回空结果"},
+				})
+			}
+
 			return nil, fmt.Errorf("向量检索: Embedding 返回空结果")
 		}
 
@@ -68,12 +178,44 @@ func newVectorSearchNode(deps *PipelineDeps) func(ctx context.Context, input *Co
 		if kb.VectorStoreID != nil && *kb.VectorStoreID > 0 {
 			store, err = deps.VectorStoreRepo.FindByID(*kb.VectorStoreID)
 			if err != nil {
+				endTime := time.Now()
+				duration := endTime.Sub(startTime).Milliseconds()
+
+				// 发送步骤完成回调
+				if input.StepCallback != nil {
+					input.StepCallback(StepInfo{
+						StepName:   "vector_search",
+						StartTime:  startTime,
+						EndTime:    endTime,
+						Duration:   duration,
+						ToolCallID: toolCallID,
+						Success:    false,
+						Data:       map[string]interface{}{"error": fmt.Sprintf("查询知识库向量存储失败: %v", err)},
+					})
+				}
+
 				return nil, fmt.Errorf("向量检索: 查询知识库向量存储失败: %w", err)
 			}
 		}
 		if store == nil {
 			store, err = deps.VectorStoreRepo.FirstOrCreateGlobalDefault()
 			if err != nil {
+				endTime := time.Now()
+				duration := endTime.Sub(startTime).Milliseconds()
+
+				// 发送步骤完成回调
+				if input.StepCallback != nil {
+					input.StepCallback(StepInfo{
+						StepName:   "vector_search",
+						StartTime:  startTime,
+						EndTime:    endTime,
+						Duration:   duration,
+						ToolCallID: toolCallID,
+						Success:    false,
+						Data:       map[string]interface{}{"error": fmt.Sprintf("获取默认向量存储失败: %v", err)},
+					})
+				}
+
 				return nil, fmt.Errorf("向量检索: 获取默认向量存储失败: %w", err)
 			}
 		}
@@ -81,11 +223,43 @@ func newVectorSearchNode(deps *PipelineDeps) func(ctx context.Context, input *Co
 		// 5. 创建向量驱动
 		driver, cleanup, err := deps.CreateDriver(store)
 		if err != nil {
+			endTime := time.Now()
+			duration := endTime.Sub(startTime).Milliseconds()
+
+			// 发送步骤完成回调
+			if input.StepCallback != nil {
+				input.StepCallback(StepInfo{
+					StepName:   "vector_search",
+					StartTime:  startTime,
+					EndTime:    endTime,
+					Duration:   duration,
+					ToolCallID: toolCallID,
+					Success:    false,
+					Data:       map[string]interface{}{"error": fmt.Sprintf("创建向量驱动失败: %v", err)},
+				})
+			}
+
 			return nil, fmt.Errorf("向量检索: 创建向量驱动失败: %w", err)
 		}
 		defer cleanup()
 
 		if err := driver.EnsureSchema(ctx); err != nil {
+			endTime := time.Now()
+			duration := endTime.Sub(startTime).Milliseconds()
+
+			// 发送步骤完成回调
+			if input.StepCallback != nil {
+				input.StepCallback(StepInfo{
+					StepName:   "vector_search",
+					StartTime:  startTime,
+					EndTime:    endTime,
+					Duration:   duration,
+					ToolCallID: toolCallID,
+					Success:    false,
+					Data:       map[string]interface{}{"error": fmt.Sprintf("初始化向量表失败: %v", err)},
+				})
+			}
+
 			return nil, fmt.Errorf("向量检索: 初始化向量表失败: %w", err)
 		}
 
@@ -110,6 +284,22 @@ func newVectorSearchNode(deps *PipelineDeps) func(ctx context.Context, input *Co
 			Threshold:        threshold,
 		})
 		if err != nil {
+			endTime := time.Now()
+			duration := endTime.Sub(startTime).Milliseconds()
+
+			// 发送步骤完成回调
+			if input.StepCallback != nil {
+				input.StepCallback(StepInfo{
+					StepName:   "vector_search",
+					StartTime:  startTime,
+					EndTime:    endTime,
+					Duration:   duration,
+					ToolCallID: toolCallID,
+					Success:    false,
+					Data:       map[string]interface{}{"error": fmt.Sprintf("检索失败: %v", err)},
+				})
+			}
+
 			return nil, fmt.Errorf("向量检索: 检索失败: %w", err)
 		}
 
@@ -126,6 +316,22 @@ func newVectorSearchNode(deps *PipelineDeps) func(ctx context.Context, input *Co
 		}
 
 		input.SearchResults = searchResults
+		endTime := time.Now()
+		duration := endTime.Sub(startTime).Milliseconds()
+
+		// 发送步骤完成回调
+		if input.StepCallback != nil {
+			input.StepCallback(StepInfo{
+				StepName:   "vector_search",
+				StartTime:  startTime,
+				EndTime:    endTime,
+				Duration:   duration,
+				ToolCallID: toolCallID,
+				Success:    true,
+				Data:       map[string]interface{}{"count": len(searchResults)},
+			})
+		}
+
 		fmt.Printf("[Pipeline] VectorSearch: query=%s, kbIDs=%v, results=%d\n",
 			query, input.AgentConfig.KnowledgeBaseIDs, len(searchResults))
 

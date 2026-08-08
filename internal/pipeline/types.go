@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"time"
 
 	"docmind/internal/repository"
 
@@ -88,6 +89,21 @@ type PipelineEmbedderFactory interface {
 
 // ===== Pipeline 上下文 =====
 
+// StepInfo 步骤信息（用于实时回调）
+type StepInfo struct {
+	StepName   string      // 步骤名称（query_understand, knowledge_search 等）
+	StartTime  time.Time   // 步骤开始时间
+	EndTime    time.Time   // 步骤结束时间
+	Duration   int64       // 步骤耗时（毫秒）
+	ToolCallID string      // 工具调用 ID
+	Success    bool        // 是否成功
+	Data       interface{} // 步骤数据（可选）
+}
+
+// StepCallback 步骤回调函数类型
+// 在每个步骤开始和结束时调用，用于实时发送进度事件
+type StepCallback func(step StepInfo)
+
 // Context RAG Pipeline 上下文，在所有节点间传递
 type Context struct {
 	// 输入
@@ -100,6 +116,9 @@ type Context struct {
 	// 依赖
 	ModelRepo    repository.ModelRepository
 	PipelineDeps *PipelineDeps // 外部依赖（向量检索等）
+
+	// 步骤回调（由调用方注入，用于实时发送进度事件）
+	StepCallback StepCallback
 
 	// 中间结果
 	RewrittenQuery  string            // 改写后的查询

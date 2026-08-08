@@ -135,7 +135,7 @@ func toSchemaMessage(m *entity.Message) *einoschema.Message {
 }
 
 // KnowledgeChat 单步 RAG 对话
-func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID uint, req *KnowledgeChatRequest) (*einoschema.StreamReader[*einoschema.Message], []VectorSearchResult, error) {
+func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID uint, req *KnowledgeChatRequest, stepCallback pipeline.StepCallback) (*einoschema.StreamReader[*einoschema.Message], []VectorSearchResult, error) {
 	// 1. 验证 session 归属
 	session, err := s.sessionRepo.FindByID(sessionID)
 	if err != nil || session == nil {
@@ -262,6 +262,7 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 		AgentConfig:     agentConfig,
 		HistoryMessages: history,
 		ModelRepo:       s.modelFactory.ModelRepo(),
+		StepCallback:    stepCallback,
 	}
 
 	// 5. 执行 Pipeline
@@ -311,6 +312,9 @@ func (s *chatService) resolveChatModelID(session *entity.Session) string {
 
 // resolveAgentConfig 从 Agent 动态解析配置
 func (s *chatService) resolveAgentConfig(session *entity.Session, req *KnowledgeChatRequest, userID uint) *pipeline.AgentConfig {
+	fmt.Printf("[ChatService] resolveAgentConfig: session.AgentID=%s, session.UserID=%d\n", session.AgentID, session.UserID)
+	fmt.Printf("[ChatService] resolveAgentConfig: session.AgentConfig=%v\n", session.AgentConfig)
+
 	config := &pipeline.AgentConfig{
 		ModelID:            "default",
 		KnowledgeBaseIDs:   req.KnowledgeBaseIDs,
@@ -332,12 +336,47 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 		config.KnowledgeBaseIDs = session.AgentConfig.KnowledgeBases
 	}
 
+	// 从 Session 的 AgentConfig 中读取其他配置（如果 AgentID 为空，这些配置来自前端创建会话时传递的 agent_config）
+	if session.AgentConfig != nil {
+		if session.AgentConfig.EnableRewrite != nil {
+			config.EnableQueryRewrite = *session.AgentConfig.EnableRewrite
+			fmt.Printf("[ChatService] resolveAgentConfig: 从 session.AgentConfig 读取 EnableRewrite=%v\n", config.EnableQueryRewrite)
+		}
+		if session.AgentConfig.MultiTurnEnabled != nil {
+			config.MultiTurnEnabled = *session.AgentConfig.MultiTurnEnabled
+			fmt.Printf("[ChatService] resolveAgentConfig: 从 session.AgentConfig 读取 MultiTurnEnabled=%v\n", config.MultiTurnEnabled)
+		}
+		if session.AgentConfig.QueryUnderstandModelID != "" {
+			config.QueryUnderstandModelID = session.AgentConfig.QueryUnderstandModelID
+		}
+		if session.AgentConfig.RewritePromptSystem != "" {
+			config.RewritePromptSystem = session.AgentConfig.RewritePromptSystem
+		}
+		if session.AgentConfig.RewritePromptUser != "" {
+			config.RewritePromptUser = session.AgentConfig.RewritePromptUser
+		}
+	}
+
 	// 如果 Session 关联了 Agent，从 Agent 配置中解析（按用户视角：内置模板 + 用户覆盖）
+	// 注意：Agent 配置会覆盖 session.AgentConfig 中的同名字段
 	if session.AgentID != "" {
+		fmt.Printf("[ChatService] resolveAgentConfig: 从 Agent 配置解析, AgentID=%s\n", session.AgentID)
 		agent, err := s.agentSvc.ResolveForUser(userID, session.AgentID)
+		fmt.Printf("[ChatService] resolveAgentConfig: agent=%v, err=%v\n", agent, err)
 		if err == nil && agent != nil {
+			fmt.Printf("[ChatService] resolveAgentConfig: Agent.Config.EnableRewrite=%v\n", agent.Config.EnableRewrite)
+			fmt.Printf("[ChatService] resolveAgentConfig: Agent.Config.MultiTurnEnabled=%v\n", agent.Config.MultiTurnEnabled)
+			fmt.Printf("[ChatService] resolveAgentConfig: Agent.HasOverride=%v\n", agent.HasOverride)
+			fmt.Printf("[ChatService] resolveAgentConfig: Agent.Config 完整内容=%+v\n", agent.Config)
 			if agent.Config.ModelID != "" {
-				config.ModelID = agent.Config.ModelID
+				// 验证模型是否属于当前用户
+				var modelID uint
+				fmt.Sscanf(agent.Config.ModelID, "%d", &modelID)
+				if model, err := s.modelFactory.ModelRepo().FindByUserID(modelID, userID); err == nil && model != nil {
+					config.ModelID = agent.Config.ModelID
+				} else {
+					fmt.Printf("[ChatService] resolveAgentConfig: 模型 ID %s 无效或不属于用户 %d，使用默认模型\n", agent.Config.ModelID, userID)
+				}
 			}
 			// 处理知识库配置
 			if agent.Config.KBSelectionMode == "all" {
@@ -351,7 +390,22 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 					config.KnowledgeBaseIDs = kbIDs
 				}
 			} else if len(agent.Config.KnowledgeBases) > 0 {
-				config.KnowledgeBaseIDs = agent.Config.KnowledgeBases
+				// 验证知识库是否属于当前用户且存在
+				validKBIDs := make([]string, 0, len(agent.Config.KnowledgeBases))
+				for _, kbIDStr := range agent.Config.KnowledgeBases {
+					var kbID uint
+					fmt.Sscanf(kbIDStr, "%d", &kbID)
+					if kb, err := s.kbRepo.FindByID(kbID); err == nil && kb != nil && kb.UserID == userID {
+						validKBIDs = append(validKBIDs, kbIDStr)
+					} else {
+						fmt.Printf("[ChatService] resolveAgentConfig: 知识库 ID %s 无效或不属于用户 %d\n", kbIDStr, userID)
+					}
+				}
+				if len(validKBIDs) > 0 {
+					config.KnowledgeBaseIDs = validKBIDs
+				} else {
+					fmt.Printf("[ChatService] resolveAgentConfig: 智能体配置的知识库都无效，尝试使用兜底逻辑\n")
+				}
 			}
 			if agent.Config.SystemPrompt != "" {
 				config.SystemPrompt = agent.Config.SystemPrompt
@@ -421,6 +475,9 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 		}
 	}
 
+	fmt.Printf("[ChatService] resolveAgentConfig: EnableQueryRewrite=%v, MultiTurnEnabled=%v\n", config.EnableQueryRewrite, config.MultiTurnEnabled)
+	fmt.Printf("[ChatService] resolveAgentConfig: QueryUnderstandModelID=%s, ModelID=%s\n", config.QueryUnderstandModelID, config.ModelID)
+
 	return config
 }
 
@@ -445,6 +502,7 @@ func (s *chatService) CreateSession(ctx context.Context, userID uint, req *Creat
 		Source:           req.Source,
 		KnowledgeBaseIDs: req.KnowledgeBaseIDs,
 		AgentEnabled:     req.AgentEnabled,
+		AgentID:          req.AgentID,
 	}
 	if req.AgentConfig != nil {
 		session.AgentConfig = req.AgentConfig

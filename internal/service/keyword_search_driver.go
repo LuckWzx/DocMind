@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"docmind/internal/pipeline"
 
@@ -32,7 +33,9 @@ const (
 
 // postgresKeywordDriver pg_search BM25 检索驱动
 type postgresKeywordDriver struct {
-	db *gorm.DB
+	db        *gorm.DB
+	indexOnce sync.Once
+	indexErr  error
 }
 
 // NewPostgresKeywordDriver 创建 pg_search BM25 检索驱动
@@ -42,17 +45,33 @@ func NewPostgresKeywordDriver(db *gorm.DB) *postgresKeywordDriver {
 
 // EnsureIndex 幂等创建 BM25 索引
 func (d *postgresKeywordDriver) EnsureIndex(ctx context.Context) error {
-	if err := d.db.WithContext(ctx).Exec("CREATE EXTENSION IF NOT EXISTS pg_search").Error; err != nil {
-		return fmt.Errorf("启用 pg_search 扩展失败: %w", err)
-	}
-	indexDDL := fmt.Sprintf(`
+	d.indexOnce.Do(func() {
+		// 检查索引是否存在
+		var count int
+		err := d.db.WithContext(ctx).Raw(
+			"SELECT count(*) FROM pg_indexes WHERE indexname = 'idx_chunks_bm25'",
+		).Scan(&count).Error
+		if err != nil {
+			d.indexErr = fmt.Errorf("检查索引是否存在失败: %w", err)
+			return
+		}
+		if count > 0 {
+			// 索引已存在，跳过创建
+			return
+		}
+
+		// 索引不存在，执行创建
+		fmt.Printf("[KeywordDriver] 创建 BM25 索引...\n")
+		indexDDL := fmt.Sprintf(`
 CREATE INDEX IF NOT EXISTS %s ON chunks
 USING bm25 (id, (content::pdb.jieba), knowledge_base_id, is_enabled)
 WITH (key_field = 'id')`, bm25IndexName)
-	if err := d.db.WithContext(ctx).Exec(indexDDL).Error; err != nil {
-		return fmt.Errorf("创建 BM25 索引失败: %w", err)
-	}
-	return nil
+		if err := d.db.WithContext(ctx).Exec(indexDDL).Error; err != nil {
+			d.indexErr = fmt.Errorf("创建 BM25 索引失败: %w", err)
+			return
+		}
+	})
+	return d.indexErr
 }
 
 // Search 执行 BM25 检索，返回按分数降序的 TopK 结果

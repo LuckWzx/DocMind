@@ -15,6 +15,7 @@ import (
 
 	"docmind/internal/middleware"
 	"docmind/internal/model/entity"
+	"docmind/internal/pipeline"
 	"docmind/internal/service"
 	"docmind/pkg/config"
 	"docmind/pkg/logger"
@@ -48,14 +49,18 @@ func NewController(chatService service.ChatService, sseRegistry *sse.Registry, r
 // ===== SSE 事件结构体 =====
 
 type sseEvent struct {
-	ResponseType string      `json:"response_type"`
-	Content      string      `json:"content,omitempty"`    // 消息内容（前端读取此字段）
-	ID           string      `json:"id,omitempty"`         // 消息 ID（会话消息绑定用，非 SSE 协议事件 ID）
-	Done         bool        `json:"done,omitempty"`       // 流是否结束
-	SessionID    string      `json:"session_id,omitempty"` // 会话 ID
-	References   []reference `json:"references,omitempty"`
-	ErrorMessage string      `json:"error_message,omitempty"`
-	Ts           int64       `json:"ts,omitempty"` // 事件时间戳（毫秒）
+	ResponseType string                      `json:"response_type"`
+	Content      string                      `json:"content,omitempty"`    // 消息内容（前端读取此字段）
+	ID           string                      `json:"id,omitempty"`         // 消息 ID（会话消息绑定用，非 SSE 协议事件 ID）
+	Done         bool                        `json:"done,omitempty"`       // 流是否结束
+	SessionID    string                      `json:"session_id,omitempty"` // 会话 ID
+	References   []reference                 `json:"references,omitempty"`
+	ErrorMessage string                      `json:"error_message,omitempty"`
+	Ts           int64                       `json:"ts,omitempty"`           // 事件时间戳（毫秒）
+	ToolCallID   string                      `json:"tool_call_id,omitempty"` // 工具调用 ID（agent_step 事件用）
+	ToolName     string                      `json:"tool_name,omitempty"`    // 工具名称（agent_step 事件用）
+	ToolResult   *entity.AgentStepToolResult `json:"tool_result,omitempty"`  // 工具调用结果（agent_step 事件用）
+	Duration     int64                       `json:"duration,omitempty"`     // 工具调用耗时（毫秒，agent_step 事件用）
 }
 
 type reference struct {
@@ -369,7 +374,34 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 	// 7. pump goroutine：service 调用 + 流式读取（首 token 超时在 pump 内保护），
 	//    使 handler 可以对 pre-work 超时、客户端断开做出响应
 	out := make(chan streamItem, 64)
-	go pumpKnowledgeChat(ctx, ctrl.chatService, sessionID, userID, &req, ctrl.sseCfg.FirstTokenTimeout, out)
+
+	// 步骤回调：实时发送 SSE 事件，并收集步骤信息用于构建 agent_steps
+	var stepInfos []pipeline.StepInfo
+	stepCallback := func(step pipeline.StepInfo) {
+		// 收集步骤信息
+		stepInfos = append(stepInfos, step)
+
+		// 构建工具调用结果
+		var toolResult *entity.AgentStepToolResult
+		if step.Data != nil {
+			toolResult = &entity.AgentStepToolResult{
+				Success: step.Success,
+				Data:    step.Data,
+			}
+		}
+
+		// 发送 agent_step 事件
+		sw.WriteMessage(sseEvent{
+			ResponseType: SSEEventAgentStep,
+			ToolCallID:   step.ToolCallID,
+			ToolName:     step.StepName,
+			ToolResult:   toolResult,
+			Duration:     step.Duration,
+			Ts:           time.Now().UnixMilli(),
+		})
+	}
+
+	go pumpKnowledgeChat(ctx, ctrl.chatService, sessionID, userID, &req, ctrl.sseCfg.FirstTokenTimeout, out, stepCallback)
 
 	// 8. pre-work 窗口：等待 references 事件（检索完成）；超时或断连即终止
 	var searchResults []service.VectorSearchResult
@@ -454,32 +486,53 @@ streamDone:
 	// 10. 计算 agent 执行时长
 	agentDurationMs := time.Since(agentStartTime).Milliseconds()
 
-	// 11. 构建 agent_steps（RAG 管道的两个步骤：query_understand 和 knowledge_search）
-	agentSteps := entity.AgentSteps{
-		{
-			Iteration: 1,
-			Timestamp: agentStartTime,
-			Duration:  0, // 第一步几乎不耗时
-			ToolCalls: []entity.AgentStepToolCall{{
-				ID:   "rag-history-query-understand",
-				Name: "query_understand",
-			}},
-		},
-		{
-			Iteration: 2,
-			Timestamp: agentStartTime,
-			Duration:  agentDurationMs,
-			ToolCalls: []entity.AgentStepToolCall{{
-				ID:   "rag-history-knowledge-search",
-				Name: "knowledge_search",
-				Result: &entity.AgentStepToolResult{
-					Success: true,
-					Data: map[string]interface{}{
-						"count": len(searchResults),
+	// 11. 构建 agent_steps（使用步骤回调收集的实际执行信息）
+	var agentSteps entity.AgentSteps
+	if len(stepInfos) > 0 {
+		// 使用回调收集的步骤信息
+		for i, step := range stepInfos {
+			agentSteps = append(agentSteps, entity.AgentStep{
+				Iteration: i + 1,
+				Timestamp: step.StartTime,
+				Duration:  step.Duration,
+				ToolCalls: []entity.AgentStepToolCall{{
+					ID:   step.ToolCallID,
+					Name: step.StepName,
+					Result: &entity.AgentStepToolResult{
+						Success: step.Success,
+						Data:    step.Data,
 					},
-				},
-			}},
-		},
+				}},
+			})
+		}
+	} else {
+		// 兜底：如果没有步骤回调（理论上不会发生）
+		agentSteps = entity.AgentSteps{
+			{
+				Iteration: 1,
+				Timestamp: agentStartTime,
+				Duration:  0,
+				ToolCalls: []entity.AgentStepToolCall{{
+					ID:   "rag-history-query-understand",
+					Name: "query_understand",
+				}},
+			},
+			{
+				Iteration: 2,
+				Timestamp: agentStartTime,
+				Duration:  agentDurationMs,
+				ToolCalls: []entity.AgentStepToolCall{{
+					ID:   "rag-history-knowledge-search",
+					Name: "knowledge_search",
+					Result: &entity.AgentStepToolResult{
+						Success: true,
+						Data: map[string]interface{}{
+							"count": len(searchResults),
+						},
+					},
+				}},
+			},
+		}
 	}
 
 	// 12. 判断是否为兜底回复（没有搜索结果）
@@ -568,9 +621,9 @@ type recvResult struct {
 // pumpKnowledgeChat 在子 goroutine 中执行：service 调用 + 流式读取，结果经通道回传。
 // 首 token 超时在 pump 内保护（流建立后第一个 chunk 必须在窗口内到达）；
 // 总执行超时由外层 ctx 兜底（取消后 LLM 生成停止、流关闭、Recv 返回）。
-func pumpKnowledgeChat(ctx context.Context, svc service.ChatService, sessionID, userID uint, req *service.KnowledgeChatRequest, firstTokenTimeout time.Duration, out chan<- streamItem) {
+func pumpKnowledgeChat(ctx context.Context, svc service.ChatService, sessionID, userID uint, req *service.KnowledgeChatRequest, firstTokenTimeout time.Duration, out chan<- streamItem, stepCallback pipeline.StepCallback) {
 	defer close(out)
-	stream, searchResults, err := svc.KnowledgeChat(ctx, sessionID, userID, req)
+	stream, searchResults, err := svc.KnowledgeChat(ctx, sessionID, userID, req, stepCallback)
 	if err != nil {
 		out <- streamItem{kind: "error", err: err}
 		return

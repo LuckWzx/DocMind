@@ -13,6 +13,8 @@ type Config struct {
 	Storage   StorageConfig   `mapstructure:"storage"`
 	MinIO     MinIOConfig     `mapstructure:"minio"`
 	SSE       SSEConfig       `mapstructure:"sse"`
+	Neo4j     Neo4jConfig     `mapstructure:"neo4j"`
+	Memory    MemoryConfig    `mapstructure:"memory"`
 }
 
 // AppConfig 应用配置
@@ -119,4 +121,20 @@ type MinIOConfig struct {
 	BucketName      string `mapstructure:"bucket_name"`
 	PathPrefix      string `mapstructure:"path_prefix"`
 	UseSSL          bool   `mapstructure:"use_ssl"`
+}
+
+// Neo4jConfig 图数据库配置（长期记忆存储）
+type Neo4jConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	URI      string `mapstructure:"uri"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+}
+
+// MemoryConfig 长期记忆配置
+// 与短期记忆（internal/memory 压缩器）不同：这里控制跨会话记忆（Neo4j 知识图谱）
+type MemoryConfig struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	ModelID       string `mapstructure:"model_id"`
+	RetrieveLimit int    `mapstructure:"retrieve_limit"`
 }

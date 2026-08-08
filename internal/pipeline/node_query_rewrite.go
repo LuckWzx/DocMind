@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -29,19 +30,78 @@ const (
 // queryRewriteNode 查询改写节点
 // 使用 LLM 将用户口语化表达转换为更适合向量搜索的查询
 func queryRewriteNode(ctx context.Context, input *Context) (*Context, error) {
+	startTime := time.Now()
+	toolCallID := "query_understand"
+
+	fmt.Printf("[Pipeline] QueryRewrite: ===== 开始执行 =====\n")
+	fmt.Printf("[Pipeline] QueryRewrite: EnableQueryRewrite=%v\n", input.AgentConfig.EnableQueryRewrite)
+	fmt.Printf("[Pipeline] QueryRewrite: Query=%s\n", input.Query)
+	fmt.Printf("[Pipeline] QueryRewrite: StepCallback=%v\n", input.StepCallback != nil)
+
+	// 发送步骤开始回调
+	if input.StepCallback != nil {
+		input.StepCallback(StepInfo{
+			StepName:   "query_understand",
+			StartTime:  startTime,
+			ToolCallID: toolCallID,
+			Success:    true,
+		})
+		fmt.Printf("[Pipeline] QueryRewrite: 已发送步骤开始回调\n")
+	}
+
 	// 如果没有启用查询改写，直接返回原始查询
 	if !input.AgentConfig.EnableQueryRewrite {
+		fmt.Printf("[Pipeline] QueryRewrite: 查询改写未启用，使用原始查询\n")
 		input.RewrittenQuery = input.Query
+		endTime := time.Now()
+		duration := endTime.Sub(startTime).Milliseconds()
+
+		// 发送步骤完成回调
+		if input.StepCallback != nil {
+			input.StepCallback(StepInfo{
+				StepName:   "query_understand",
+				StartTime:  startTime,
+				EndTime:    endTime,
+				Duration:   duration,
+				ToolCallID: toolCallID,
+				Success:    true,
+				Data:       map[string]interface{}{"rewritten_query": input.Query},
+			})
+		}
+
+		fmt.Printf("[Pipeline] QueryRewrite: disabled, using original query\n")
 		return input, nil
 	}
 
 	// 调用 LLM 进行查询改写
 	rewrittenQuery, err := llmRewriteQuery(ctx, input)
+	endTime := time.Now()
+	duration := endTime.Sub(startTime).Milliseconds()
+
+	var success bool
+	var data map[string]interface{}
 	if err != nil {
 		fmt.Printf("[Pipeline] QueryRewrite: LLM 改写失败，使用原始查询: %v\n", err)
 		input.RewrittenQuery = input.Query
+		success = false
+		data = map[string]interface{}{"error": err.Error()}
 	} else {
 		input.RewrittenQuery = rewrittenQuery
+		success = true
+		data = map[string]interface{}{"rewritten_query": rewrittenQuery}
+	}
+
+	// 发送步骤完成回调
+	if input.StepCallback != nil {
+		input.StepCallback(StepInfo{
+			StepName:   "query_understand",
+			StartTime:  startTime,
+			EndTime:    endTime,
+			Duration:   duration,
+			ToolCallID: toolCallID,
+			Success:    success,
+			Data:       data,
+		})
 	}
 
 	fmt.Printf("[Pipeline] QueryRewrite: original=%s, rewritten=%s\n", input.Query, input.RewrittenQuery)

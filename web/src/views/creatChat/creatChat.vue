@@ -198,6 +198,12 @@ async function createNewSession(value: string, modelId: string, mentionedItems: 
         source: 'web',  // 标记为 web 来源，侧栏才能正确显示
     };
 
+    // 如果选择了智能体，传递 agent_id
+    const agentId = settingsStore.selectedAgentId;
+    if (agentId) {
+        sessionData.agent_id = String(agentId);  // 确保是字符串类型
+    }
+
     // 添加 Agent 配置（知识库信息在 agent_config 中）
     sessionData.agent_config = {
         enabled: true,

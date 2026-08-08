@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"docmind/internal/model/entity"
 	"docmind/internal/pipeline"
@@ -14,8 +15,10 @@ import (
 )
 
 type postgresVectorDriver struct {
-	db    *gorm.DB
-	store *entity.VectorStore
+	db         *gorm.DB
+	store      *entity.VectorStore
+	schemaOnce sync.Once
+	schemaErr  error
 }
 
 func newPostgresVectorDriver(db *gorm.DB, store *entity.VectorStore) *postgresVectorDriver {
@@ -168,20 +171,23 @@ func (d *postgresVectorDriver) SearchWithPipelineParams(ctx context.Context, par
 }
 
 func (d *postgresVectorDriver) ensureSchema(ctx context.Context) error {
-	if err := d.db.WithContext(ctx).Exec("CREATE EXTENSION IF NOT EXISTS vector").Error; err != nil {
-		return fmt.Errorf("启用 pgvector 扩展失败: %w", err)
-	}
-	if err := d.db.WithContext(ctx).AutoMigrate(&entity.ChunkVector{}); err != nil {
-		return fmt.Errorf("迁移 chunk_vectors 表失败: %w", err)
-	}
-	if err := d.db.WithContext(ctx).Exec(`
-ALTER TABLE chunk_vectors
-ALTER COLUMN embedding TYPE vector
-USING NULLIF(BTRIM(embedding::text), '')::vector
-`).Error; err != nil {
-		return fmt.Errorf("修正 embedding 列类型失败: %w", err)
-	}
-	return nil
+	d.schemaOnce.Do(func() {
+		// 表结构应该在应用启动时通过 AutoMigrate 初始化
+		// 这里只做一次检查确认表存在
+		var count int
+		err := d.db.WithContext(ctx).Raw(
+			"SELECT count(*) FROM information_schema.tables WHERE table_name = 'chunk_vectors'",
+		).Scan(&count).Error
+		if err != nil {
+			d.schemaErr = fmt.Errorf("检查表是否存在失败: %w", err)
+			return
+		}
+		if count == 0 {
+			d.schemaErr = fmt.Errorf("chunk_vectors 表不存在，请检查应用启动时的 AutoMigrate 是否成功")
+			return
+		}
+	})
+	return d.schemaErr
 }
 
 func parseMetricType(store *entity.VectorStore) string {
