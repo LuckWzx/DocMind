@@ -90,6 +90,8 @@ func NewKBSearchTool(
 			Query:            args.Query,
 			EmbeddingTopK:    topK,
 			VectorThreshold:  searchCfg.VectorThreshold,
+			KeywordTopK:      searchCfg.KeywordTopK,
+			KeywordThreshold: searchCfg.KeywordThreshold,
 			RerankModelID:    searchCfg.RerankModelID,
 			RerankTopK:       searchCfg.RerankTopK,
 			RerankThreshold:  searchCfg.RerankThreshold,

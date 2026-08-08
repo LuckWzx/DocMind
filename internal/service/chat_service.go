@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"docmind/internal/agent"
+	"docmind/internal/agent/tools"
 	"docmind/internal/llm"
 	"docmind/internal/memory"
 	"docmind/internal/model/entity"
@@ -15,6 +17,7 @@ import (
 	"docmind/pkg/logger"
 	"docmind/pkg/token"
 
+	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 	einoschema "github.com/cloudwego/eino/schema"
 	"gorm.io/gorm"
@@ -45,6 +48,7 @@ type chatService struct {
 	agentSvc     AgentService
 	kbRepo       repository.KnowledgeBaseRepository
 	ragPipeline  *pipeline.Pipeline
+	pipelineDeps *pipeline.PipelineDeps // Agent kb_search 工具复用同一套检索依赖
 	// tokenEstimator 历史 Token 估算器（短期记忆触发判定用）
 	tokenEstimator *token.Estimator
 }
@@ -111,11 +115,11 @@ func NewChatService(
 	return &chatService{
 		sessionRepo:    sessionRepo,
 		messageRepo:    messageRepo,
-		summaryRepo:    summaryRepo,
 		modelFactory:   modelFactory,
 		agentSvc:       agentSvc,
 		kbRepo:         kbRepo,
 		ragPipeline:    ragPipeline,
+		pipelineDeps:   pipelineDeps,
 		tokenEstimator: tokenEstimator,
 	}, nil
 }
@@ -284,6 +288,125 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 	}
 
 	return result.Stream, searchResults, nil
+}
+
+// AgentChat 智能推理对话（AgentMode=smart-reasoning，规划 3.2.7 ⑧）
+// 流程：验证会话 → 保存用户消息 → 解析 Agent（session.AgentID 优先，会话内嵌配置兜底）
+// → Registry 构建工具集（AllowedTools 白名单 + kb_search 引用收集器）→ 引擎构建
+// → 多轮历史加载 → 返回统一事件流（controller 映射 SSE 事件）
+func (s *chatService) AgentChat(ctx context.Context, sessionID uint, userID uint, req *AgentChatRequest) (*AgentChatResponse, error) {
+	// 1. 验证 session 归属
+	session, err := s.sessionRepo.FindByID(sessionID)
+	if err != nil || session == nil {
+		return nil, bizerrors.New(bizerrors.CodeResourceNotFound, "会话不存在")
+	}
+	if session.UserID != userID {
+		return nil, bizerrors.New(bizerrors.CodeForbidden, "无权访问该会话")
+	}
+
+	// 2. 保存用户消息
+	userMsg := &entity.Message{
+		SessionID: sessionID,
+		Role:      "user",
+		Content:   req.Query,
+	}
+	if err := s.messageRepo.Create(userMsg); err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "保存用户消息失败", err)
+	}
+	s.sessionRepo.IncrementMessageCount(sessionID)
+	s.sessionRepo.UpdateLastMessage(sessionID, req.Query)
+
+	// 3. 解析 Agent 实体（内置模板 + 用户覆盖 / 会话内嵌配置）
+	agt, err := s.resolveAgentForChat(session, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. 工具集：Registry 按 Agent 配置构建（AllowedTools 白名单 + kb_search 引用收集器）
+	registry := tools.NewRegistry(s.pipelineDeps)
+	builtTools, collector, err := registry.Build(agt, userID)
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "构建 Agent 工具集失败", err)
+	}
+
+	// 5. 引擎构建：配置映射 → ADK ChatModelAgent（技能系统随 SkillsSelectionMode 挂载）
+	engineCfg := agent.NewEngineConfig(agt)
+	adkCfg, err := engineCfg.BuildAgentConfig(ctx, s.modelFactory, builtTools)
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "构建 Agent 配置失败", err)
+	}
+	chatModelAgent, err := adk.NewChatModelAgent(ctx, adkCfg)
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "创建 Agent 失败", err)
+	}
+	eng := agent.NewEngine(chatModelAgent, true)
+
+	// 6. 多轮历史加载（排除刚保存的 userMsg，按 HistoryTurns 截断）
+	var messages []*einoschema.Message
+	if agt.Config.MultiTurnEnabled != nil && *agt.Config.MultiTurnEnabled {
+		historyTurns := agt.Config.HistoryTurns
+		if historyTurns <= 0 {
+			historyTurns = 5
+		}
+		historyMsgs, err := s.messageRepo.ListBySession(sessionID, historyTurns*2+1, nil)
+		if err == nil {
+			messages = historyToSchemaMessages(historyMsgs, userMsg.ID)
+		}
+	}
+	messages = append(messages, &einoschema.Message{Role: einoschema.User, Content: req.Query})
+
+	// 7. 运行引擎，返回事件流（controller 消费并映射 SSE 事件）
+	stream, err := eng.Run(ctx, &agent.RunRequest{
+		SessionID: sessionID,
+		UserID:    userID,
+		Messages:  messages,
+		Agent:     agt,
+	})
+	if err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "Agent 运行失败", err)
+	}
+	return &AgentChatResponse{Stream: stream, Collector: collector}, nil
+}
+
+// resolveAgentForChat 解析会话关联的 Agent 实体
+// 优先级：session.AgentID（内置模板 + 用户覆盖）→ session.AgentConfig（前端内嵌配置）
+// ModelID 为空时按会话配置兜底（内嵌 AgentConfig → SummaryModelID → default）
+func (s *chatService) resolveAgentForChat(session *entity.Session, userID uint) (*entity.Agent, error) {
+	var agt *entity.Agent
+	if session.AgentID != "" {
+		if resolved, err := s.agentSvc.ResolveForUser(userID, session.AgentID); err == nil && resolved != nil {
+			agt = resolved
+		}
+	}
+	if agt == nil && session.AgentConfig != nil {
+		agt = &entity.Agent{Name: "session-agent", Config: *session.AgentConfig}
+	}
+	if agt == nil {
+		return nil, bizerrors.New(bizerrors.CodeBadRequest, "会话未配置智能体（AgentID/AgentConfig 均为空）")
+	}
+	if agt.Config.ModelID == "" {
+		agt.Config.ModelID = s.resolveChatModelID(session)
+	}
+	return agt, nil
+}
+
+// historyToSchemaMessages 将实体消息转换为 eino schema 消息（跳过指定 ID，如刚保存的用户消息）
+func historyToSchemaMessages(msgs []*entity.Message, skipID uint) []*einoschema.Message {
+	history := make([]*einoschema.Message, 0, len(msgs))
+	for _, m := range msgs {
+		if m.ID == skipID {
+			continue
+		}
+		role := einoschema.User
+		switch m.Role {
+		case "assistant":
+			role = einoschema.Assistant
+		case "system":
+			role = einoschema.System
+		}
+		history = append(history, &einoschema.Message{Role: role, Content: m.Content})
+	}
+	return history
 }
 
 // resolveKBIDs 确定使用的知识库 ID 列表
@@ -557,6 +680,9 @@ func (s *chatService) UpdateSession(ctx context.Context, sessionID uint, userID 
 	if req.AgentEnabled != nil {
 		session.AgentEnabled = *req.AgentEnabled
 	}
+	if req.AgentID != nil {
+		session.AgentID = *req.AgentID
+	}
 	if req.SummaryModelID != nil {
 		session.SummaryModelID = *req.SummaryModelID
 	}
@@ -689,7 +815,8 @@ func (s *chatService) SaveAssistantMessage(ctx context.Context, sessionID uint, 
 	}
 	s.sessionRepo.IncrementMessageCount(sessionID)
 	if len(content) > 200 {
-		content = content[:200]
+		// 按 rune 截断避免中文被切断成非法 UTF-8（PG 报 invalid byte sequence）
+		content = string([]rune(content)[:200])
 	}
 	s.sessionRepo.UpdateLastMessage(sessionID, content)
 	return nil

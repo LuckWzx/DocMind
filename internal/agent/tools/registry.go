@@ -36,11 +36,15 @@ func (r *Registry) Build(agent *entity.Agent, userID uint) ([]tool.BaseTool, *Re
 		KnowledgeBaseIDs: kbIDs,
 		EmbeddingTopK:    cfg.EmbeddingTopK,
 		VectorThreshold:  cfg.VectorThreshold,
+		KeywordTopK:      cfg.KeywordTopK,
 		RerankModelID:    cfg.RerankModelID,
 		RerankTopK:       cfg.RerankTopK,
 	}
 	if cfg.RerankThreshold != nil {
 		searchCfg.RerankThreshold = *cfg.RerankThreshold
+	}
+	if cfg.KeywordThreshold != nil {
+		searchCfg.KeywordThreshold = *cfg.KeywordThreshold
 	}
 
 	// 可用工具构建表（后续 Skills / MCP / 甲的工具集在此挂载）

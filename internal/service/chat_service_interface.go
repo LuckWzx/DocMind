@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"docmind/internal/agent"
+	"docmind/internal/agent/tools"
 	"docmind/internal/model/entity"
 	"docmind/internal/pipeline"
 
@@ -14,6 +16,8 @@ import (
 type ChatService interface {
 	// KnowledgeChat 单步 RAG 对话，返回流式响应
 	KnowledgeChat(ctx context.Context, sessionID uint, userID uint, req *KnowledgeChatRequest, stepCallback pipeline.StepCallback) (*schema.StreamReader[*schema.Message], []VectorSearchResult, error)
+	// AgentChat 智能推理对话（AgentMode=smart-reasoning），返回统一事件流 + 引用收集器（规划 3.2.7 ⑧）
+	AgentChat(ctx context.Context, sessionID uint, userID uint, req *AgentChatRequest) (*AgentChatResponse, error)
 	// CreateSession 创建会话
 	CreateSession(ctx context.Context, userID uint, req *CreateSessionRequest) (*entity.Session, error)
 	// GetSession 获取单个会话
@@ -47,13 +51,27 @@ type KnowledgeChatRequest struct {
 	Channel          string   `json:"channel"`
 }
 
+// AgentChatRequest 智能推理对话请求（与 KnowledgeChatRequest 字段一致，复用前端入参）
+type AgentChatRequest struct {
+	Query            string   `json:"query"`
+	KnowledgeBaseIDs []string `json:"knowledge_base_ids"`
+	Channel          string   `json:"channel"`
+}
+
+// AgentChatResponse 智能推理对话响应
+// Stream 由 controller 消费并映射为 SSE 事件；Collector 收集 kb_search 引用（落库数据源）
+type AgentChatResponse struct {
+	Stream    *agent.EventStream
+	Collector *tools.ResultCollector
+}
+
 // CreateSessionRequest 创建会话请求
 type CreateSessionRequest struct {
 	Title            string              `json:"title"`
 	Source           string              `json:"source"`
 	KnowledgeBaseIDs []string            `json:"knowledge_base_ids"`
 	AgentEnabled     bool                `json:"agent_enabled"`
-	AgentID          string              `json:"agent_id"` // 关联的智能体 ID
+	AgentID          string              `json:"agent_id,omitempty"` // 关联的 Agent ID（如内置模板 builtin-smart-reasoning）
 	AgentConfig      *entity.AgentConfig `json:"agent_config,omitempty"`
 }
 
@@ -63,5 +81,6 @@ type UpdateSessionRequest struct {
 	Description      *string  `json:"description,omitempty"`
 	KnowledgeBaseIDs []string `json:"knowledge_base_ids,omitempty"`
 	AgentEnabled     *bool    `json:"agent_enabled,omitempty"`
+	AgentID          *string  `json:"agent_id,omitempty"`
 	SummaryModelID   *string  `json:"summary_model_id,omitempty"`
 }

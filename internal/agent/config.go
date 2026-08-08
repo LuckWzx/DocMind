@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"docmind/internal/agent/skills"
 	"docmind/internal/llm"
 	"docmind/internal/model/entity"
 
@@ -23,6 +24,8 @@ type EngineConfig struct {
 	MaxIterations   int
 	LLMCallTimeout  int
 	AllowedTools    []string // 工具白名单（骨架阶段仅记录，过滤在工具注册层实现）
+	SkillsBaseDir   string   // 技能目录（空 = 不启用技能系统）
+	SelectedSkills  []string // 技能白名单（nil = 全部可用；空切片 = 全部禁用）
 	EnableStreaming bool
 }
 
@@ -47,6 +50,14 @@ func NewEngineConfig(a *entity.Agent) *EngineConfig {
 	if cfg.LLMCallTimeout != nil {
 		c.LLMCallTimeout = *cfg.LLMCallTimeout
 	}
+	// 技能系统：all（默认）→ 全部技能可用；manual → 按 SelectedSkills 白名单过滤
+	c.SkillsBaseDir = skills.DefaultSkillsDir
+	switch cfg.SkillsSelectionMode {
+	case "manual":
+		c.SelectedSkills = cfg.SelectedSkills
+	default:
+		c.SelectedSkills = nil
+	}
 	return c
 }
 
@@ -60,6 +71,15 @@ func (c *EngineConfig) BuildAgentConfig(ctx context.Context, factory *llm.ChatMo
 	if err != nil {
 		return nil, fmt.Errorf("创建 ChatModel 失败: %w", err)
 	}
+	// 技能系统：挂 skill middleware（默认工具名 skill，参数 {skill: 名称}）
+	var handlers []adk.ChatModelAgentMiddleware
+	if c.SkillsBaseDir != "" {
+		skillHandler, err := skills.LoadSkillMiddleware(ctx, c.SkillsBaseDir, c.SelectedSkills)
+		if err != nil {
+			return nil, fmt.Errorf("加载技能系统失败: %w", err)
+		}
+		handlers = append(handlers, skillHandler)
+	}
 	return &adk.ChatModelAgentConfig{
 		Name:          c.Name,
 		Description:   c.Description,
@@ -67,5 +87,6 @@ func (c *EngineConfig) BuildAgentConfig(ctx context.Context, factory *llm.ChatMo
 		Model:         chatModel,
 		ToolsConfig:   adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: tools}},
 		MaxIterations: c.MaxIterations,
+		Handlers:      handlers,
 	}, nil
 }
