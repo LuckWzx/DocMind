@@ -72,7 +72,8 @@ func (r *sessionRepository) IncrementMessageCount(id uint) error {
 
 func (r *sessionRepository) UpdateLastMessage(id uint, preview string) error {
 	if len(preview) > 200 {
-		preview = preview[:200]
+		// 按 rune 截断避免中文被切断成非法 UTF-8（PG 报 invalid byte sequence）
+		preview = string([]rune(preview)[:200])
 	}
 	return r.db.Model(&entity.Session{}).Where("id = ?", id).
 		Update("last_message", preview).Error

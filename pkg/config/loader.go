@@ -41,6 +41,12 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
 
+	// SSE 护栏默认值兜底：未配置 max_body_bytes 时若为 0，
+	// http.MaxBytesReader 会拒绝一切请求体（HTTP 413），默认放宽到 10MB
+	if config.SSE.MaxBodyBytes <= 0 {
+		config.SSE.MaxBodyBytes = 10 << 20
+	}
+
 	// 从环境变量覆盖敏感配置
 	if val := os.Getenv("POSTGRES_PASSWORD"); val != "" {
 		config.Database.PostgreSQL.Password = val

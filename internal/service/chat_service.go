@@ -757,7 +757,8 @@ func (s *chatService) SaveAssistantMessage(ctx context.Context, sessionID uint, 
 	}
 	s.sessionRepo.IncrementMessageCount(sessionID)
 	if len(content) > 200 {
-		content = content[:200]
+		// 按 rune 截断避免中文被切断成非法 UTF-8（PG 报 invalid byte sequence）
+		content = string([]rune(content)[:200])
 	}
 	s.sessionRepo.UpdateLastMessage(sessionID, content)
 	return nil

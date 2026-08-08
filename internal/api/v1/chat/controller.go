@@ -534,7 +534,11 @@ streamDone:
 
 // AgentChat 智能推理对话（AgentMode=smart-reasoning，规划 3.2.7）
 // 消费引擎统一事件流并映射为 SSE 事件：state / agent_step / answer / error / complete
+// 复用 KnowledgeChat 的 SSE 连接护栏：body 限制、心跳、注册表、总超时、首事件超时、生命周期统计
 func (ctrl *Controller) AgentChat(c *gin.Context) {
+	// 1. 请求体大小限制（护栏：防止超大请求拖垮服务，与 KnowledgeChat 一致）
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, ctrl.sseCfg.MaxBodyBytes)
+
 	userID := middleware.GetUserID(c)
 	sessionID, ok := parseUintFromPath(c, "session_id")
 	if !ok {
@@ -543,56 +547,109 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 
 	var req service.AgentChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{
+				"success": false,
+				"code":    "PAYLOAD_TOO_LARGE",
+				"message": "请求体过大",
+			})
+			return
+		}
 		response.BadRequest(c, err.Error())
 		return
 	}
 
-	// 设置 SSE 响应头
+	// 2. 请求 ID：贯穿日志与事件 ID（前端已带 X-Request-ID，缺失时后端生成）
+	requestID := c.GetHeader("X-Request-ID")
+	if requestID == "" {
+		requestID = genRequestID()
+	}
+
+	// 3. 设置 SSE 响应头
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	// 调用 ChatService 获取引擎事件流
-	resp, err := ctrl.chatService.AgentChat(c.Request.Context(), sessionID, userID, &req)
+	// 4. 协议 Writer：事件 ID 自增 + 心跳；注册到全局表（优雅关闭广播用）
+	sw := sse.NewWriter(c.Writer, requestID)
+	sw.StartHeartbeat(c.Request.Context(), ctrl.sseCfg.HeartbeatInterval)
+	defer sw.StopHeartbeat()
+	ctrl.sseRegistry.Add(sw)
+	defer ctrl.sseRegistry.Remove(sw)
+
+	// 5. 生命周期统计与日志
+	stats := newSSEStats(requestID, userID, sessionID)
+	stats.markOpen()
+	defer stats.close("done") // 正常路径在 complete 后显式 close；closed 幂等保证异常路径不重复
+
+	// 6. 总执行超时（覆盖整个 Agent 执行 + 事件消费）
+	ctx, cancel := context.WithTimeout(c.Request.Context(), ctrl.sseCfg.TotalTimeout)
+	defer cancel()
+
+	// 7. 调用 ChatService 获取引擎事件流
+	resp, err := ctrl.chatService.AgentChat(ctx, sessionID, userID, &req)
 	if err != nil {
-		writeSSEEvent(c.Writer, sseEvent{
-			ResponseType: SSEEventError,
-			Content:      err.Error(),
+		sw.WriteError(sse.ErrorContract{
+			Code:      sse.ErrCodeInternal,
+			Retryable: false,
+			Message:   err.Error(),
 		})
-		c.Writer.Flush()
+		stats.close("error")
 		return
 	}
 
 	// 记录开始时间，用于计算 agent 执行时长
 	agentStartTime := time.Now()
 
-	// 消费引擎事件流并映射 SSE 事件（规划 3.2.7 ②：一个 AgentEvent ≠ 一条 SSE，
+	// 8. 消费引擎事件流并映射 SSE 事件（规划 3.2.7 ②：一个 AgentEvent ≠ 一条 SSE，
 	// 引擎展开层已处理，此处按统一事件逐条转发）
 	var fullContent string
+
+	// 9. 首事件保护：第一个事件必须在窗口内到达（引擎首个事件通常为 thinking 状态）
+	first := make(chan agentFirstResult, 1)
+	go func() {
+		ev, ok := resp.Stream.Next()
+		first <- agentFirstResult{ev: ev, ok: ok}
+	}()
+	select {
+	case r := <-first:
+		if r.ok {
+			emitAgentEvent(sw, r.ev, &fullContent)
+			stats.markFirstToken()
+			stats.markEvent()
+		}
+	case <-time.After(ctrl.sseCfg.FirstTokenTimeout):
+		cancel() // 终止引擎执行
+		sw.WriteError(sse.ErrorContract{
+			Code:         sse.ErrCodeFirstTokenTimeout,
+			Retryable:    true,
+			RetryAfterMs: 3000,
+			Message:      "处理超时（首事件超时），请重试",
+		})
+		stats.close("first_token_timeout")
+		return
+	case <-ctx.Done():
+		stats.close("abort")
+		return
+	}
+
+	// 10. 后续事件循环（ctx 取消即终止）
 	for {
+		select {
+		case <-ctx.Done():
+			stats.close("abort")
+			return
+		default:
+		}
 		ev, ok := resp.Stream.Next()
 		if !ok {
 			break
 		}
-		switch ev.Type {
-		case agent.EventState:
-			writeSSEEvent(c.Writer, sseEvent{ResponseType: SSEEventState, State: ev.State})
-		case agent.EventStep:
-			writeSSEEvent(c.Writer, sseEvent{
-				ResponseType: SSEEventAgentStep,
-				ToolName:     ev.ToolName,
-				ToolArgs:     ev.ToolArgs,
-				ToolResult:   ev.ToolResult,
-			})
-		case agent.EventAnswer:
-			fullContent += ev.Content
-			writeSSEEvent(c.Writer, sseEvent{ResponseType: SSEEventAnswer, Content: ev.Content})
-		case agent.EventError:
-			writeSSEEvent(c.Writer, sseEvent{ResponseType: SSEEventError, Content: ev.Content})
-		}
-		c.Writer.Flush()
+		emitAgentEvent(sw, ev, &fullContent)
+		stats.markEvent()
 	}
 
 	// 计算 agent 执行时长
@@ -614,8 +671,7 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 	// 引用事件（Agent 模式检索在循环中，引用可能迟到；此处流结束后统一推送，
 	// agent_step 已携带每轮工具结果，前端可选任一路径）
 	if len(refs) > 0 {
-		writeSSEEvent(c.Writer, sseEvent{ResponseType: SSEEventReferences, References: refs})
-		c.Writer.Flush()
+		sw.WriteMessage(sseEvent{ResponseType: SSEEventReferences, References: refs})
 	}
 
 	// 保存助手消息（含引用 / agent_steps / 耗时 / 兜底标记）
@@ -629,22 +685,48 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 	// 首条消息后自动生成会话标题并推送
 	if req.Query != "" {
 		if newTitle, err := ctrl.chatService.GenerateSessionTitle(c.Request.Context(), sessionID, userID, req.Query); err == nil && newTitle != "" && newTitle != "新对话" {
-			writeSSEEvent(c.Writer, sseEvent{
+			sw.WriteMessage(sseEvent{
 				ResponseType: SSEEventSessionTitle,
 				Content:      newTitle,
 				SessionID:    strconv.FormatUint(uint64(sessionID), 10),
 			})
-			c.Writer.Flush()
 		}
 	}
 
 	// 发送完成事件
-	writeSSEEvent(c.Writer, sseEvent{
+	sw.WriteMessage(sseEvent{
 		ResponseType: SSEEventComplete,
 		Done:         true,
 		SessionID:    strconv.FormatUint(uint64(sessionID), 10),
 		Ts:           time.Now().UnixMilli(),
 	})
+	stats.close("done")
+}
+
+// agentFirstResult 首事件保护通道载荷（首事件必须超时窗口内到达，否则报超时）
+type agentFirstResult struct {
+	ev *agent.OutputEvent
+	ok bool
+}
+
+// emitAgentEvent 将引擎统一事件映射为 SSE 事件并写入协议 Writer（writeFrame 自带 Flush）
+func emitAgentEvent(sw *sse.Writer, ev *agent.OutputEvent, fullContent *string) {
+	switch ev.Type {
+	case agent.EventState:
+		_ = sw.WriteMessage(sseEvent{ResponseType: SSEEventState, State: ev.State})
+	case agent.EventStep:
+		_ = sw.WriteMessage(sseEvent{
+			ResponseType: SSEEventAgentStep,
+			ToolName:     ev.ToolName,
+			ToolArgs:     ev.ToolArgs,
+			ToolResult:   ev.ToolResult,
+		})
+	case agent.EventAnswer:
+		*fullContent += ev.Content
+		_ = sw.WriteMessage(sseEvent{ResponseType: SSEEventAnswer, Content: ev.Content})
+	case agent.EventError:
+		_ = sw.WriteMessage(sseEvent{ResponseType: SSEEventError, Content: ev.Content})
+	}
 }
 
 // ===== 辅助函数 =====
