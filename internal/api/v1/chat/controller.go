@@ -62,8 +62,8 @@ type sseEvent struct {
 	ToolName     string                      `json:"tool_name,omitempty"`    // 工具名称（agent_step 事件用）
 	ToolResult   *entity.AgentStepToolResult `json:"tool_result,omitempty"`  // 工具调用结果（agent_step 事件用）
 	Duration     int64                       `json:"duration,omitempty"`     // 工具调用耗时（毫秒，agent_step 事件用）
-	State      string `json:"state,omitempty"`       // 状态机状态（thinking/searching/generating/cancelled）
-	ToolArgs   string `json:"tool_args,omitempty"`   // 工具调用参数（JSON）
+	State        string                      `json:"state,omitempty"`        // 状态机状态（thinking/searching/generating/cancelled）
+	ToolArgs     string                      `json:"tool_args,omitempty"`    // 工具调用参数（JSON）
 }
 
 type reference struct {
@@ -765,11 +765,15 @@ func emitAgentEvent(sw *sse.Writer, ev *agent.OutputEvent, fullContent *string) 
 	case agent.EventState:
 		_ = sw.WriteMessage(sseEvent{ResponseType: SSEEventState, State: ev.State})
 	case agent.EventStep:
+		var toolResult *entity.AgentStepToolResult
+		if ev.ToolResult != "" {
+			toolResult = &entity.AgentStepToolResult{Success: true, Output: ev.ToolResult}
+		}
 		_ = sw.WriteMessage(sseEvent{
 			ResponseType: SSEEventAgentStep,
 			ToolName:     ev.ToolName,
 			ToolArgs:     ev.ToolArgs,
-			ToolResult:   ev.ToolResult,
+			ToolResult:   toolResult,
 		})
 	case agent.EventAnswer:
 		*fullContent += ev.Content
