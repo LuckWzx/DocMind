@@ -30,7 +30,8 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 		group.GET("messages/:session_id/load", ctrl.LoadMessages)
 
 		// 对话（SSE 流式）
-		group.POST("knowledge-chat/:session_id", ctrl.KnowledgeChat)
+		// 幂等中间件：同一 X-Request-ID 在 TTL 内重复提交返回 409，防止重试导致 LLM 双倍调用
+		group.POST("knowledge-chat/:session_id", middleware.Idempotency(ctrl.redis, ctrl.sseCfg.IdempotencyTTL), ctrl.KnowledgeChat)
 		group.POST("agent-chat/:session_id", ctrl.AgentChat)
 	}
 }

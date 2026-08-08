@@ -1,7 +1,11 @@
 package chat
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,23 +15,34 @@ import (
 
 	"docmind/internal/middleware"
 	"docmind/internal/model/entity"
-
 	"docmind/internal/service"
+	"docmind/pkg/config"
 	"docmind/pkg/logger"
 	"docmind/pkg/response"
+	"docmind/pkg/sse"
 
+	einoschema "github.com/cloudwego/eino/schema"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
 // Controller 会话与对话控制器
 type Controller struct {
 	chatService service.ChatService
+	sseRegistry *sse.Registry
+	redis       *redis.Client
+	sseCfg      config.SSEConfig
 }
 
 // NewController 创建 Chat 控制器
-func NewController(chatService service.ChatService) *Controller {
-	return &Controller{chatService: chatService}
+func NewController(chatService service.ChatService, sseRegistry *sse.Registry, redis *redis.Client, sseCfg config.SSEConfig) *Controller {
+	return &Controller{
+		chatService: chatService,
+		sseRegistry: sseRegistry,
+		redis:       redis,
+		sseCfg:      sseCfg,
+	}
 }
 
 // ===== SSE 事件结构体 =====
@@ -35,11 +50,12 @@ func NewController(chatService service.ChatService) *Controller {
 type sseEvent struct {
 	ResponseType string      `json:"response_type"`
 	Content      string      `json:"content,omitempty"`    // 消息内容（前端读取此字段）
-	ID           string      `json:"id,omitempty"`         // 消息 ID
+	ID           string      `json:"id,omitempty"`         // 消息 ID（会话消息绑定用，非 SSE 协议事件 ID）
 	Done         bool        `json:"done,omitempty"`       // 流是否结束
 	SessionID    string      `json:"session_id,omitempty"` // 会话 ID
 	References   []reference `json:"references,omitempty"`
 	ErrorMessage string      `json:"error_message,omitempty"`
+	Ts           int64       `json:"ts,omitempty"` // 事件时间戳（毫秒）
 }
 
 type reference struct {
@@ -295,8 +311,11 @@ func (ctrl *Controller) LoadMessages(c *gin.Context) {
 
 // ===== 核心：SSE 知识问答 =====
 
-// KnowledgeChat SSE 流式知识问答
+// KnowledgeChat SSE 流式知识问答（第一批优化：事件协议规范化 + 执行护栏 + 生命周期日志）
 func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
+	// 1. 请求体大小限制（护栏：防止超大请求拖垮服务）
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, ctrl.sseCfg.MaxBodyBytes)
+
 	userID := middleware.GetUserID(c)
 	sessionID, ok := parseUintFromPath(c, "session_id")
 	if !ok {
@@ -305,77 +324,137 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 
 	var req service.KnowledgeChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{
+				"success": false,
+				"code":    "PAYLOAD_TOO_LARGE",
+				"message": "请求体过大",
+			})
+			return
+		}
 		response.BadRequest(c, err.Error())
 		return
 	}
 
-	// 设置 SSE 响应头
+	// 2. 请求 ID：贯穿日志与事件 ID（前端已带 X-Request-ID，缺失时后端生成）
+	requestID := c.GetHeader("X-Request-ID")
+	if requestID == "" {
+		requestID = genRequestID()
+	}
+
+	// 3. 设置 SSE 响应头
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	// 调用 ChatService 获取流式响应
-	stream, searchResults, err := ctrl.chatService.KnowledgeChat(c.Request.Context(), sessionID, userID, &req)
-	if err != nil {
-		writeSSEEvent(c.Writer, sseEvent{
-			ResponseType: SSEEventError,
-			Content:      err.Error(),
+	// 4. 协议 Writer：事件 ID 自增 + 心跳；注册到全局表（优雅关闭广播用）
+	sw := sse.NewWriter(c.Writer, requestID)
+	sw.StartHeartbeat(c.Request.Context(), ctrl.sseCfg.HeartbeatInterval)
+	defer sw.StopHeartbeat()
+	ctrl.sseRegistry.Add(sw)
+	defer ctrl.sseRegistry.Remove(sw)
+
+	// 5. 生命周期统计与日志
+	stats := newSSEStats(requestID, userID, sessionID)
+	stats.markOpen()
+	defer stats.close("done") // 正常路径在 complete 后显式 close；closed 幂等保证异常路径不重复
+
+	// 6. 总执行超时（覆盖 pre-work + 整个流）
+	ctx, cancel := context.WithTimeout(c.Request.Context(), ctrl.sseCfg.TotalTimeout)
+	defer cancel()
+
+	// 7. pump goroutine：service 调用 + 流式读取（首 token 超时在 pump 内保护），
+	//    使 handler 可以对 pre-work 超时、客户端断开做出响应
+	out := make(chan streamItem, 64)
+	go pumpKnowledgeChat(ctx, ctrl.chatService, sessionID, userID, &req, ctrl.sseCfg.FirstTokenTimeout, out)
+
+	// 8. pre-work 窗口：等待 references 事件（检索完成）；超时或断连即终止
+	var searchResults []service.VectorSearchResult
+	select {
+	case item := <-out:
+		if item.kind == "error" {
+			sw.WriteError(contractForError(item.err, item.timeout))
+			stats.close("error")
+			return
+		}
+		if item.kind == "refs" {
+			searchResults = item.refs
+			stats.markFirstToken()
+			// 先发送 references 事件（即使为空也要发送，以便前端显示检索进度）
+			sw.WriteMessage(sseEvent{
+				ResponseType: SSEEventReferences,
+				References:   buildRefs(item.refs),
+				Ts:           time.Now().UnixMilli(),
+			})
+		}
+	case <-time.After(ctrl.sseCfg.FirstTokenTimeout):
+		cancel() // 终止 pump 的 pre-work
+		sw.WriteError(sse.ErrorContract{
+			Code:         sse.ErrCodeFirstTokenTimeout,
+			Retryable:    true,
+			RetryAfterMs: 3000,
+			Message:      "处理超时（首 token 超时），请重试",
 		})
-		c.Writer.Flush()
+		stats.close("first_token_timeout")
+		return
+	case <-c.Request.Context().Done():
+		stats.close("abort") // 客户端断开
 		return
 	}
-
-	// 先发送 references 事件（即使为空也要发送，以便前端显示检索进度）
-	refs := make([]reference, 0, len(searchResults))
-	for _, r := range searchResults {
-		refs = append(refs, reference{
-			ChunkID:        r.ChunkID,
-			Content:        r.Content,
-			Score:          r.Score,
-			KnowledgeID:    r.KnowledgeID,
-			KnowledgeTitle: r.KnowledgeTitle,
-		})
-	}
-	writeSSEEvent(c.Writer, sseEvent{
-		ResponseType: SSEEventReferences,
-		References:   refs,
-	})
-	c.Writer.Flush()
 
 	// 记录开始时间，用于计算 agent 执行时长
 	agentStartTime := time.Now()
 
-	// 流式读取 LLM 回复并推送给前端
+	// 9. 流式读取循环：逐 chunk 推送 answer 增量
 	var fullContent string
-	for {
-		chunk, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			writeSSEEvent(c.Writer, sseEvent{
-				ResponseType: SSEEventError,
-				Content:      fmt.Sprintf("流式读取失败: %v", err),
-			})
-			c.Writer.Flush()
-			return
-		}
-		if chunk.Content != "" {
-			fullContent += chunk.Content
-			writeSSEEvent(c.Writer, sseEvent{
+	for item := range out {
+		switch item.kind {
+		case "answer":
+			fullContent += item.content
+			stats.markEvent()
+			sw.WriteMessage(sseEvent{
 				ResponseType: SSEEventAnswer,
-				Content:      chunk.Content,
+				Content:      item.content,
+				Ts:           time.Now().UnixMilli(),
 			})
-			c.Writer.Flush()
+		case "error":
+			if item.timeout {
+				sw.WriteError(sse.ErrorContract{
+					Code:         sse.ErrCodeFirstTokenTimeout,
+					Retryable:    true,
+					RetryAfterMs: 3000,
+					Message:      item.err.Error(),
+				})
+			} else if ctx.Err() == context.DeadlineExceeded {
+				sw.WriteError(sse.ErrorContract{
+					Code:         sse.ErrCodeLLMTimeout,
+					Retryable:    true,
+					RetryAfterMs: 3000,
+					Message:      "执行超时，请重试",
+				})
+			} else {
+				sw.WriteError(sse.ErrorContract{
+					Code:         sse.ErrCodeStreamError,
+					Retryable:    true,
+					RetryAfterMs: 3000,
+					Message:      fmt.Sprintf("流式读取失败: %v", item.err),
+				})
+			}
+			stats.close("error")
+			return
+		case "eof":
+			goto streamDone
 		}
 	}
+streamDone:
 
-	// 计算 agent 执行时长
+	// 10. 计算 agent 执行时长
 	agentDurationMs := time.Since(agentStartTime).Milliseconds()
 
-	// 构建 agent_steps（RAG 管道的两个步骤：query_understand 和 knowledge_search）
+	// 11. 构建 agent_steps（RAG 管道的两个步骤：query_understand 和 knowledge_search）
 	agentSteps := entity.AgentSteps{
 		{
 			Iteration: 1,
@@ -403,10 +482,10 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 		},
 	}
 
-	// 判断是否为兜底回复（没有搜索结果）
+	// 12. 判断是否为兜底回复（没有搜索结果）
 	isFallback := len(searchResults) == 0
 
-	// 保存助手消息
+	// 13. 保存助手消息
 	if fullContent != "" {
 		var references []entity.Reference
 		for _, r := range searchResults {
@@ -424,26 +503,27 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 		)
 	}
 
-	// 首条消息后自动生成会话标题并推送，前端据此把侧栏的“新对话”更新为实际标题。
-	// 仅当标题仍为默认占位时生成，避免覆盖用户手动重命名的会话。
+	// 14. 首条消息后自动生成会话标题并推送，前端据此把侧栏的“新对话”更新为实际标题。
+	//     仅当标题仍为默认占位时生成，避免覆盖用户手动重命名的会话。
 	if req.Query != "" {
 		if newTitle, err := ctrl.chatService.GenerateSessionTitle(c.Request.Context(), sessionID, userID, req.Query); err == nil && newTitle != "" && newTitle != "新对话" {
-			writeSSEEvent(c.Writer, sseEvent{
+			sw.WriteMessage(sseEvent{
 				ResponseType: SSEEventSessionTitle,
 				Content:      newTitle,
 				SessionID:    strconv.FormatUint(uint64(sessionID), 10),
+				Ts:           time.Now().UnixMilli(),
 			})
-			c.Writer.Flush()
 		}
 	}
 
-	// 发送完成事件
-	writeSSEEvent(c.Writer, sseEvent{
+	// 15. 发送完成事件
+	sw.WriteMessage(sseEvent{
 		ResponseType: SSEEventComplete,
 		Done:         true,
 		SessionID:    strconv.FormatUint(uint64(sessionID), 10),
+		Ts:           time.Now().UnixMilli(),
 	})
-	c.Writer.Flush()
+	stats.close("done")
 }
 
 // AgentChat Agent 聊天桩（阶段二）
@@ -465,6 +545,170 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 func writeSSEEvent(w http.ResponseWriter, event sseEvent) {
 	data, _ := json.Marshal(event)
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sseProtocolEvent, string(data))
+}
+
+// ===== SSE 第一批优化辅助 =====
+
+// streamItem pump goroutine 与 handler 主循环间的通道消息
+// kind: refs | answer | error | eof
+type streamItem struct {
+	kind    string // refs | answer | error | eof
+	refs    []service.VectorSearchResult
+	content string
+	err     error
+	timeout bool // error 是否为首 token 超时
+}
+
+// recvResult 首 chunk 读取结果（首 token 超时保护用）
+type recvResult struct {
+	chunk *einoschema.Message
+	err   error
+}
+
+// pumpKnowledgeChat 在子 goroutine 中执行：service 调用 + 流式读取，结果经通道回传。
+// 首 token 超时在 pump 内保护（流建立后第一个 chunk 必须在窗口内到达）；
+// 总执行超时由外层 ctx 兜底（取消后 LLM 生成停止、流关闭、Recv 返回）。
+func pumpKnowledgeChat(ctx context.Context, svc service.ChatService, sessionID, userID uint, req *service.KnowledgeChatRequest, firstTokenTimeout time.Duration, out chan<- streamItem) {
+	defer close(out)
+	stream, searchResults, err := svc.KnowledgeChat(ctx, sessionID, userID, req)
+	if err != nil {
+		out <- streamItem{kind: "error", err: err}
+		return
+	}
+	out <- streamItem{kind: "refs", refs: searchResults}
+
+	// 首 token 保护：第一个 chunk 必须在窗口内到达，否则报超时
+	first := make(chan recvResult, 1)
+	go func() {
+		chunk, recvErr := stream.Recv()
+		first <- recvResult{chunk: chunk, err: recvErr}
+	}()
+	select {
+	case r := <-first:
+		if !emitChunk(out, r.chunk, r.err) {
+			return
+		}
+	case <-time.After(firstTokenTimeout):
+		out <- streamItem{kind: "error", err: errors.New("LLM 首 token 超时"), timeout: true}
+		return
+	}
+
+	// 后续流式读取
+	for {
+		chunk, recvErr := stream.Recv()
+		if !emitChunk(out, chunk, recvErr) {
+			return
+		}
+	}
+}
+
+// emitChunk 将单个 chunk 转为通道消息；返回 false 表示流已结束
+func emitChunk(out chan<- streamItem, chunk *einoschema.Message, err error) bool {
+	if err == io.EOF {
+		out <- streamItem{kind: "eof"}
+		return false
+	}
+	if err != nil {
+		out <- streamItem{kind: "error", err: err}
+		return false
+	}
+	if chunk != nil && chunk.Content != "" {
+		out <- streamItem{kind: "answer", content: chunk.Content}
+	}
+	return true
+}
+
+// contractForError pre-work 阶段错误 → 错误契约（非 LLM 问题默认不可重试）
+func contractForError(err error, timeout bool) sse.ErrorContract {
+	if timeout {
+		return sse.ErrorContract{Code: sse.ErrCodeFirstTokenTimeout, Retryable: true, RetryAfterMs: 3000, Message: err.Error()}
+	}
+	return sse.ErrorContract{Code: sse.ErrCodeInternal, Retryable: false, Message: err.Error()}
+}
+
+// buildRefs 检索结果 → SSE references 事件载荷
+func buildRefs(searchResults []service.VectorSearchResult) []reference {
+	refs := make([]reference, 0, len(searchResults))
+	for _, r := range searchResults {
+		refs = append(refs, reference{
+			ChunkID:        r.ChunkID,
+			Content:        r.Content,
+			Score:          r.Score,
+			KnowledgeID:    r.KnowledgeID,
+			KnowledgeTitle: r.KnowledgeTitle,
+		})
+	}
+	return refs
+}
+
+// genRequestID 生成请求 ID（无 X-Request-ID 时兜底，用于事件 ID 前缀与日志贯穿）
+func genRequestID() string {
+	b := make([]byte, 6)
+	if _, err := rand.Read(b); err != nil {
+		return fmt.Sprintf("req-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
+}
+
+// sseStats SSE 连接生命周期统计（sse_open / sse_close 日志）
+type sseStats struct {
+	requestID  string
+	userID     uint
+	sessionID  uint
+	openAt     time.Time
+	firstToken time.Time
+	events     int64
+	closed     bool
+}
+
+func newSSEStats(requestID string, userID, sessionID uint) *sseStats {
+	return &sseStats{requestID: requestID, userID: userID, sessionID: sessionID, openAt: time.Now()}
+}
+
+// markOpen sse_open 日志
+func (s *sseStats) markOpen() {
+	logger.Info("sse_open",
+		zap.String("request_id", s.requestID),
+		zap.Uint("user_id", s.userID),
+		zap.Uint("session_id", s.sessionID),
+	)
+}
+
+// markFirstToken 记录首事件（references 到达）时刻
+func (s *sseStats) markFirstToken() {
+	if s.firstToken.IsZero() {
+		s.firstToken = time.Now()
+	}
+}
+
+// markEvent 业务事件计数 + debug 级日志（防刷屏）
+func (s *sseStats) markEvent() {
+	s.events++
+	logger.Debug("sse_event",
+		zap.String("request_id", s.requestID),
+		zap.Int64("seq", s.events),
+	)
+}
+
+// close sse_close 汇总日志（closed 幂等：defer 与显式调用并存时只记一次）
+func (s *sseStats) close(reason string) {
+	if s.closed {
+		return
+	}
+	s.closed = true
+	var firstTokenMs int64
+	if !s.firstToken.IsZero() {
+		firstTokenMs = s.firstToken.Sub(s.openAt).Milliseconds()
+	}
+	logger.Info("sse_close",
+		zap.String("request_id", s.requestID),
+		zap.Uint("user_id", s.userID),
+		zap.Uint("session_id", s.sessionID),
+		zap.String("reason", reason),
+		zap.Int64("duration_ms", time.Since(s.openAt).Milliseconds()),
+		zap.Int64("first_token_ms", firstTokenMs),
+		zap.Int64("events", s.events),
+	)
 }
 
 func parseSessionID(c *gin.Context) (uint, bool) {

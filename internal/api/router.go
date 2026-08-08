@@ -13,8 +13,11 @@ import (
 	"docmind/internal/api/v1/vectorstore"
 	"docmind/internal/middleware"
 	"docmind/internal/service"
+	"docmind/pkg/config"
+	"docmind/pkg/sse"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
@@ -48,6 +51,9 @@ func NewRouter(
 	tagService service.TagService,
 	chatService service.ChatService,
 	agentService service.AgentService,
+	sseRegistry *sse.Registry,
+	redis *redis.Client,
+	sseCfg config.SSEConfig,
 ) *Router {
 	return &Router{
 		authCtrl:           auth.NewController(authService, userService),
@@ -57,7 +63,7 @@ func NewRouter(
 		knowledgeBaseCtrl:  knowledgebase.NewController(knowledgeBaseService, faqService, tagService),
 		modelCtrl:          models.NewController(modelService),
 		initializationCtrl: initialization.NewController(modelService),
-		chatCtrl:           chat.NewController(chatService),
+		chatCtrl:           chat.NewController(chatService, sseRegistry, redis, sseCfg),
 		agentCtrl:          agent.NewController(agentService),
 		tagCtrl:            tag.NewController(tagService),
 	}

@@ -12,6 +12,7 @@ type Config struct {
 	DocReader DocReaderConfig `mapstructure:"docreader"`
 	Storage   StorageConfig   `mapstructure:"storage"`
 	MinIO     MinIOConfig     `mapstructure:"minio"`
+	SSE       SSEConfig       `mapstructure:"sse"`
 }
 
 // AppConfig 应用配置
@@ -96,6 +97,17 @@ type DocReaderConfig struct {
 // StorageConfig 本地文件存储配置
 type StorageConfig struct {
 	LocalRoot string `mapstructure:"local_root"`
+}
+
+// SSEConfig SSE 流式连接配置
+// Duration 字段在 YAML 中写 "15s" 形式（viper 默认支持字符串转 Duration）
+type SSEConfig struct {
+	HeartbeatInterval time.Duration `mapstructure:"heartbeat_interval"`  // 心跳间隔
+	IdempotencyTTL    time.Duration `mapstructure:"idempotency_ttl"`     // 幂等键 TTL
+	TotalTimeout      time.Duration `mapstructure:"total_timeout"`       // 单次问答总执行超时
+	FirstTokenTimeout time.Duration `mapstructure:"first_token_timeout"` // 首 token 超时
+	ShutdownGrace     time.Duration `mapstructure:"shutdown_grace"`      // 优雅关闭时通知活跃连接后的等待
+	MaxBodyBytes      int64         `mapstructure:"max_body_bytes"`      // 请求体大小上限（字节）
 }
 
 // MinIOConfig MinIO 对象存储配置

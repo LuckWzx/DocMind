@@ -19,6 +19,7 @@ import (
 	"docmind/pkg/config"
 	"docmind/pkg/database"
 	"docmind/pkg/logger"
+	"docmind/pkg/sse"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -35,6 +36,7 @@ type App struct {
 	docReaderCmd    *exec.Cmd
 	router          *api.Router
 	server          *http.Server
+	sseRegistry     *sse.Registry
 }
 
 // NewApp 创建应用实例
@@ -294,7 +296,10 @@ func (a *App) initDependencies() error {
 	}
 
 	// 创建 Router
-	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc)
+	// SSE 活跃连接注册表（优雅关闭时向活跃连接广播 SERVER_SHUTDOWN）
+	sseRegistry := sse.NewRegistry()
+	a.sseRegistry = sseRegistry
+	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc, sseRegistry, a.redis, a.cfg.SSE)
 
 	return nil
 }
@@ -312,12 +317,13 @@ func (a *App) initServer() {
 	// 注册路由
 	a.router.Setup(engine)
 
-	// 创建 HTTP 服务器（SSE 流式响应需要较长超时）
+	// 创建 HTTP 服务器（SSE 流式响应需要较长超时；
+	// WriteTimeout 是绝对 deadline，心跳不会重置它，故放宽到 10 分钟避免与总执行超时边界重叠）
 	a.server = &http.Server{
 		Addr:           fmt.Sprintf(":%d", a.cfg.App.Port),
 		Handler:        engine,
 		ReadTimeout:    60 * time.Second,
-		WriteTimeout:   300 * time.Second, // 5 分钟，SSE 流式响应需要
+		WriteTimeout:   600 * time.Second, // 10 分钟，SSE 流式响应需要（总执行超时由应用层护栏控制）
 		MaxHeaderBytes: 1 << 20,           // 1 MB
 	}
 }
@@ -349,6 +355,15 @@ func (a *App) gracefulShutdown() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	// 先向活跃 SSE 连接广播 SERVER_SHUTDOWN（retryable=true）并停心跳，
+	// 再等待短暂收包时间，让前端收到明确的关停提示而不是莫名断流
+	if n := a.sseRegistry.NotifyShutdown(); n > 0 {
+		logger.Info("已通知活跃 SSE 连接", zap.Int("connections", n))
+		if a.cfg.SSE.ShutdownGrace > 0 {
+			time.Sleep(a.cfg.SSE.ShutdownGrace)
+		}
+	}
 
 	// 关闭 HTTP 服务器
 	if err := a.server.Shutdown(ctx); err != nil {

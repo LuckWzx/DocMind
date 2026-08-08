@@ -172,6 +172,9 @@ export function useStream() {
         onmessage: (ev) => {
           if (myGeneration !== streamGeneration) return
           const parsed = JSON.parse(ev.data);
+          // 协议层事件（ping 心跳等）没有 response_type，直接忽略，
+          // 避免被当作空回答渲染成空白气泡
+          if (!parsed?.response_type) return
           // Log first answer chunk for end-to-end TTFB measurement.
           // Filter by event type so non-answer events (references, tool
           // calls, etc.) don't count as the "first token" arrival.
