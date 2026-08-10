@@ -60,7 +60,8 @@ DocMind/
 │   │   ├── types.go                   # 统一事件类型与 RunRequest
 │   │   ├── skills/                    # 技能系统（官方 skill middleware 适配层）
 │   │   │   ├── backend.go             # 本地文件系统 Backend（filesystem.Backend 实现）
-│   │   │   └── adapter.go             # SelectedSkills 白名单 + middleware 组装
+│   │   │   ├── adapter.go             # SelectedSkills 白名单 + middleware 组装
+│   │   │   └── data-processor/        # 数据处理技能（SKILL.md + scripts/ Python 脚本）
 │   │   └── tools/                     # Agent 工具集
 │   │       ├── kb_search.go           # 知识库检索工具（向量‖BM25→RRF→rerank）
 │   │       └── registry.go            # 工具注册表（AllowedTools 白名单）
@@ -79,6 +80,7 @@ DocMind/
 │   ├── middleware/                    # 中间件
 │   │   ├── auth.go                   # JWT 鉴权
 │   │   ├── cors.go                   # 跨域
+│   │   ├── idempotency.go            # 请求幂等
 │   │   ├── logger.go                 # 请求日志
 │   │   └── recovery.go              # 异常恢复
 │   ├── model/                        # 数据模型
