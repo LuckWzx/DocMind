@@ -2,9 +2,9 @@ package repository
 
 import (
 	"errors"
-	"fmt"
 
 	"docmind/internal/model/entity"
+	"docmind/pkg/logger"
 
 	"gorm.io/gorm"
 )
@@ -44,28 +44,24 @@ func (r *agentRepository) FindByID(id uint) (*entity.Agent, error) {
 
 func (r *agentRepository) FindByIDStr(idStr string) (*entity.Agent, error) {
 	var agent entity.Agent
-	// 首先尝试通过 id_str 字段查找
+	// 优先按 id_str 字段查找（内置智能体为 builtin-xxx 标识）
 	err := r.db.Where("id_str = ?", idStr).First(&agent).Error
-	fmt.Printf("[AgentRepo] FindByIDStr: idStr=%s, err=%v\n", idStr, err)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			fmt.Printf("[AgentRepo] FindByIDStr: id_str 未找到，尝试用数字 ID 查找\n")
-			// 如果 id_str 没有找到，尝试通过数字 ID 查找（前端可能传递的是数字 ID 的字符串形式）
-			var agentByID entity.Agent
-			errByID := r.db.Where("id = ?", idStr).First(&agentByID).Error
-			fmt.Printf("[AgentRepo] FindByIDStr: id=%s, errByID=%v\n", idStr, errByID)
-			if errByID != nil {
-				if errors.Is(errByID, gorm.ErrRecordNotFound) {
-					fmt.Printf("[AgentRepo] FindByIDStr: 数字 ID 也未找到\n")
-					return nil, nil
-				}
-				return nil, errByID
-			}
-			return &agentByID, nil
-		}
+	if err == nil {
+		return &agent, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
-	return &agent, nil
+	// id_str 未命中时兑底按数字主键 ID 查找（前端可能传数字 ID 字符串，兼容旧数据）
+	var agentByID entity.Agent
+	if errByID := r.db.Where("id = ?", idStr).First(&agentByID).Error; errByID == nil {
+		return &agentByID, nil
+	} else if !errors.Is(errByID, gorm.ErrRecordNotFound) {
+		return nil, errByID
+	}
+	// 两种标识均未找到：debug 级日志（常规兜底路径，避免每次会话解析都刷 warn）
+	logger.Debugf("[AgentRepo] FindByIDStr: id_str=%s 未找到", idStr)
+	return nil, nil
 }
 
 func (r *agentRepository) ListByUser(userID uint) ([]*entity.Agent, error) {

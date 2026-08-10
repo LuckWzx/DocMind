@@ -59,6 +59,9 @@ func InitPostgreSQL(cfg *config.PostgreSQLConfig) (*gorm.DB, error) {
 	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
 	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
 	sqlDB.SetConnMaxLifetime(time.Hour)
+	// 空闲连接超时回收：避免远程服务端（防火墙/代理/数据库）已回收连接后，
+	// 客户端仍持有“死连接”导致下次请求惰性重建（表现为单条 SQL 突然 200ms+）
+	sqlDB.SetConnMaxIdleTime(30 * time.Minute)
 
 	// 测试连接
 	if err := sqlDB.Ping(); err != nil {

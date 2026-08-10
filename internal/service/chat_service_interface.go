@@ -40,6 +40,8 @@ type ChatService interface {
 	LoadMessages(ctx context.Context, sessionID uint, userID uint, limit int, beforeTime *time.Time) ([]*entity.Message, error)
 	// SaveAssistantMessage 保存助手消息
 	SaveAssistantMessage(ctx context.Context, sessionID uint, content string, references []entity.Reference, agentSteps entity.AgentSteps, isCompleted bool, agentDurationMs int64, isFallback bool) error
+	// ResolveChatModelID 解析会话实际使用的对话模型 ID（长期记忆等模块按当前用户会话模型调用）
+	ResolveChatModelID(ctx context.Context, userID uint, session *entity.Session) string
 	// GenerateSessionTitle 若会话标题仍为默认占位（"新对话"），则用首条用户消息生成标题并落库，返回新标题。已被用户手动重命名的会话不会被覆盖。
 	GenerateSessionTitle(ctx context.Context, sessionID uint, userID uint, query string) (string, error)
 }

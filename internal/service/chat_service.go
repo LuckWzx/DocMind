@@ -10,6 +10,7 @@ import (
 	"docmind/internal/agent/tools"
 	"docmind/internal/llm"
 	"docmind/internal/memory"
+	"docmind/internal/memory/longterm"
 	"docmind/internal/model/entity"
 	"docmind/internal/pipeline"
 	"docmind/internal/repository"
@@ -51,6 +52,8 @@ type chatService struct {
 	pipelineDeps *pipeline.PipelineDeps // Agent kb_search 工具复用同一套检索依赖
 	// tokenEstimator 历史 Token 估算器（短期记忆触发判定用）
 	tokenEstimator *token.Estimator
+	// memorySvc 长期记忆服务（跨会话知识图谱，nil 时跳过检索注入）
+	memorySvc longterm.MemoryService
 }
 
 // BuildPipelineDeps 构建 RAG Pipeline 依赖
@@ -96,6 +99,7 @@ func NewChatService(
 	vectorStoreRepo repository.VectorStoreRepository,
 	agentSvc AgentService,
 	primaryDB *gorm.DB,
+	memorySvc longterm.MemoryService,
 ) (ChatService, error) {
 	// 构建 Pipeline 依赖（Agent kb_search 工具复用同一套依赖）
 	pipelineDeps := BuildPipelineDeps(embedderFactory, rerankerFactory, kbRepo, vectorStoreRepo, primaryDB)
@@ -115,12 +119,14 @@ func NewChatService(
 	return &chatService{
 		sessionRepo:    sessionRepo,
 		messageRepo:    messageRepo,
+		summaryRepo:    summaryRepo,
 		modelFactory:   modelFactory,
 		agentSvc:       agentSvc,
 		kbRepo:         kbRepo,
 		ragPipeline:    ragPipeline,
 		pipelineDeps:   pipelineDeps,
 		tokenEstimator: tokenEstimator,
+		memorySvc:      memorySvc,
 	}, nil
 }
 
@@ -269,6 +275,17 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 		StepCallback:    stepCallback,
 	}
 
+	// 5.1 长期记忆检索：相关历史片段注入当前问题（失败仅记日志，不阻断对话）。
+	// 提取/关键词模型跟随当前用户会话的对话模型（agentConfig.ModelID），与短期记忆一致
+	if s.memorySvc != nil {
+		mc, memErr := s.memorySvc.RetrieveMemory(ctx, userID, agentConfig.ModelID, req.Query)
+		if memErr != nil {
+			logger.Warnf("[LongTermMemory] 检索失败（跳过注入）: %v", memErr)
+		} else if mc != nil {
+			pipelineCtx.MemoryText = mc.Text()
+		}
+	}
+
 	// 5. 执行 Pipeline
 	result, err := s.ragPipeline.Run(ctx, pipelineCtx)
 	if err != nil {
@@ -317,7 +334,7 @@ func (s *chatService) AgentChat(ctx context.Context, sessionID uint, userID uint
 	s.sessionRepo.UpdateLastMessage(sessionID, req.Query)
 
 	// 3. 解析 Agent 实体（内置模板 + 用户覆盖 / 会话内嵌配置）
-	agt, err := s.resolveAgentForChat(session, userID)
+	agt, err := s.resolveAgentForChat(ctx, session, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +370,19 @@ func (s *chatService) AgentChat(ctx context.Context, sessionID uint, userID uint
 			messages = historyToSchemaMessages(historyMsgs, userMsg.ID)
 		}
 	}
-	messages = append(messages, &einoschema.Message{Role: einoschema.User, Content: req.Query})
+	// 6.5 长期记忆检索：相关历史片段注入当前问题（失败仅记日志，不阻断对话）。
+	// 提取/关键词模型跟随当前用户会话的对话模型（agt.Config.ModelID），与对话链路一致；
+	// 注意只注入到发给模型的 user 消息，不改 req.Query（controller 存储提取仍用原始 query）
+	query := req.Query
+	if s.memorySvc != nil {
+		mc, memErr := s.memorySvc.RetrieveMemory(ctx, userID, agt.Config.ModelID, req.Query)
+		if memErr != nil {
+			logger.Warnf("[LongTermMemory] 检索失败（跳过注入）: %v", memErr)
+		} else if mc != nil {
+			query += mc.Text()
+		}
+	}
+	messages = append(messages, &einoschema.Message{Role: einoschema.User, Content: query})
 
 	// 7. 运行引擎，返回事件流（controller 消费并映射 SSE 事件）
 	stream, err := eng.Run(ctx, &agent.RunRequest{
@@ -371,7 +400,7 @@ func (s *chatService) AgentChat(ctx context.Context, sessionID uint, userID uint
 // resolveAgentForChat 解析会话关联的 Agent 实体
 // 优先级：session.AgentID（内置模板 + 用户覆盖）→ session.AgentConfig（前端内嵌配置）
 // ModelID 为空时按会话配置兜底（内嵌 AgentConfig → SummaryModelID → default）
-func (s *chatService) resolveAgentForChat(session *entity.Session, userID uint) (*entity.Agent, error) {
+func (s *chatService) resolveAgentForChat(ctx context.Context, session *entity.Session, userID uint) (*entity.Agent, error) {
 	var agt *entity.Agent
 	if session.AgentID != "" {
 		if resolved, err := s.agentSvc.ResolveForUser(userID, session.AgentID); err == nil && resolved != nil {
@@ -385,7 +414,7 @@ func (s *chatService) resolveAgentForChat(session *entity.Session, userID uint) 
 		return nil, bizerrors.New(bizerrors.CodeBadRequest, "会话未配置智能体（AgentID/AgentConfig 均为空）")
 	}
 	if agt.Config.ModelID == "" {
-		agt.Config.ModelID = s.resolveChatModelID(session)
+		agt.Config.ModelID = s.ResolveChatModelID(ctx, userID, session)
 	}
 	return agt, nil
 }
@@ -420,13 +449,24 @@ func (s *chatService) resolveKBIDs(session *entity.Session, reqKBIDs []string) [
 	return nil
 }
 
-// resolveChatModelID 确定使用的 Chat 模型 ID
-func (s *chatService) resolveChatModelID(session *entity.Session) string {
-	// 优先使用 Session 中智能体配置的 model_id
+// ResolveChatModelID 解析会话实际使用的对话模型 ID，与对话链路（resolveAgentForChat/resolveAgentConfig）
+// 保持同一解析链：Agent 配置（含用户覆盖）→ 会话 AgentConfig → SummaryModelID → default。
+// 供长期记忆等模块按当前用户会话模型调用。
+func (s *chatService) ResolveChatModelID(ctx context.Context, userID uint, session *entity.Session) string {
+	if session == nil {
+		return "default"
+	}
+	// 1. Agent 配置（含用户覆盖，与对话完全一致）
+	if session.AgentID != "" {
+		if agent, err := s.agentSvc.ResolveForUser(userID, session.AgentID); err == nil && agent != nil && agent.Config.ModelID != "" {
+			return agent.Config.ModelID
+		}
+	}
+	// 2. 会话内嵌配置
 	if session.AgentConfig != nil && session.AgentConfig.ModelID != "" {
 		return session.AgentConfig.ModelID
 	}
-	// 其次使用 Session 的 summary_model_id
+	// 3. 摘要模型 ID
 	if session.SummaryModelID != "" {
 		return session.SummaryModelID
 	}

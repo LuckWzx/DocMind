@@ -114,6 +114,14 @@ instance.interceptors.response.use(
     // 根据业务状态码处理逻辑
     const { status, data } = response;
     if (status >= 200 && status < 300) {
+      // 后端统一返回 HTTP 200 + 业务 code（pkg/response 全部 c.JSON(200, ...)），
+      // token 过期时 HTTP 状态仍是 200、只有 body.code=401。这里必须按 HTTP 401
+      // 转入错误分支，复用下面的刷新/跳转逻辑，否则过期永远跳不到登录页。
+      // 注意：错误分支用 error.response.status === 401 判断，所以这里要把
+      // response.status 伪装成 401 再 reject，否则刷新逻辑依然无法命中。
+      if (data && typeof data === 'object' && data.code === 401) {
+        return Promise.reject({ response: { ...response, status: 401 }, config: response.config });
+      }
       return data;
     } else {
       return Promise.reject(data);

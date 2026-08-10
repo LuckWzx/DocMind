@@ -52,9 +52,15 @@ func buildPromptNode(ctx context.Context, input *Context) (*Context, error) {
 		{Role: schema.System, Content: systemPrompt},
 	}
 	messages = append(messages, input.HistoryMessages...)
+
+	// 4. 长期记忆注入：检索到的相关历史片段拼到当前 user 消息尾部（无记忆时行为不变）
+	query := input.Query
+	if input.MemoryText != "" {
+		query += input.MemoryText
+	}
 	messages = append(messages, &schema.Message{
 		Role:    schema.User,
-		Content: input.Query,
+		Content: query,
 	})
 	input.Messages = messages
 

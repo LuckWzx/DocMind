@@ -14,6 +14,8 @@ import (
 
 	"docmind/internal/api"
 	"docmind/internal/llm"
+	"docmind/internal/memory/longterm"
+	"docmind/internal/model/entity"
 	"docmind/internal/repository"
 	"docmind/internal/service"
 	"docmind/pkg/config"
@@ -21,6 +23,7 @@ import (
 	"docmind/pkg/logger"
 	"docmind/pkg/sse"
 
+	einomodel "github.com/cloudwego/eino/components/model"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -290,7 +293,53 @@ func (a *App) initDependencies() error {
 		logger.Warn("创建内置智能体失败", zap.Error(err))
 	}
 
-	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB)
+	// 长期记忆服务（Neo4j 知识图谱）：未启用 / 连接失败 / 无提取模型时降级为 nil（全链路跳过，不阻塞主流程）
+	var memorySvc longterm.MemoryService
+	if a.cfg.Memory.Enabled {
+		// 提取模型 ID：配置优先，否则先取系统级（user_id=0）对话模型，再取任意用户对话模型兜底
+		memoryModelID := a.cfg.Memory.ModelID
+		if memoryModelID == "" {
+			if chatModels, listErr := modelRepo.List(entity.ModelTypeKnowledgeQA, 0); listErr == nil && len(chatModels) > 0 {
+				memoryModelID = fmt.Sprintf("%d", chatModels[0].ID)
+			} else if chatModels, listErr := modelRepo.ListAll(entity.ModelTypeKnowledgeQA); listErr == nil && len(chatModels) > 0 {
+				memoryModelID = fmt.Sprintf("%d", chatModels[0].ID)
+			}
+		}
+		if memoryModelID == "" {
+			logger.Warn("长期记忆未启用：未配置 memory.model_id 且无可用对话模型")
+		} else {
+			driver, driverErr := longterm.NewNeo4jDriver(a.cfg.Neo4j)
+			if driverErr != nil {
+				logger.Warn("Neo4j 初始化失败，长期记忆不可用", zap.Error(driverErr))
+			} else {
+				repo, repoErr := longterm.NewNeo4jMemoryRepository(driver)
+				if repoErr != nil {
+					logger.Warn("Neo4j Schema 初始化失败，长期记忆不可用", zap.Error(repoErr))
+					_ = driver.Close(context.Background())
+				} else {
+					// 提取模型工厂：显式配置 memory.model_id 时固定用配置模型（用户明确指定，优先于会话模型）；
+					// 未配置时跟随当前用户会话的对话模型，空/default 时兑底到启动自动选择的模型
+					if a.cfg.Memory.ModelID != "" {
+						extractor := longterm.NewGraphExtractor(func(ctx context.Context, _ string) (einomodel.ToolCallingChatModel, error) {
+							return chatModelFactory.CreateChatModel(ctx, memoryModelID)
+						})
+						memorySvc = longterm.NewMemoryService(repo, extractor, a.cfg.Memory.RetrieveLimit)
+					} else {
+						extractor := longterm.NewGraphExtractor(func(ctx context.Context, modelID string) (einomodel.ToolCallingChatModel, error) {
+							if modelID == "" || modelID == "default" {
+								modelID = memoryModelID
+							}
+							return chatModelFactory.CreateChatModel(ctx, modelID)
+						})
+						memorySvc = longterm.NewMemoryService(repo, extractor, a.cfg.Memory.RetrieveLimit)
+					}
+					logger.Info("长期记忆已启用", zap.String("extract_model_id", memoryModelID), zap.Bool("config_priority", a.cfg.Memory.ModelID != ""))
+				}
+			}
+		}
+	}
+
+	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc)
 	if err != nil {
 		return fmt.Errorf("创建 ChatService 失败: %w", err)
 	}
@@ -299,7 +348,7 @@ func (a *App) initDependencies() error {
 	// SSE 活跃连接注册表（优雅关闭时向活跃连接广播 SERVER_SHUTDOWN）
 	sseRegistry := sse.NewRegistry()
 	a.sseRegistry = sseRegistry
-	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc, sseRegistry, a.redis, a.cfg.SSE)
+	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc, sseRegistry, a.redis, a.cfg.SSE, memorySvc)
 
 	return nil
 }

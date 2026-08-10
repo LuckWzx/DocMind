@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"docmind/internal/agent"
+	"docmind/internal/memory/longterm"
 	"docmind/internal/middleware"
 	"docmind/internal/model/entity"
 	"docmind/internal/pipeline"
@@ -35,15 +36,18 @@ type Controller struct {
 	sseRegistry *sse.Registry
 	redis       *redis.Client
 	sseCfg      config.SSEConfig
+	// memorySvc 长期记忆服务（跨会话知识图谱，nil 时跳过异步存储）
+	memorySvc longterm.MemoryService
 }
 
 // NewController 创建 Chat 控制器
-func NewController(chatService service.ChatService, sseRegistry *sse.Registry, redis *redis.Client, sseCfg config.SSEConfig) *Controller {
+func NewController(chatService service.ChatService, sseRegistry *sse.Registry, redis *redis.Client, sseCfg config.SSEConfig, memorySvc longterm.MemoryService) *Controller {
 	return &Controller{
 		chatService: chatService,
 		sseRegistry: sseRegistry,
 		redis:       redis,
 		sseCfg:      sseCfg,
+		memorySvc:   memorySvc,
 	}
 }
 
@@ -557,6 +561,8 @@ streamDone:
 			c.Request.Context(), sessionID, fullContent, references,
 			agentSteps, true, agentDurationMs, isFallback,
 		)
+		// 长期记忆：对话结束后异步提取落图（提取模型跟随当前用户会话的模型配置）
+		ctrl.triggerMemoryStore(c.Request.Context(), userID, sessionID, ctrl.resolveSessionModelID(c.Request.Context(), userID, sessionID), req.Query, fullContent)
 	}
 
 	// 14. 首条消息后自动生成会话标题并推送，前端据此把侧栏的“新对话”更新为实际标题。
@@ -730,6 +736,8 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 			c.Request.Context(), sessionID, fullContent, references,
 			agentSteps, true, agentDurationMs, len(references) == 0,
 		)
+		// 长期记忆：对话结束后异步提取落图（提取模型跟随当前用户会话的模型配置）
+		ctrl.triggerMemoryStore(c.Request.Context(), userID, sessionID, ctrl.resolveSessionModelID(c.Request.Context(), userID, sessionID), req.Query, fullContent)
 	}
 
 	// 首条消息后自动生成会话标题并推送
@@ -788,6 +796,30 @@ func emitAgentEvent(sw *sse.Writer, ev *agent.OutputEvent, fullContent *string) 
 func writeSSEEvent(w http.ResponseWriter, event sseEvent) {
 	data, _ := json.Marshal(event)
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sseProtocolEvent, string(data))
+}
+
+// triggerMemoryStore 对话结束后异步提取长期记忆并落图（Neo4j 知识图谱）。
+// modelID 为当前用户会话实际使用的对话模型（nil 时由工厂内部兑底）。
+// 异步执行 + 失败仅记日志，绝不阻断 SSE 响应主流程。
+func (ctrl *Controller) triggerMemoryStore(ctx context.Context, userID, sessionID uint, modelID, query, answer string) {
+	if ctrl.memorySvc == nil || answer == "" {
+		return
+	}
+	bgCtx := context.WithoutCancel(ctx)
+	go func() {
+		if err := ctrl.memorySvc.AddEpisode(bgCtx, userID, sessionID, modelID, query, answer); err != nil {
+			logger.Warnf("[LongTermMemory] 记忆提取失败: %v", err)
+		}
+	}()
+}
+
+// resolveSessionModelID 解析当前会话实际使用的对话模型 ID（长期记忆提取用，跟随用户配置）
+func (ctrl *Controller) resolveSessionModelID(ctx context.Context, userID, sessionID uint) string {
+	session, err := ctrl.chatService.GetSession(ctx, sessionID, userID)
+	if err != nil || session == nil {
+		return ""
+	}
+	return ctrl.chatService.ResolveChatModelID(ctx, userID, session)
 }
 
 // ===== SSE 第一批优化辅助 =====

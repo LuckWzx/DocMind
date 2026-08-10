@@ -11,6 +11,7 @@ import (
 	"docmind/internal/api/v1/models"
 	"docmind/internal/api/v1/tag"
 	"docmind/internal/api/v1/vectorstore"
+	"docmind/internal/memory/longterm"
 	"docmind/internal/middleware"
 	"docmind/internal/service"
 	"docmind/pkg/config"
@@ -54,6 +55,7 @@ func NewRouter(
 	sseRegistry *sse.Registry,
 	redis *redis.Client,
 	sseCfg config.SSEConfig,
+	memorySvc longterm.MemoryService,
 ) *Router {
 	return &Router{
 		authCtrl:           auth.NewController(authService, userService),
@@ -63,7 +65,7 @@ func NewRouter(
 		knowledgeBaseCtrl:  knowledgebase.NewController(knowledgeBaseService, faqService, tagService),
 		modelCtrl:          models.NewController(modelService),
 		initializationCtrl: initialization.NewController(modelService),
-		chatCtrl:           chat.NewController(chatService, sseRegistry, redis, sseCfg),
+		chatCtrl:           chat.NewController(chatService, sseRegistry, redis, sseCfg, memorySvc),
 		agentCtrl:          agent.NewController(agentService),
 		tagCtrl:            tag.NewController(tagService),
 	}

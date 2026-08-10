@@ -112,6 +112,8 @@ type Context struct {
 	UserID          uint
 	AgentConfig     *AgentConfig      // 从 Agent 动态解析的配置
 	HistoryMessages []*schema.Message // 对话历史（由调用方加载）
+	// MemoryText 长期记忆检索结果文本（由调用方注入，非空时拼接到当前 user 消息尾部）
+	MemoryText string
 
 	// 依赖
 	ModelRepo    repository.ModelRepository
