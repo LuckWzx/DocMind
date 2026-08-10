@@ -67,6 +67,15 @@ docreader:
 storage:
   local_root: data/files
 
+# CozeLoop 链路追踪配置（可选，Eino 全局 Trace 上报）
+# 启用后自动上报 Agent 引擎 / RAG 管道 / ChatModel / Embedder 等所有 Eino 组件调用
+# workspace_id 与 api_token 同时配置才生效；敏感 Token 也可用环境变量 COZELOOP_API_TOKEN 覆盖
+cozeloop:
+  enabled: false
+  workspace_id: ""
+  api_token: ""
+  # api_base_url: ""  # 可选，默认国内版 https://api.coze.cn
+
 # MinIO 配置
 minio:
   endpoint: ""          # MinIO 服务地址

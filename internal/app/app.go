@@ -16,6 +16,7 @@ import (
 	"docmind/internal/llm"
 	"docmind/internal/repository"
 	"docmind/internal/service"
+	"docmind/internal/tracing"
 	"docmind/pkg/config"
 	"docmind/pkg/database"
 	"docmind/pkg/logger"
@@ -37,6 +38,7 @@ type App struct {
 	router          *api.Router
 	server          *http.Server
 	sseRegistry     *sse.Registry
+	cozeLoopTracer  *tracing.CozeLoopTracer
 }
 
 // NewApp 创建应用实例
@@ -56,20 +58,28 @@ func (a *App) Initialize() error {
 		return err
 	}
 
-	// 3. 初始化数据库
+	// 3. 初始化 CozeLoop 链路追踪（全局 Eino callbacks，须在任何 Eino 组件执行前挂载）
+	// 配置缺失时静默跳过，不阻塞服务启动
+	cozeLoopTracer, err := tracing.InitCozeLoop(&a.cfg.CozeLoop)
+	if err != nil {
+		return err
+	}
+	a.cozeLoopTracer = cozeLoopTracer
+
+	// 4. 初始化数据库
 	if err := a.initDatabase(); err != nil {
 		return err
 	}
 
-	// 4. 初始化依赖
+	// 5. 初始化依赖
 	if err := a.initDependencies(); err != nil {
 		return err
 	}
 
-	// 5. 初始化路由
+	// 6. 初始化路由
 	a.initRouter()
 
-	// 6. 初始化服务器
+	// 7. 初始化服务器
 	a.initServer()
 
 	return nil
@@ -373,6 +383,9 @@ func (a *App) gracefulShutdown() {
 	// 关闭数据库连接
 	_ = database.ClosePostgreSQL()
 	_ = database.CloseRedis()
+
+	// 关闭 CozeLoop 上报连接（冲刷未上报的 Trace）
+	a.cozeLoopTracer.Close(ctx)
 
 	// 同步日志
 	_ = logger.Sync()

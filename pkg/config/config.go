@@ -15,6 +15,7 @@ type Config struct {
 	SSE       SSEConfig       `mapstructure:"sse"`
 	Neo4j     Neo4jConfig     `mapstructure:"neo4j"`
 	Memory    MemoryConfig    `mapstructure:"memory"`
+	CozeLoop  CozeLoopConfig  `mapstructure:"cozeloop"`
 }
 
 // AppConfig 应用配置
@@ -137,4 +138,15 @@ type MemoryConfig struct {
 	Enabled       bool   `mapstructure:"enabled"`
 	ModelID       string `mapstructure:"model_id"`
 	RetrieveLimit int    `mapstructure:"retrieve_limit"`
+}
+
+// CozeLoopConfig CozeLoop 链路追踪配置（可选，Eino 全局 Trace 上报）
+// 同时配置 workspace_id 与 api_token 时启用：全局挂载 callbacks handler 后，
+// 进程内所有 Eino 组件（Agent 引擎 / RAG 管道 / ChatModel / Embedder / Reranker）自动上报
+// APIBaseURL 为空时使用 SDK 默认国内版 https://api.coze.cn
+type CozeLoopConfig struct {
+	Enabled     bool   `mapstructure:"enabled"`
+	WorkspaceID string `mapstructure:"workspace_id"`
+	APIToken    string `mapstructure:"api_token"`
+	APIBaseURL  string `mapstructure:"api_base_url"`
 }

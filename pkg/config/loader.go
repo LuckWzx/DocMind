@@ -90,6 +90,17 @@ func Load(configPath string) (*Config, error) {
 		}
 	}
 
+	// CozeLoop 链路追踪配置（敏感 Token 支持环境变量覆盖，避免写入配置文件）
+	if val := os.Getenv("COZELOOP_WORKSPACE_ID"); val != "" {
+		config.CozeLoop.WorkspaceID = val
+	}
+	if val := os.Getenv("COZELOOP_API_TOKEN"); val != "" {
+		config.CozeLoop.APIToken = val
+	}
+	if val := os.Getenv("COZELOOP_API_BASE_URL"); val != "" {
+		config.CozeLoop.APIBaseURL = val
+	}
+
 	globalConfig = config
 	return config, nil
 }
