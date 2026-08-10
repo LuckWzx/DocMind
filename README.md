@@ -19,6 +19,8 @@ DocMind/
 │   │   └── main.go                   # 引擎端到端验证入口
 │   ├── detect_bm25/                  # BM25 索引与检索验证工具
 │   │   └── main.go                   # 数据库 BM25 验证入口
+│   ├── longtermdemo/                 # 长期记忆 Demo（Neo4j 知识图谱提取/落图验证）
+│   │   └── main.go                   # 长期记忆主流程验证入口
 │   ├── memorydemo/                   # 短期记忆中间件验证 Demo（LLM 摘要压缩 + 降级归档）
 │   │   └── main.go                   # 记忆三条主流程验证入口
 │   └── server/
@@ -77,6 +79,19 @@ DocMind/
 │   │   ├── pipeline.go                # 管道编排入口
 │   │   ├── search.go                  # 检索执行
 │   │   └── types.go                   # 管道类型定义
+│   ├── memory/                        # 记忆系统（短期会话摘要 + 长期知识图谱）
+│   │   ├── consolidator.go            # 摘要整合（LLM 增量压缩）
+│   │   ├── degrade.go                 # 降级归档（原文降级）
+│   │   ├── incremental_context.go     # 增量上下文构建
+│   │   ├── raw_archive.go             # 原文归档
+│   │   ├── summary_middleware.go      # 会话摘要中间件（Eino summarization 适配）
+│   │   ├── types.go                   # 记忆类型定义
+│   │   └── longterm/                  # 长期记忆（跨会话知识图谱，Neo4j）
+│   │       ├── extractor.go           # 对话信息提取器
+│   │       ├── neo4j_repository.go    # Neo4j 存储实现
+│   │       ├── repository.go          # 存储接口
+│   │       ├── service.go             # 记忆服务（AddEpisode 异步落图）
+│   │       └── types.go               # 长期记忆类型定义
 │   ├── middleware/                    # 中间件
 │   │   ├── auth.go                   # JWT 鉴权
 │   │   ├── cors.go                   # 跨域
@@ -110,18 +125,22 @@ DocMind/
 │   ├── repository/                   # 数据访问层
 │   │   ├── *_interface.go            # 仓储接口（31个文件，覆盖全部实体）
 │   │   └── *_repository.go           # 仓储实现（含 agent 覆盖 / 会话摘要 / 上下文窗口回填）
-│   └── service/                      # 业务逻辑层
-│       ├── *_interface.go            # 服务接口（13个模块）
-│       ├── *_service.go              # 服务实现
-│       ├── model_service_http.go     # 模型服务 HTTP 工具（JSON/Multipart 请求、认证头、URL 拼接）
-│       ├── model_service_ollama.go   # 模型服务 Ollama（状态、模型列表、异步下载、embed/chat）
-│       ├── model_service_utils.go    # 模型服务工具（JSON 响应解析、类型转换、文件读取）
-│       ├── knowledge_embedder.go     # 知识分块自动向量化（分批处理）
-│       ├── vector_driver_postgres.go # pgvector 向量检索驱动
-│       ├── image_storage_*.go        # 文档图片存储（MinIO / Noop）
-│       ├── knowledge_image_pipeline.go  # 图片提取与URL替换管道
-│       ├── keyword_search_driver.go     # BM25 关键字检索驱动
-│       └── model_context_window*.go     # 模型上下文窗口获取/消费与缺失回填
+│   ├── service/                      # 业务逻辑层
+│   │   ├── *_interface.go            # 服务接口（13个模块）
+│   │   ├── *_service.go              # 服务实现
+│   │   ├── model_service_http.go     # 模型服务 HTTP 工具（JSON/Multipart 请求、认证头、URL 拼接）
+│   │   ├── model_service_ollama.go   # 模型服务 Ollama（状态、模型列表、异步下载、embed/chat）
+│   │   ├── model_service_utils.go    # 模型服务工具（JSON 响应解析、类型转换、文件读取）
+│   │   ├── knowledge_embedder.go     # 知识分块自动向量化（分批处理）
+│   │   ├── vector_driver_postgres.go # pgvector 向量检索驱动
+│   │   ├── image_storage_*.go        # 文档图片存储（MinIO / Noop）
+│   │   ├── knowledge_image_pipeline.go  # 图片提取与URL替换管道
+│   │   ├── keyword_search_driver.go     # BM25 关键字检索驱动
+│   │   └── model_context_window*.go     # 模型上下文窗口获取/消费与缺失回填
+│   ├── task/                          # 后台任务模块（占位）
+│   │   └── store.go                   # 任务存储
+│   └── tracing/                       # 链路追踪（CozeLoop）
+│       └── cozeloop.go                # Eino 全局回调接入
 ├── pkg/                              # 公共工具包
 │   ├── config/                       # 配置加载
 │   ├── database/                     # 数据库驱动（PostgreSQL / MySQL / Redis）
