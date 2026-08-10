@@ -11,6 +11,8 @@ import (
 const (
 	// DefaultRetrieveLimit 检索返回的最大 Episode 数（未配置时默认 5）
 	DefaultRetrieveLimit = 5
+	// DefaultMaxEpisodesPerSession 单个会话可存储的 Episode 上限（超出后新问答不再录入，防图库无限膨胀）
+	DefaultMaxEpisodesPerSession = 200
 	// DefaultExtractTimeout 单次 LLM 提取超时
 	DefaultExtractTimeout = 60 * time.Second
 	// DefaultExtractRetries LLM 提取失败重试次数（重试后仍失败则跳过本次记忆）

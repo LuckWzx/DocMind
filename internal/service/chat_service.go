@@ -854,10 +854,6 @@ func (s *chatService) SaveAssistantMessage(ctx context.Context, sessionID uint, 
 		return err
 	}
 	s.sessionRepo.IncrementMessageCount(sessionID)
-	if len(content) > 200 {
-		// 按 rune 截断避免中文被切断成非法 UTF-8（PG 报 invalid byte sequence）
-		content = string([]rune(content)[:200])
-	}
 	s.sessionRepo.UpdateLastMessage(sessionID, content)
 	return nil
 }
@@ -866,8 +862,9 @@ func (s *chatService) SaveAssistantMessage(ctx context.Context, sessionID uint, 
 // 按 rune 计数以避免中文被截断成乱码。
 func buildSessionTitle(query string) string {
 	title := strings.TrimSpace(query)
-	if len([]rune(title)) > 20 {
-		title = string([]rune(title)[:20]) + "..."
+	runes := []rune(title)
+	if len(runes) > 20 {
+		title = string(runes[:20]) + "..."
 	}
 	if title == "" {
 		title = "新对话"

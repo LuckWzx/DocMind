@@ -140,23 +140,25 @@ func (s *knowledgeBaseService) Delete(userID, id uint) error {
 	if kb == nil {
 		return bizerrors.ErrResourceNotFound
 	}
+	// 硬删除策略：chunks 软删行不会从 Tantivy BM25 索引移除，会堆积成死文档拖慢检索，
+	// 故知识库下所有关联数据（向量记录/分块/知识条目/FAQ/标签）统一物理删除
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("knowledge_base_id = ?", id).Delete(&entity.ChunkVector{}).Error; err != nil {
+		if err := tx.Unscoped().Where("knowledge_base_id = ?", id).Delete(&entity.ChunkVector{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("knowledge_base_id = ?", id).Delete(&entity.Chunk{}).Error; err != nil {
+		if err := tx.Unscoped().Where("knowledge_base_id = ?", id).Delete(&entity.Chunk{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("knowledge_base_id = ?", id).Delete(&entity.Knowledge{}).Error; err != nil {
+		if err := tx.Unscoped().Where("knowledge_base_id = ?", id).Delete(&entity.Knowledge{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("knowledge_base_id = ?", id).Delete(&entity.FAQ{}).Error; err != nil {
+		if err := tx.Unscoped().Where("knowledge_base_id = ?", id).Delete(&entity.FAQ{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("knowledge_base_id = ?", id).Delete(&entity.Tag{}).Error; err != nil {
+		if err := tx.Unscoped().Where("knowledge_base_id = ?", id).Delete(&entity.Tag{}).Error; err != nil {
 			return err
 		}
-		return tx.Delete(&entity.KnowledgeBase{}, id).Error
+		return tx.Unscoped().Delete(&entity.KnowledgeBase{}, id).Error
 	})
 }
 
@@ -346,14 +348,15 @@ func (s *knowledgeBaseService) DeleteKnowledge(userID, id uint) error {
 	if _, err := s.Get(userID, item.KnowledgeBaseID); err != nil {
 		return err
 	}
+	// 硬删除策略：与知识库删除一致，chunks 物理删除避免 BM25 索引死文档堆积
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("knowledge_id = ?", id).Delete(&entity.ChunkVector{}).Error; err != nil {
+		if err := tx.Unscoped().Where("knowledge_id = ?", id).Delete(&entity.ChunkVector{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("knowledge_id = ?", id).Delete(&entity.Chunk{}).Error; err != nil {
+		if err := tx.Unscoped().Where("knowledge_id = ?", id).Delete(&entity.Chunk{}).Error; err != nil {
 			return err
 		}
-		return tx.Delete(&entity.Knowledge{}, id).Error
+		return tx.Unscoped().Delete(&entity.Knowledge{}, id).Error
 	})
 }
 

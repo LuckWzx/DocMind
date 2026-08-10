@@ -188,6 +188,39 @@ func (r *neo4jMemoryRepository) FindRelatedEpisodes(ctx context.Context, userID 
 	return result.([]*Episode), nil
 }
 
+func (r *neo4jMemoryRepository) CountEpisodes(ctx context.Context, sessionID uint) (int, error) {
+	session := r.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	defer session.Close(ctx)
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		res, err := tx.Run(ctx, `
+			MATCH (e:Episode)
+			WHERE e.session_id = $session_id
+			RETURN COUNT(e) AS cnt
+		`, map[string]any{
+			"session_id": formatUint(sessionID),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !res.Next(ctx) {
+			return 0, res.Err()
+		}
+		cnt, ok := res.Record().Get("cnt")
+		if !ok {
+			return 0, nil
+		}
+		if n, ok := cnt.(int64); ok {
+			return int(n), nil
+		}
+		return 0, nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("统计会话记忆片段数失败: %w", err)
+	}
+	return result.(int), nil
+}
+
 func (r *neo4jMemoryRepository) Close(ctx context.Context) error {
 	if !r.IsAvailable() {
 		return nil

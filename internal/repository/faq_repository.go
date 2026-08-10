@@ -65,11 +65,13 @@ func (r *faqRepository) DeleteBatch(ids []uint) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return r.db.Where("id IN ?", ids).Delete(&entity.FAQ{}).Error
+	// 硬删除：与知识库删除链路一致，避免软删残留数据堆积
+	return r.db.Unscoped().Where("id IN ?", ids).Delete(&entity.FAQ{}).Error
 }
 
 func (r *faqRepository) DeleteByKnowledgeBase(knowledgeBaseID uint) error {
-	return r.db.Where("knowledge_base_id = ?", knowledgeBaseID).Delete(&entity.FAQ{}).Error
+	// 硬删除：与知识库删除链路一致，避免软删残留数据堆积
+	return r.db.Unscoped().Where("knowledge_base_id = ?", knowledgeBaseID).Delete(&entity.FAQ{}).Error
 }
 
 func (r *faqRepository) CountByTagIDs(knowledgeBaseID uint, tagIDs []uint) (map[uint]int64, error) {

@@ -333,7 +333,7 @@ func (a *App) initDependencies() error {
 						extractor := longterm.NewGraphExtractor(func(ctx context.Context, _ string) (einomodel.ToolCallingChatModel, error) {
 							return chatModelFactory.CreateChatModel(ctx, memoryModelID)
 						})
-						memorySvc = longterm.NewMemoryService(repo, extractor, a.cfg.Memory.RetrieveLimit)
+						memorySvc = longterm.NewMemoryService(repo, extractor, a.cfg.Memory.RetrieveLimit, a.cfg.Memory.MaxEpisodesPerSession)
 					} else {
 						extractor := longterm.NewGraphExtractor(func(ctx context.Context, modelID string) (einomodel.ToolCallingChatModel, error) {
 							if modelID == "" || modelID == "default" {
@@ -341,7 +341,7 @@ func (a *App) initDependencies() error {
 							}
 							return chatModelFactory.CreateChatModel(ctx, modelID)
 						})
-						memorySvc = longterm.NewMemoryService(repo, extractor, a.cfg.Memory.RetrieveLimit)
+						memorySvc = longterm.NewMemoryService(repo, extractor, a.cfg.Memory.RetrieveLimit, a.cfg.Memory.MaxEpisodesPerSession)
 					}
 					logger.Info("长期记忆已启用", zap.String("extract_model_id", memoryModelID), zap.Bool("config_priority", a.cfg.Memory.ModelID != ""))
 				}

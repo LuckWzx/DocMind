@@ -35,8 +35,9 @@ Rules:
 1. Entities must be specific and unambiguous full names, never pronouns
 2. relationship source/target must reference entity titles extracted above
 3. weight is a float between 0 and 1 indicating relationship strength
-4. summary should be 2-3 sentences, in the same language as the conversation
-5. If nothing meaningful to remember, return {"summary": "", "entities": [], "relationships": []}
+4. summary should be 2-3 sentences, in the same language as the conversation, excluding any sensitive information
+5. NEVER extract or summarize sensitive information: passwords, API keys, tokens, credentials, private personal data (ID numbers, phone numbers, addresses, financial details)
+6. If nothing meaningful to remember, or the conversation only contains small talk or sensitive information, return {"summary": "", "entities": [], "relationships": []}
 
 Conversation:
 %s`

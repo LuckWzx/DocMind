@@ -83,9 +83,11 @@ func (r *knowledgeRepository) Update(item *entity.Knowledge) error {
 }
 
 func (r *knowledgeRepository) Delete(id uint) error {
-	return r.db.Delete(&entity.Knowledge{}, id).Error
+	// 硬删除：与知识库删除链路一致，避免软删残留数据堆积
+	return r.db.Unscoped().Delete(&entity.Knowledge{}, id).Error
 }
 
 func (r *knowledgeRepository) DeleteByKnowledgeBase(knowledgeBaseID uint) error {
-	return r.db.Where("knowledge_base_id = ?", knowledgeBaseID).Delete(&entity.Knowledge{}).Error
+	// 硬删除：与知识库删除链路一致，避免软删残留数据堆积
+	return r.db.Unscoped().Where("knowledge_base_id = ?", knowledgeBaseID).Delete(&entity.Knowledge{}).Error
 }

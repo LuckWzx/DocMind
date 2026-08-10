@@ -71,7 +71,8 @@ func (d *postgresVectorDriver) DeleteByChunkIDs(ctx context.Context, chunkIDs []
 	if len(chunkIDs) == 0 {
 		return nil
 	}
-	return d.db.WithContext(ctx).Where("chunk_id IN ?", chunkIDs).Delete(&entity.ChunkVector{}).Error
+	// 硬删除：与知识库删除链路一致，chunk 物理删除时向量记录同步物理删除
+	return d.db.WithContext(ctx).Unscoped().Where("chunk_id IN ?", chunkIDs).Delete(&entity.ChunkVector{}).Error
 }
 
 func (d *postgresVectorDriver) Search(ctx context.Context, params VectorSearchParams) ([]VectorSearchResult, error) {

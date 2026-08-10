@@ -3,6 +3,7 @@ package longterm
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"docmind/pkg/logger"
@@ -12,21 +13,26 @@ import (
 
 // memoryService 长期记忆服务编排：对话结束 → 提取落图；问答前 → 检索注入
 type memoryService struct {
-	repo          MemoryRepository
-	extractor     *GraphExtractor
-	retrieveLimit int
+	repo                  MemoryRepository
+	extractor             *GraphExtractor
+	retrieveLimit         int
+	maxEpisodesPerSession int
 }
 
 // NewMemoryService 创建长期记忆服务。
 // repo 或 extractor 为 nil 时返回 nil（上层按未启用处理，全链路降级跳过）。
-func NewMemoryService(repo MemoryRepository, extractor *GraphExtractor, retrieveLimit int) MemoryService {
+// maxEpisodesPerSession <= 0 时使用默认上限（DefaultMaxEpisodesPerSession）。
+func NewMemoryService(repo MemoryRepository, extractor *GraphExtractor, retrieveLimit int, maxEpisodesPerSession int) MemoryService {
 	if repo == nil || extractor == nil {
 		return nil
 	}
 	if retrieveLimit <= 0 {
 		retrieveLimit = DefaultRetrieveLimit
 	}
-	return &memoryService{repo: repo, extractor: extractor, retrieveLimit: retrieveLimit}
+	if maxEpisodesPerSession <= 0 {
+		maxEpisodesPerSession = DefaultMaxEpisodesPerSession
+	}
+	return &memoryService{repo: repo, extractor: extractor, retrieveLimit: retrieveLimit, maxEpisodesPerSession: maxEpisodesPerSession}
 }
 
 // AddEpisode 对话结束后异步提取记忆并落图。
@@ -41,6 +47,23 @@ func (s *memoryService) AddEpisode(ctx context.Context, userID, sessionID uint, 
 	result, err := s.extractor.ExtractGraph(ctx, modelID, conversation)
 	if err != nil {
 		return err
+	}
+
+	// 无意义过滤：摘要与实体全为空时（寒暄/纯敏感内容等），跳过落图避免空节点脏数据。
+	// 仅摘要非空仍落图（实体提取失败时摘要可独立检索）。
+	if strings.TrimSpace(result.Summary) == "" && len(result.Entities) == 0 {
+		logger.Infof("[LongTermMemory] 提取结果无意义，跳过落图: user=%d session=%d", userID, sessionID)
+		return nil
+	}
+
+	// 单会话条数上限：超出后跳过本次录入，防止图库无限膨胀。
+	count, err := s.repo.CountEpisodes(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("统计会话记忆条数失败: %w", err)
+	}
+	if count >= s.maxEpisodesPerSession {
+		logger.Infof("[LongTermMemory] 会话记忆已达上限 %d，跳过落图: user=%d session=%d", s.maxEpisodesPerSession, userID, sessionID)
+		return nil
 	}
 
 	episode := &Episode{

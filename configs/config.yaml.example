@@ -98,3 +98,4 @@ memory:
   enabled: true         # 长期记忆总开关
   model_id: ""          # 提取/关键词模型 ID（空 = 由调用方传会话模型）
   retrieve_limit: 5     # 检索返回的最大 Episode 数
+  max_episodes_per_session: 200  # 单会话可存储的 Episode 上限（超出后新问答不再录入）

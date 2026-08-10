@@ -174,6 +174,7 @@ func (s *tagService) Delete(userID, kbID, id uint, force bool) error {
 		if err := tx.Model(&entity.FAQ{}).Where("knowledge_base_id = ? AND tag_id = ?", kbID, id).Update("tag_id", nil).Error; err != nil {
 			return err
 		}
-		return tx.Delete(&entity.Tag{}, id).Error
+		// 硬删除：与知识库删除链路一致，避免软删残留数据堆积
+		return tx.Unscoped().Delete(&entity.Tag{}, id).Error
 	})
 }

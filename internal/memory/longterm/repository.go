@@ -9,6 +9,8 @@ type MemoryRepository interface {
 	IsAvailable() bool
 	// SaveEpisode 保存记忆片段：Episode 节点 + MENTIONS 实体 + RELATED_TO 关系（单事务）
 	SaveEpisode(ctx context.Context, episode *Episode, entities []*Entity, relations []*Relationship) error
+	// CountEpisodes 统计会话已存储的记忆片段数（单会话条数上限校验用）
+	CountEpisodes(ctx context.Context, sessionID uint) (int, error)
 	// FindRelatedEpisodes 按关键词匹配实体，返回关联的 Episode（按时间倒序）
 	FindRelatedEpisodes(ctx context.Context, userID uint, keywords []string, limit int) ([]*Episode, error)
 	// Close 关闭连接

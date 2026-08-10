@@ -135,9 +135,10 @@ type Neo4jConfig struct {
 // MemoryConfig 长期记忆配置
 // 与短期记忆（internal/memory 压缩器）不同：这里控制跨会话记忆（Neo4j 知识图谱）
 type MemoryConfig struct {
-	Enabled       bool   `mapstructure:"enabled"`
-	ModelID       string `mapstructure:"model_id"`
-	RetrieveLimit int    `mapstructure:"retrieve_limit"`
+	Enabled               bool   `mapstructure:"enabled"`
+	ModelID               string `mapstructure:"model_id"`
+	RetrieveLimit         int    `mapstructure:"retrieve_limit"`
+	MaxEpisodesPerSession int    `mapstructure:"max_episodes_per_session"`
 }
 
 // CozeLoopConfig CozeLoop 链路追踪配置（可选，Eino 全局 Trace 上报）

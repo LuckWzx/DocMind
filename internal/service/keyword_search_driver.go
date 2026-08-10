@@ -3,14 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 
 	"docmind/internal/pipeline"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // ============================================================================
@@ -29,12 +27,15 @@ const (
 	bm25IndexName = "idx_chunks_bm25"
 	// bm25DefaultTopK 默认返回条数
 	bm25DefaultTopK = 5
+	// bm25WarmUpConns 预热查询次数：串行执行（并发预热会因索引加载锁竞争挂起，必须串行）
+	bm25WarmUpConns = 3
 )
 
 // postgresKeywordDriver pg_search BM25 检索驱动
 type postgresKeywordDriver struct {
 	db        *gorm.DB
 	indexOnce sync.Once
+	warmOnce  sync.Once
 	indexErr  error
 }
 
@@ -74,36 +75,43 @@ WITH (key_field = 'id')`, bm25IndexName)
 	return d.indexErr
 }
 
+// warmUp 预热连接池。
+//
+// pg_search 的 Tantivy 索引状态是 per-backend（每连接）加载：新连接首次执行 @@@
+// 查询需数百毫秒加载索引，之后同连接查询仅毫秒级（实测 ~500ms → ~30ms）。
+// 注意：多个连接并发首次加载同一索引会因锁竞争长时间挂起（实测 5 并发 5 分钟未返回），
+// 预热必须串行执行；预热后的连接留在池中，LIFO 复用使后续检索持续命中热连接。
+func (d *postgresKeywordDriver) warmUp(ctx context.Context) {
+	d.warmOnce.Do(func() {
+		// 轻量预热查询：仅触发 Tantivy 索引加载，结果行数无关紧要
+		warmSQL := "SELECT c.id FROM chunks AS c WHERE c.id @@@ paradedb.match('content', 'warmup') LIMIT 1"
+		for i := 0; i < bm25WarmUpConns; i++ {
+			// 预热失败只影响单个连接的加载时机，不阻塞检索主流程
+			if err := d.db.WithContext(ctx).Exec(warmSQL).Error; err != nil {
+				return
+			}
+		}
+	})
+}
+
 // Search 执行 BM25 检索，返回按分数降序的 TopK 结果
 func (d *postgresKeywordDriver) Search(ctx context.Context, params pipeline.PipelineKeywordSearchParams) ([]pipeline.SearchResult, error) {
-	query := strings.TrimSpace(params.Query)
-	if query == "" || len(params.KnowledgeBaseIDs) == 0 {
+	if strings.TrimSpace(params.Query) == "" || len(params.KnowledgeBaseIDs) == 0 {
 		return nil, nil
 	}
 	if err := d.EnsureIndex(ctx); err != nil {
 		return nil, err
 	}
+	// 预热连接池（仅首次执行）：提前加载 Tantivy 索引，避免新连接首查数百毫秒
+	d.warmUp(ctx)
 
 	topK := params.TopK
 	if topK <= 0 {
 		topK = bm25DefaultTopK
 	}
 
-	searchExpr := buildBM25SearchExpr(query, params.KnowledgeBaseIDs)
-
 	var results []pipeline.SearchResult
-	err := d.db.WithContext(ctx).
-		Table("chunks AS c").
-		Select("c.id AS chunk_id, c.knowledge_id, c.content, k.title AS knowledge_title, paradedb.score(c.id) AS score").
-		Joins("JOIN knowledges AS k ON c.knowledge_id = k.id AND k.deleted_at IS NULL").
-		Where("c.deleted_at IS NULL AND c.is_enabled = ?", true).
-		Where(searchExpr).
-		// 注意：Order() 仅支持 clause.OrderBy / clause.OrderByColumn / string，
-		// 不能传 clause.Expr（会被静默忽略导致不排序），此处直接用字符串别名排序。
-		Order("score DESC").
-		Limit(topK).
-		Scan(&results).Error
-	if err != nil {
+	if err := buildKeywordSearchQuery(d.db.WithContext(ctx), params, topK).Scan(&results).Error; err != nil {
 		return nil, fmt.Errorf("BM25 检索失败: %w", err)
 	}
 
@@ -120,27 +128,25 @@ func (d *postgresKeywordDriver) Search(ctx context.Context, params pipeline.Pipe
 	return results, nil
 }
 
-// buildBM25SearchExpr 构造 pg_search 检索表达式（match 全文匹配 + 知识库 term 过滤）
-//   - 单知识库：boolean(match(content, ?), term(knowledge_base_id, ?))
-//   - 多知识库：boolean(match(content, ?), boolean(term(kb, ?), term(kb, ?), occurrence => 'or'))
+// buildKeywordSearchQuery 构造 BM25 关键词检索 SQL。
 //
-// 注意：term 的 value 参数在 pg_search 中为 text 类型，需传字符串（pgx 严格类型编码）
-func buildBM25SearchExpr(query string, kbIDs []uint) clause.Expr {
-	vars := []interface{}{query}
-	var filterSQL string
-	if len(kbIDs) == 1 {
-		vars = append(vars, strconv.FormatUint(uint64(kbIDs[0]), 10))
-		filterSQL = "paradedb.term('knowledge_base_id', ?)"
-	} else {
-		terms := make([]string, 0, len(kbIDs))
-		for _, id := range kbIDs {
-			terms = append(terms, "paradedb.term('knowledge_base_id', ?)")
-			vars = append(vars, strconv.FormatUint(uint64(id), 10))
-		}
-		filterSQL = "paradedb.boolean(" + strings.Join(terms, ", ") + ", occurrence => 'or')"
-	}
-	return clause.Expr{
-		SQL:  "c.id @@@ paradedb.boolean(paradedb.match('content', ?), " + filterSQL + ")",
-		Vars: vars,
-	}
+// 过滤条件（知识库、is_enabled、deleted_at）放普通 SQL WHERE：
+// pg_search 会自动将其下推为 Tantivy 索引层的 must 子句，且类型编码正确（数字/布尔）。
+// 不能塞进 paradedb.boolean —— 0.22 版本 boolean 是位置语义
+// （第 1 个参数 must、第 2 个 should、第 3 个 must_not），且 term 参数为 text 类型，
+// 对数字/布尔列过滤会失效（'true' 匹配不到 boolean true），导致过滤形同虚设。
+// BM25 表达式仅保留 match 全文匹配（纯 must 子句，Tantivy 可走 top-N 快速路径）。
+func buildKeywordSearchQuery(db *gorm.DB, params pipeline.PipelineKeywordSearchParams, topK int) *gorm.DB {
+	return db.
+		Table("chunks AS c").
+		Select("c.id AS chunk_id, c.knowledge_id, c.content, k.title AS knowledge_title, paradedb.score(c.id) AS score").
+		Joins("JOIN knowledges AS k ON c.knowledge_id = k.id AND k.deleted_at IS NULL").
+		Where("c.knowledge_base_id IN ?", params.KnowledgeBaseIDs).
+		Where("c.is_enabled = ?", true).
+		Where("c.deleted_at IS NULL").
+		Where("c.id @@@ paradedb.match('content', ?)", strings.TrimSpace(params.Query)).
+		// 注意：Order() 仅支持 clause.OrderBy / clause.OrderByColumn / string，
+		// 不能传 clause.Expr（会被静默忽略导致不排序），此处直接用字符串别名排序。
+		Order("score DESC").
+		Limit(topK)
 }
