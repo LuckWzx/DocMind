@@ -862,12 +862,6 @@ func (s *modelService) getDocMindCloudCredentials() (map[string]string, error) {
 
 // buildModelResponse 将 entity.Model 转换为 API 响应 DTO，包含凭据脱敏标记。
 func (s *modelService) buildModelResponse(model *entity.Model) *dto.ModelResponse {
-	var deletedAt *string
-	if model.DeletedAt.Valid {
-		value := model.DeletedAt.Time.Format(time.RFC3339)
-		deletedAt = &value
-	}
-
 	parameters := dto.ModelParametersResponse{
 		BaseURL:        model.Parameters.BaseURL,
 		APIVersion:     model.Parameters.APIVersion,
@@ -908,7 +902,6 @@ func (s *modelService) buildModelResponse(model *entity.Model) *dto.ModelRespons
 		Credentials: buildCredentialResponse(model.Parameters).Fields,
 		CreatedAt:   model.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:   model.UpdatedAt.Format(time.RFC3339),
-		DeletedAt:   deletedAt,
 	}
 }
 

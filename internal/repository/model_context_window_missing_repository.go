@@ -25,8 +25,8 @@ func (r *modelContextWindowMissingRepository) Upsert(record *entity.ModelContext
 }
 
 func (r *modelContextWindowMissingRepository) ClearByModelID(modelID uint) error {
-	// 硬删除：释放 model_id 唯一索引，允许后续同一模型再次写入缺失记录
-	return r.db.Unscoped().Where("model_id = ?", modelID).Delete(&entity.ModelContextWindowMissing{}).Error
+	// 物理删除：释放 model_id 唯一索引，允许后续同一模型再次写入缺失记录
+	return r.db.Where("model_id = ?", modelID).Delete(&entity.ModelContextWindowMissing{}).Error
 }
 
 func (r *modelContextWindowMissingRepository) ListAll() ([]*entity.ModelContextWindowMissing, error) {

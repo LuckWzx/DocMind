@@ -130,7 +130,7 @@ func (d *postgresKeywordDriver) Search(ctx context.Context, params pipeline.Pipe
 
 // buildKeywordSearchQuery 构造 BM25 关键词检索 SQL。
 //
-// 过滤条件（知识库、is_enabled、deleted_at）放普通 SQL WHERE：
+// 过滤条件（知识库、is_enabled）放普通 SQL WHERE：
 // pg_search 会自动将其下推为 Tantivy 索引层的 must 子句，且类型编码正确（数字/布尔）。
 // 不能塞进 paradedb.boolean —— 0.22 版本 boolean 是位置语义
 // （第 1 个参数 must、第 2 个 should、第 3 个 must_not），且 term 参数为 text 类型，
@@ -140,10 +140,9 @@ func buildKeywordSearchQuery(db *gorm.DB, params pipeline.PipelineKeywordSearchP
 	return db.
 		Table("chunks AS c").
 		Select("c.id AS chunk_id, c.knowledge_id, c.content, k.title AS knowledge_title, paradedb.score(c.id) AS score").
-		Joins("JOIN knowledges AS k ON c.knowledge_id = k.id AND k.deleted_at IS NULL").
+		Joins("JOIN knowledges AS k ON c.knowledge_id = k.id").
 		Where("c.knowledge_base_id IN ?", params.KnowledgeBaseIDs).
 		Where("c.is_enabled = ?", true).
-		Where("c.deleted_at IS NULL").
 		Where("c.id @@@ paradedb.match('content', ?)", strings.TrimSpace(params.Query)).
 		// 注意：Order() 仅支持 clause.OrderBy / clause.OrderByColumn / string，
 		// 不能传 clause.Expr（会被静默忽略导致不排序），此处直接用字符串别名排序。

@@ -46,7 +46,6 @@ export interface ModelConfig {
   credentials?: Record<ModelCredentialField, { configured: boolean }>;
   created_at?: string;
   updated_at?: string;
-  deleted_at?: string | null;
 }
 
 // 创建模型

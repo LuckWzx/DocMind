@@ -64,6 +64,5 @@ func (r *tagRepository) Update(item *entity.Tag) error {
 }
 
 func (r *tagRepository) Delete(id uint) error {
-	// 硬删除：与知识库删除链路一致，避免软删残留数据堆积
-	return r.db.Unscoped().Delete(&entity.Tag{}, id).Error
+	return r.db.Delete(&entity.Tag{}, id).Error
 }

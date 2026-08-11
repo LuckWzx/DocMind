@@ -26,8 +26,7 @@ func (r *knowledgeBaseRepository) Update(kb *entity.KnowledgeBase) error {
 }
 
 func (r *knowledgeBaseRepository) Delete(id uint) error {
-	// 硬删除：与知识库删除链路一致，避免软删残留数据堆积
-	return r.db.Unscoped().Delete(&entity.KnowledgeBase{}, id).Error
+	return r.db.Delete(&entity.KnowledgeBase{}, id).Error
 }
 
 // FindByID 根据 ID 获取知识库

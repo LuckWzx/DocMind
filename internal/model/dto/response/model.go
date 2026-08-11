@@ -53,7 +53,6 @@ type ModelResponse struct {
 	Credentials map[string]CredentialFieldState `json:"credentials,omitempty"`
 	CreatedAt   string                          `json:"created_at"`
 	UpdatedAt   string                          `json:"updated_at"`
-	DeletedAt   *string                         `json:"deleted_at"`
 }
 
 // ModelProviderOptionResponse 模型厂商选项

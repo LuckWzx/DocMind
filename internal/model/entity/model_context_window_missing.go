@@ -3,7 +3,7 @@ package entity
 // ModelContextWindowMissing 上下文大小缺失记录：
 // 当模型厂商不提供元数据查询接口且内置映射表未命中时写入，
 // 供后续定期补足内置映射表（context_window 确定后自动清理）。
-// 与 BaseEntity 不同：本表使用硬删除语义（Unscoped），保证 model_id 唯一索引可复用。
+// 注意：本表删除必须释放 model_id 唯一索引，保证后续同一模型可再次写入。
 type ModelContextWindowMissing struct {
 	BaseEntity
 	UserID    uint   `gorm:"index;not null;comment:模型所属用户ID" json:"user_id"`

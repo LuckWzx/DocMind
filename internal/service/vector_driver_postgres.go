@@ -71,8 +71,8 @@ func (d *postgresVectorDriver) DeleteByChunkIDs(ctx context.Context, chunkIDs []
 	if len(chunkIDs) == 0 {
 		return nil
 	}
-	// 硬删除：与知识库删除链路一致，chunk 物理删除时向量记录同步物理删除
-	return d.db.WithContext(ctx).Unscoped().Where("chunk_id IN ?", chunkIDs).Delete(&entity.ChunkVector{}).Error
+	// 级联删除：chunk 物理删除时向量记录同步物理删除
+	return d.db.WithContext(ctx).Where("chunk_id IN ?", chunkIDs).Delete(&entity.ChunkVector{}).Error
 }
 
 func (d *postgresVectorDriver) Search(ctx context.Context, params VectorSearchParams) ([]VectorSearchResult, error) {
@@ -93,9 +93,9 @@ func (d *postgresVectorDriver) Search(ctx context.Context, params VectorSearchPa
 	query := d.db.WithContext(ctx).
 		Table("chunk_vectors AS cv").
 		Select("cv.chunk_id, cv.knowledge_id, cv.knowledge_base_id, c.content, k.title AS knowledge_title, "+scoreSQL+" AS score", queryVector).
-		Joins("LEFT JOIN chunks AS c ON cv.chunk_id = c.id AND c.deleted_at IS NULL").
-		Joins("LEFT JOIN knowledges AS k ON cv.knowledge_id = k.id AND k.deleted_at IS NULL").
-		Where("cv.user_id = ? AND cv.vector_store_id = ? AND cv.is_enabled = ? AND cv.deleted_at IS NULL", params.UserID, params.VectorStoreID, true)
+		Joins("LEFT JOIN chunks AS c ON cv.chunk_id = c.id").
+		Joins("LEFT JOIN knowledges AS k ON cv.knowledge_id = k.id").
+		Where("cv.user_id = ? AND cv.vector_store_id = ? AND cv.is_enabled = ?", params.UserID, params.VectorStoreID, true)
 
 	if len(params.KnowledgeBaseIDs) > 0 {
 		query = query.Where("cv.knowledge_base_id IN ?", params.KnowledgeBaseIDs)
