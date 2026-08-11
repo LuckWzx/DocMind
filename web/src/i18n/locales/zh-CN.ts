@@ -5586,6 +5586,8 @@ export default {
       thinkingDesc: "动态和反思性的问题解决思考工具",
       todoWrite: "制定计划",
       todoWriteDesc: "创建结构化的研究计划",
+      kbSearch: "知识库检索",
+      kbSearchDesc: "聚合检索：一次调用完成关键词+语义检索、结果融合与重排，返回最相关的文档片段",
       grepChunks: "关键词搜索",
       grepChunksDesc: "快速定位包含特定关键词的文档和分块",
       knowledgeSearch: "语义搜索",

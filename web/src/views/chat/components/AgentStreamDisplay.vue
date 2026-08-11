@@ -138,7 +138,7 @@
                   </div>
 
                   <div
-                    v-if="!event.pending && (event.tool_name === 'search_knowledge' || event.tool_name === 'knowledge_search') && event.tool_data"
+                    v-if="!event.pending && (event.tool_name === 'search_knowledge' || event.tool_name === 'knowledge_search' || event.tool_name === 'kb_search') && event.tool_data"
                     class="search-results-summary-fixed">
                     <div class="results-summary-text" v-html="getSearchResultsSummary(event)"></div>
                   </div>
@@ -362,7 +362,7 @@
                 </div>
 
                 <div
-                  v-if="!event.pending && (event.tool_name === 'search_knowledge' || event.tool_name === 'knowledge_search') && event.tool_data"
+                  v-if="!event.pending && (event.tool_name === 'search_knowledge' || event.tool_name === 'knowledge_search' || event.tool_name === 'kb_search') && event.tool_data"
                   class="search-results-summary-fixed">
                   <div class="results-summary-text" v-html="getSearchResultsSummary(event)"></div>
                 </div>
@@ -537,6 +537,7 @@ ensureMermaidInitialized();
 const TOOL_NAME_KEYS: Record<string, string> = {
   search_knowledge: 'agentStream.tools.searchKnowledge',
   knowledge_search: 'agentStream.tools.searchKnowledge',
+  kb_search: 'agentStream.tools.searchKnowledge',
   grep_chunks: 'agentStream.tools.grepChunks',
   web_search: 'agentStream.tools.webSearch',
   web_fetch: 'agentStream.tools.webFetch',
@@ -2290,7 +2291,8 @@ const getSearchResultsSummary = (event: any): string => {
   if (!event || !event.tool_data) return '';
 
   const toolData = event.tool_data;
-  const count = Number(toolData.results?.length ?? toolData.count ?? 0) || 0;
+  // kb_search 返回 {total, hits} 格式；knowledge_search 返回 {count/results} 格式
+  const count = Number(toolData.results?.length ?? toolData.count ?? toolData.total ?? 0) || 0;
   if (count === 0) return t('agentStream.search.noResults');
 
   // Build summary text

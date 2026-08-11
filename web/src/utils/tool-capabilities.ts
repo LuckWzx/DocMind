@@ -49,6 +49,10 @@ export const TOOL_CAPABILITY_REQUIREMENTS: Record<string, ToolRequirement> = {
   // We use vector|keyword as the canonical "has RAG chunks" signal. FAQ KBs
   // also expose chunks, but the current UX message bucket is "RAG KB"; once
   // we add a dedicated `requiresFaqKb` i18n key we can include `faq` here.
+  // kb_search is the aggregated retrieval tool: it runs the full retrieval
+  // segment (vector || BM25 -> RRF -> rerank) in a single call, so it needs
+  // the same chunk-index capability as the split retrieval tools.
+  kb_search:             { anyOf: ['vector', 'keyword'], consumesFiles: true },
   knowledge_search:      { anyOf: ['vector', 'keyword'], consumesFiles: true },
   grep_chunks:           { anyOf: ['vector', 'keyword'], consumesFiles: true },
   list_knowledge_chunks: { anyOf: ['vector', 'keyword'], consumesFiles: true },

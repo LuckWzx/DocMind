@@ -4,6 +4,20 @@ import { ensureRagPipelineHistoryStream } from '@/utils/rag-pipeline-history'
 
 export type ChatMessage = Record<string, unknown>
 
+// 尝试将工具输出字符串解析为 JSON 对象（kb_search 等返回 {total, hits} 结构化结果，
+// 解析后供步骤摘要展示使用）；解析失败返回 null（工具输出可能被后端截断，非合法 JSON）
+function tryParseJsonObject(raw: unknown): Record<string, unknown> | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null
+  const text = raw.trim()
+  if (!text.startsWith('{') && !text.startsWith('[')) return null
+  try {
+    const parsed = JSON.parse(text)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 export interface UseChatStreamHandlerOptions {
   messagesList: ChatMessage[]
   loading: Ref<boolean>
@@ -459,7 +473,7 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
               duration: toolCall.duration,
               duration_ms: toolCall.duration,
               display_type: resultData?.display_type,
-              tool_data: result?.data,
+              tool_data: result?.data || tryParseJsonObject(result?.output),
             })
           })
         }
@@ -885,6 +899,14 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
           const stream = message.agentEventStream as ChatMessage[]
           
           // 创建或更新步骤事件
+          // 工具结果从 tool_result 提取：Agent 模式（kb_search 等）为 output 字符串，
+          // quick-answer（knowledge_search）为 data 对象；结构化结果解析后作为 tool_data（摘要展示用）
+          const toolResult = dataPayload.tool_result as ChatMessage | undefined
+          const toolOutput =
+            toolResult?.data !== undefined
+              ? JSON.stringify(toolResult.data)
+              : (toolResult?.output as string | undefined)
+          const parsedToolData = tryParseJsonObject(toolOutput)
           const stepEvent: ChatMessage = {
             type: 'tool_call',
             tool_call_id: toolCallId || `step_${Date.now()}`,
@@ -893,7 +915,8 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
             success,
             duration,
             duration_ms: duration,
-            output: dataPayload.data ? JSON.stringify(dataPayload.data) : undefined,
+            output: toolOutput || undefined,
+            tool_data: parsedToolData || undefined,
             timestamp: Date.now(),
           }
           stream.push(stepEvent)
