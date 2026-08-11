@@ -1913,10 +1913,12 @@ const defaultMaxCompletionTokens = ref(2048);
 const defaultTemperature = ref(0.7);
 
 // 知识库相关工具列表（用于 watch(hasKnowledgeBase) 从"无"变"有"时 seed 默认工具）
-const knowledgeBaseTools = ['grep_chunks', 'knowledge_search', 'list_knowledge_chunks', 'query_knowledge_graph', 'get_document_info', 'database_query'];
+// kb_search 为聚合检索工具（单次调用完成向量‖BM25→RRF→rerank），置首位优先勾选
+const knowledgeBaseTools = ['kb_search', 'grep_chunks', 'knowledge_search', 'list_knowledge_chunks', 'query_knowledge_graph', 'get_document_info', 'database_query'];
 
 // Wiki 读取类工具（用于 watch(agentMode) 切到 smart-reasoning 时 seed 默认工具）
-const wikiReadTools = ['wiki_search', 'wiki_read_page', 'wiki_read_source_doc', 'wiki_flag_issue'];
+// Wiki 工具暂隐藏，seed 逻辑一并停用（恢复见 allTools 注释）
+// const wikiReadTools = ['wiki_search', 'wiki_read_page', 'wiki_read_source_doc', 'wiki_flag_issue'];
 
 // 初始化标志，防止初始化时触发 watch 自动添加工具
 const isInitializing = ref(false);
@@ -1930,35 +1932,49 @@ const mcpSelectionMode = ref<'all' | 'selected' | 'none'>('none');
 // Skills 选择模式：all=全部, selected=指定, none=不使用
 const skillsSelectionMode = ref<'all' | 'selected' | 'none'>('none');
 
+// 工具选项类型：danger 标记写类破坏性工具（UI 给出显著提示）
+// 显式声明供模板访问，避免全部工具项注释后推导类型丢失该字段
+type ToolOption = {
+  value: string;
+  label: string;
+  description: string;
+  group: string;
+  danger?: boolean;
+};
+
 // 可用工具列表（与后台 internal/agent/tools/definitions.go 保持一致）
 // group 决定 UI 分组：base / rag / wiki_read / wiki_edit / wiki_issue / data
 // danger: 写类破坏性工具，UI 上给出显著提示
 // 工具的 KB 能力依赖关系统一在 `@/utils/tool-capabilities` 声明，
 // `availableTools` 通过 `evaluateToolRequirement` 读取，不在这里重复维护。
-const allTools = computed(() => [
+const allTools = computed<ToolOption[]>(() => [
   // 基础思考类
   { value: 'thinking', label: t('agentEditor.tools.thinking'), description: t('agentEditor.tools.thinkingDesc'), group: 'base' },
   { value: 'todo_write', label: t('agentEditor.tools.todoWrite'), description: t('agentEditor.tools.todoWriteDesc'), group: 'base' },
   // 知识库语义/关键词检索
+  // kb_search：聚合检索工具，单次调用完成 向量‖BM25→RRF→rerank 完整检索链路（后端已实现）
+  { value: 'kb_search', label: t('agentEditor.tools.kbSearch'), description: t('agentEditor.tools.kbSearchDesc'), group: 'rag' },
+  // 以下拆分式检索工具为规划项，后端尚未实现，勾选暂不生效
   { value: 'grep_chunks', label: t('agentEditor.tools.grepChunks'), description: t('agentEditor.tools.grepChunksDesc'), group: 'rag' },
   { value: 'knowledge_search', label: t('agentEditor.tools.knowledgeSearch'), description: t('agentEditor.tools.knowledgeSearchDesc'), group: 'rag' },
   { value: 'list_knowledge_chunks', label: t('agentEditor.tools.listChunks'), description: t('agentEditor.tools.listChunksDesc'), group: 'rag' },
   { value: 'query_knowledge_graph', label: t('agentEditor.tools.queryGraph'), description: t('agentEditor.tools.queryGraphDesc'), group: 'rag' },
   { value: 'get_document_info', label: t('agentEditor.tools.getDocInfo'), description: t('agentEditor.tools.getDocInfoDesc'), group: 'rag' },
   { value: 'database_query', label: t('agentEditor.tools.dbQuery'), description: t('agentEditor.tools.dbQueryDesc'), group: 'rag' },
+  // Wiki 工具暂隐藏（规划中，后端未实现；后续启用时恢复以下分组与工具项）
   // Wiki 读取类（阅读、搜索、标记问题）
-  { value: 'wiki_search', label: t('agentEditor.tools.wikiSearch'), description: t('agentEditor.tools.wikiSearchDesc'), group: 'wiki_read' },
-  { value: 'wiki_read_page', label: t('agentEditor.tools.wikiReadPage'), description: t('agentEditor.tools.wikiReadPageDesc'), group: 'wiki_read' },
-  { value: 'wiki_read_source_doc', label: t('agentEditor.tools.wikiReadSourceDoc'), description: t('agentEditor.tools.wikiReadSourceDocDesc'), group: 'wiki_read' },
-  { value: 'wiki_flag_issue', label: t('agentEditor.tools.wikiFlagIssue'), description: t('agentEditor.tools.wikiFlagIssueDesc'), group: 'wiki_read' },
+  // { value: 'wiki_search', label: t('agentEditor.tools.wikiSearch'), description: t('agentEditor.tools.wikiSearchDesc'), group: 'wiki_read' },
+  // { value: 'wiki_read_page', label: t('agentEditor.tools.wikiReadPage'), description: t('agentEditor.tools.wikiReadPageDesc'), group: 'wiki_read' },
+  // { value: 'wiki_read_source_doc', label: t('agentEditor.tools.wikiReadSourceDoc'), description: t('agentEditor.tools.wikiReadSourceDocDesc'), group: 'wiki_read' },
+  // { value: 'wiki_flag_issue', label: t('agentEditor.tools.wikiFlagIssue'), description: t('agentEditor.tools.wikiFlagIssueDesc'), group: 'wiki_read' },
   // Wiki 编辑类（会直接修改 Wiki 内容）
-  { value: 'wiki_write_page', label: t('agentEditor.tools.wikiWritePage'), description: t('agentEditor.tools.wikiWritePageDesc'), group: 'wiki_edit', danger: true },
-  { value: 'wiki_replace_text', label: t('agentEditor.tools.wikiReplaceText'), description: t('agentEditor.tools.wikiReplaceTextDesc'), group: 'wiki_edit', danger: true },
-  { value: 'wiki_rename_page', label: t('agentEditor.tools.wikiRenamePage'), description: t('agentEditor.tools.wikiRenamePageDesc'), group: 'wiki_edit', danger: true },
-  { value: 'wiki_delete_page', label: t('agentEditor.tools.wikiDeletePage'), description: t('agentEditor.tools.wikiDeletePageDesc'), group: 'wiki_edit', danger: true },
+  // { value: 'wiki_write_page', label: t('agentEditor.tools.wikiWritePage'), description: t('agentEditor.tools.wikiWritePageDesc'), group: 'wiki_edit', danger: true },
+  // { value: 'wiki_replace_text', label: t('agentEditor.tools.wikiReplaceText'), description: t('agentEditor.tools.wikiReplaceTextDesc'), group: 'wiki_edit', danger: true },
+  // { value: 'wiki_rename_page', label: t('agentEditor.tools.wikiRenamePage'), description: t('agentEditor.tools.wikiRenamePageDesc'), group: 'wiki_edit', danger: true },
+  // { value: 'wiki_delete_page', label: t('agentEditor.tools.wikiDeletePage'), description: t('agentEditor.tools.wikiDeletePageDesc'), group: 'wiki_edit', danger: true },
   // Wiki 巡检类
-  { value: 'wiki_read_issue', label: t('agentEditor.tools.wikiReadIssue'), description: t('agentEditor.tools.wikiReadIssueDesc'), group: 'wiki_issue' },
-  { value: 'wiki_update_issue', label: t('agentEditor.tools.wikiUpdateIssue'), description: t('agentEditor.tools.wikiUpdateIssueDesc'), group: 'wiki_issue' },
+  // { value: 'wiki_read_issue', label: t('agentEditor.tools.wikiReadIssue'), description: t('agentEditor.tools.wikiReadIssueDesc'), group: 'wiki_issue' },
+  // { value: 'wiki_update_issue', label: t('agentEditor.tools.wikiUpdateIssue'), description: t('agentEditor.tools.wikiUpdateIssueDesc'), group: 'wiki_issue' },
   // 数据分析
   { value: 'data_analysis', label: t('agentEditor.tools.dataAnalysis'), description: t('agentEditor.tools.dataAnalysisDesc'), group: 'data' },
   { value: 'data_schema', label: t('agentEditor.tools.dataSchema'), description: t('agentEditor.tools.dataSchemaDesc'), group: 'data' },
@@ -1968,9 +1984,10 @@ const allTools = computed(() => [
 const toolGroups = computed(() => [
   { key: 'base', label: t('agentEditor.tools.groupBase') },
   { key: 'rag', label: t('agentEditor.tools.groupRag') },
-  { key: 'wiki_read', label: t('agentEditor.tools.groupWikiRead') },
-  { key: 'wiki_edit', label: t('agentEditor.tools.groupWikiEdit') },
-  { key: 'wiki_issue', label: t('agentEditor.tools.groupWikiIssue') },
+  // Wiki 工具暂隐藏，分组一并移除（恢复见 allTools 注释）
+  // { key: 'wiki_read', label: t('agentEditor.tools.groupWikiRead') },
+  // { key: 'wiki_edit', label: t('agentEditor.tools.groupWikiEdit') },
+  // { key: 'wiki_issue', label: t('agentEditor.tools.groupWikiIssue') },
   { key: 'data', label: t('agentEditor.tools.groupData') },
 ]);
 
@@ -2004,9 +2021,10 @@ const hasRagKnowledgeBase = computed(() => {
 });
 
 // 是否存在至少一个启用了 Wiki 能力的知识库
-const hasWikiKnowledgeBase = computed(() => {
-  return kbsInScope.value.some(kb => kb.wikiEnabled);
-});
+// Wiki 工具暂隐藏，该判定随 seed 逻辑一并停用（恢复见 allTools 注释）
+// const hasWikiKnowledgeBase = computed(() => {
+//   return kbsInScope.value.some(kb => kb.wikiEnabled);
+// });
 
 // 作用域内 RAG/Wiki 知识库数量（用于顶部状态栏）
 const ragKbCount = computed(() => kbsInScope.value.filter(kb => kb.ragEnabled).length);
@@ -3173,17 +3191,16 @@ watch(agentMode, (val, _oldVal) => {
       const tools: string[] = [];
       if (hasRagKnowledgeBase.value) {
         tools.push(
-          'knowledge_search',
+          'kb_search',
           'grep_chunks',
+          'knowledge_search',
           'list_knowledge_chunks',
           'query_knowledge_graph',
           'get_document_info',
           'database_query',
         );
       }
-      if (hasWikiKnowledgeBase.value) {
-        tools.push(...wikiReadTools);
-      }
+      // Wiki 工具暂隐藏，不再 seed wikiReadTools（恢复见 allTools 注释）
       formData.value.config.allowed_tools = tools;
     }
     if (formData.value.config.max_iterations <= 1) {

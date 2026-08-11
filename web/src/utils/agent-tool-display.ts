@@ -175,7 +175,8 @@ export function getRagPipelineStepTitle(t: ComposerTranslation, event: RagPipeli
       : t('agentStream.toolStatus.queryUnderstandDone')
   }
 
-  if (toolName === 'knowledge_search' || toolName === 'search_knowledge') {
+  // kb_search：聚合检索工具，状态展示与 knowledge_search 一致（均为知识库检索）
+  if (toolName === 'knowledge_search' || toolName === 'search_knowledge' || toolName === 'kb_search') {
     const searchSource = getRetrievalSearchSource(event.arguments, event.tool_data)
     const labels = getRetrievalStatusKeys(searchSource, event.success === false)
     if (pending) {

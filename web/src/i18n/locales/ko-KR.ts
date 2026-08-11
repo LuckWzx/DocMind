@@ -5850,6 +5850,8 @@ export default {
       thinkingDesc: '동적이고 반성적인 문제 해결 사고 도구',
       todoWrite: '계획 수립',
       todoWriteDesc: '구조화된 연구 계획 생성',
+      kbSearch: '지식베이스 검색',
+      kbSearchDesc: '통합 검색: 키워드 + 의미 검색과 결과 융합 및 재정렬을 한 번의 호출로 수행하여 가장 관련성 높은 문서 조각 반환',
       grepChunks: '키워드 검색',
       grepChunksDesc: '특정 키워드를 포함하는 문서와 청크를 빠르게 찾기',
       knowledgeSearch: '의미 검색',

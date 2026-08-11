@@ -5763,6 +5763,8 @@ export default {
       thinkingDesc: 'Dynamic and reflective problem-solving thinking tool',
       todoWrite: 'Plan',
       todoWriteDesc: 'Create structured research plans',
+      kbSearch: 'Knowledge Base Search',
+      kbSearchDesc: 'Aggregated retrieval: runs keyword + semantic search with fusion and reranking in one call, returning the most relevant chunks',
       grepChunks: 'Keyword Search',
       grepChunksDesc: 'Quickly locate documents and chunks containing specific keywords',
       knowledgeSearch: 'Semantic Search',

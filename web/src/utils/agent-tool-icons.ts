@@ -6,7 +6,7 @@ export function getAgentToolIconName(
   if (toolName === 'thinking') {
     return 'ai-search'
   }
-  if (toolName === 'search_knowledge' || toolName === 'knowledge_search') {
+  if (toolName === 'search_knowledge' || toolName === 'knowledge_search' || toolName === 'kb_search') {
     if (searchSource === 'web') {
       return 'internet'
     }

@@ -39,7 +39,8 @@ export function agentRequiresRerankModel(
   // and that default includes knowledge_search.
   if (allowedTools.length === 0) return true
 
-  return allowedTools.includes('knowledge_search')
+  // kb_search 为聚合检索工具，内部执行 rerank 阶段，同样需要 rerank 模型
+  return allowedTools.includes('knowledge_search') || allowedTools.includes('kb_search')
 }
 
 export function getAgentNotReadyReasonKeys(
