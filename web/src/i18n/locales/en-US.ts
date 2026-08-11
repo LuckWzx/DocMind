@@ -5809,6 +5809,7 @@ export default {
       wikiUpdateIssueDesc: 'Update the status of a Wiki page issue',
       // Runtime system-injected tools (preview only)
       webSearch: 'Web Search',
+      webSearchDesc: 'Search the internet for up-to-date information; requires a search engine configured in Web Search settings',
       webFetch: 'Web Fetch',
       // Groups
       groupBase: 'Basic',

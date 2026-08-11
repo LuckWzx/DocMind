@@ -5896,6 +5896,7 @@ export default {
       wikiUpdateIssueDesc: 'Wiki 페이지 문제의 처리 상태 업데이트',
       // 런타임 주입 (미리보기용)
       webSearch: '웹 검색',
+      webSearchDesc: '인터넷에서 최신 정보 검색 (설정-웹 검색에서 검색 엔진 구성 필요)',
       webFetch: '웹 페이지 가져오기',
       // 그룹
       groupBase: '기본',

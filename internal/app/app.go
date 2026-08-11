@@ -19,6 +19,7 @@ import (
 	"docmind/internal/model/entity"
 	"docmind/internal/repository"
 	"docmind/internal/service"
+	"docmind/internal/service/websearch"
 	"docmind/internal/tracing"
 	"docmind/pkg/config"
 	"docmind/pkg/database"
@@ -192,6 +193,8 @@ func (a *App) initDatabase() error {
 	//// 模型上下文大小缺失记录表（待补足内置映射表的模型清单）
 	//&entity.ModelContextWindowMissing{},
 	//&entity.MCPService{},
+	// 网页搜索提供方表（用户隔离，Agent web_search 工具配置）
+	//&entity.WebSearchProvider{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {
@@ -359,7 +362,12 @@ func (a *App) initDependencies() error {
 	a.mcpManager = mcpManager
 	mcpSvc := service.NewMCPService(mcpRepo, mcpManager)
 
-	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc, mcpRepo, mcpManager, a.cfg.Retrieval.DisableBM25)
+	// 网页搜索（web_search 工具：provider 管理按用户隔离 + 多引擎适配）
+	webSearchRepo := repository.NewWebSearchProviderRepository(a.pgDB)
+	webSearchFactory := websearch.NewEngineFactory(&http.Client{Timeout: 15 * time.Second})
+	webSearchSvc := service.NewWebSearchService(webSearchRepo, webSearchFactory)
+
+	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc, mcpRepo, mcpManager, a.cfg.Retrieval.DisableBM25, webSearchSvc)
 	if err != nil {
 		return fmt.Errorf("创建 ChatService 失败: %w", err)
 	}
@@ -368,7 +376,7 @@ func (a *App) initDependencies() error {
 	// SSE 活跃连接注册表（优雅关闭时向活跃连接广播 SERVER_SHUTDOWN）
 	sseRegistry := sse.NewRegistry()
 	a.sseRegistry = sseRegistry
-	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc, mcpSvc, sseRegistry, a.redis, a.cfg.SSE, memorySvc)
+	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc, mcpSvc, webSearchSvc, sseRegistry, a.redis, a.cfg.SSE, memorySvc)
 
 	return nil
 }

@@ -604,10 +604,19 @@ const saveProvider = async () => {
     }
 
     if (editingProvider.value) {
-      await updateWebSearchProvider(editingProvider.value.id!, data)
+      const resp: any = await updateWebSearchProvider(editingProvider.value.id!, data)
+      // 后端业务错误统一 HTTP 200 + code（见 pkg/response），必须显式检查 success，否则会误报保存成功
+      if (resp && resp.success === false) {
+        MessagePlugin.error(resp.message || 'Failed to save provider')
+        return
+      }
       MessagePlugin.success(t('webSearchSettings.toasts.providerUpdated'))
     } else {
-      await createWebSearchProvider(data)
+      const resp: any = await createWebSearchProvider(data)
+      if (resp && resp.success === false) {
+        MessagePlugin.error(resp.message || 'Failed to save provider')
+        return
+      }
       MessagePlugin.success(t('webSearchSettings.toasts.providerCreated'))
     }
     showAddProviderDialog.value = false
@@ -644,20 +653,23 @@ const testConnection = async () => {
 
     let ok = false
     if (editingProvider.value && !data.parameters.api_key) {
-      const res = await testWebSearchProvider(editingProvider.value.id!)
-      ok = !!res.success
-      if (res.success) {
+      const res: any = await testWebSearchProvider(editingProvider.value.id!)
+      // 后端返回 {success, data:{success,message}}，测试结果在 data 层（外层 success 恒为 true）
+      const payload = res?.data ?? res
+      ok = !!payload.success
+      if (payload.success) {
         MessagePlugin.success(t('webSearchSettings.toasts.testSuccess'))
       } else {
-        MessagePlugin.error(res.error || t('webSearchSettings.toasts.testFailed'))
+        MessagePlugin.error(payload.message || t('webSearchSettings.toasts.testFailed'))
       }
     } else {
-      const res = await testWebSearchProvider(undefined, data)
-      ok = !!res.success
-      if (res.success) {
+      const res: any = await testWebSearchProvider(undefined, data)
+      const payload = res?.data ?? res
+      ok = !!payload.success
+      if (payload.success) {
         MessagePlugin.success(t('webSearchSettings.toasts.testSuccess'))
       } else {
-        MessagePlugin.error(res.error || t('webSearchSettings.toasts.testFailed'))
+        MessagePlugin.error(payload.message || t('webSearchSettings.toasts.testFailed'))
       }
     }
     lastTestOk.value = ok

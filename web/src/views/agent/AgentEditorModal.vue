@@ -1396,19 +1396,8 @@
                   </div>
 
                   <div class="settings-group">
-                    <!-- 网络搜索 -->
-                    <div class="setting-row">
-                      <div class="setting-info">
-                        <label>{{ $t('agent.editor.webSearch') }}</label>
-                        <p class="desc">{{ $t('agentEditor.desc.webSearch') }}</p>
-                      </div>
-                      <div class="setting-control">
-                        <t-switch v-model="formData.config.web_search_enabled" />
-                      </div>
-                    </div>
-
-                    <!-- 网络搜索最大结果数 -->
-                    <div v-if="formData.config.web_search_enabled" class="setting-row">
+                    <!-- 网页搜索参数区：勾选 web_search 工具后显示（能力开关已改为工具勾选制） -->
+                    <div v-if="hasWebSearchTool" class="setting-row">
                       <div class="setting-info">
                         <label>{{ $t('agent.editor.webSearchProvider') }}</label>
                         <p class="desc">{{ $t('agentEditor.desc.webSearchProvider') }}</p>
@@ -1425,9 +1414,9 @@
                         </t-select>
                       </div>
                     </div>
-
+                  
                     <!-- 网络搜索最大结果数 -->
-                    <div v-if="formData.config.web_search_enabled" class="setting-row">
+                    <div v-if="hasWebSearchTool" class="setting-row">
                       <div class="setting-info">
                         <label>{{ $t('agent.editor.webSearchMaxResults') }}</label>
                         <p class="desc">{{ $t('agentEditor.desc.webSearchMaxResults') }}</p>
@@ -1439,32 +1428,7 @@
                         </div>
                       </div>
                     </div>
-
-                    <!-- 自动抓取页面内容 -->
-                    <div v-if="formData.config.web_search_enabled" class="setting-row">
-                      <div class="setting-info">
-                        <label>{{ $t('agent.editor.webFetchEnabled') }}</label>
-                        <p class="desc">{{ $t('agentEditor.desc.webFetchEnabled') }}</p>
-                      </div>
-                      <div class="setting-control">
-                        <t-switch v-model="formData.config.web_fetch_enabled" />
-                      </div>
-                    </div>
-
-                    <!-- 抓取页面数 -->
-                    <div v-if="formData.config.web_search_enabled && formData.config.web_fetch_enabled"
-                      class="setting-row">
-                      <div class="setting-info">
-                        <label>{{ $t('agent.editor.webFetchTopN') }}</label>
-                        <p class="desc">{{ $t('agentEditor.desc.webFetchTopN') }}</p>
-                      </div>
-                      <div class="setting-control">
-                        <div class="slider-wrapper">
-                          <t-slider v-model="formData.config.web_fetch_top_n" :min="1" :max="10" />
-                          <span class="slider-value">{{ formData.config.web_fetch_top_n }}</span>
-                        </div>
-                      </div>
-                    </div>
+                    <!-- web_fetch 二期实现，配置项暂隐藏（恢复见工具清单注释） -->
                   </div>
                 </div>
 
@@ -1954,6 +1918,8 @@ const allTools = computed<ToolOption[]>(() => [
   // 知识库语义/关键词检索
   // kb_search：聚合检索工具，单次调用完成 向量‖BM25→RRF→rerank 完整检索链路（后端已实现）
   { value: 'kb_search', label: t('agentEditor.tools.kbSearch'), description: t('agentEditor.tools.kbSearchDesc'), group: 'rag' },
+  // web_search：联网搜索工具（需在「设置-网页搜索」中配置搜索引擎提供方；勾选后下方可配参数）
+  { value: 'web_search', label: t('agentEditor.tools.webSearch'), description: t('agentEditor.tools.webSearchDesc'), group: 'rag' },
   // 以下拆分式检索工具为规划项，后端尚未实现，勾选暂不生效
   { value: 'grep_chunks', label: t('agentEditor.tools.grepChunks'), description: t('agentEditor.tools.grepChunksDesc'), group: 'rag' },
   { value: 'knowledge_search', label: t('agentEditor.tools.knowledgeSearch'), description: t('agentEditor.tools.knowledgeSearchDesc'), group: 'rag' },
@@ -1998,6 +1964,11 @@ const sharedKbOptions = computed(() => kbOptions.value.filter(kb => kb.shared));
 // 根据知识库配置动态计算是否有知识库能力
 const hasKnowledgeBase = computed(() => {
   return kbSelectionMode.value !== 'none';
+});
+
+// 是否已勾选 web_search 工具（决定网页搜索参数区是否显示；能力开关已改为工具勾选制）
+const hasWebSearchTool = computed(() => {
+  return (formData.value.config.allowed_tools || []).includes('web_search');
 });
 
 const showRerankModelField = computed(() => {
@@ -2112,7 +2083,7 @@ const groupedAvailableTools = computed(() => {
 // 最终运行时智能体实际能使用的工具集合（仅做预览展示）
 // 规则：基于 allowed_tools 过滤
 //   1) 勾选但缺失对应能力（无 KB / 无 Wiki 能力 KB）的工具会被灰显/隐藏
-//   2) 无论是否勾选，web_search / web_fetch 随 web_search_enabled 出现
+//   2) web_search 随勾选出现（工具化后不再由 web_search_enabled 开关驱动）
 //   3) 当 kb_selection_mode === 'none' 时，RAG/Wiki 工具都视为不可用
 const effectiveTools = computed(() => {
   const chosen = new Set(formData.value.config.allowed_tools || []);
@@ -2125,10 +2096,6 @@ const effectiveTools = computed(() => {
     } else {
       items.push({ value: tool.value, label: tool.label, active: true });
     }
-  }
-  if (formData.value.config.web_search_enabled) {
-    items.push({ value: 'web_search', label: t('agentEditor.tools.webSearch'), active: true });
-    items.push({ value: 'web_fetch', label: t('agentEditor.tools.webFetch'), active: true });
   }
   return items;
 });

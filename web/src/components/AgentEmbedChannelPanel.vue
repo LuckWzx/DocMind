@@ -481,7 +481,7 @@ const drawerAgent = computed(() =>
 )
 
 const agentWebSearchEnabledEffective = computed(() =>
-  drawerAgent.value?.config?.web_search_enabled === true,
+  (drawerAgent.value?.config?.allowed_tools || []).includes('web_search'),
 )
 
 const agentImageUploadEnabledEffective = computed(() =>

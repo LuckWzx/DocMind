@@ -15,20 +15,23 @@ import (
 )
 
 // Registry 工具注册表：按 Agent 配置组装工具集
-// 内置工具（kb_search 等）+ 外部 MCP 工具（按 MCPServices 配置挂载）
+// 内置工具（kb_search / web_search 等）+ 外部 MCP 工具（按 MCPServices 配置挂载）
 type Registry struct {
-	deps       *pipeline.PipelineDeps
-	mcpRepo    repository.MCPServiceRepository
-	mcpManager *mcp.Manager
+	deps         *pipeline.PipelineDeps
+	mcpRepo      repository.MCPServiceRepository
+	mcpManager   *mcp.Manager
+	webSearchSvc WebSearchService
 }
 
 // NewRegistry 创建工具注册表（依赖与 RAG 管道共用，见 service.BuildPipelineDeps）
 // mcpRepo / mcpManager 可为 nil：不挂载 MCP 工具
-func NewRegistry(deps *pipeline.PipelineDeps, mcpRepo repository.MCPServiceRepository, mcpManager *mcp.Manager) *Registry {
+// webSearchSvc 可为 nil：不注册 web_search 工具
+func NewRegistry(deps *pipeline.PipelineDeps, mcpRepo repository.MCPServiceRepository, mcpManager *mcp.Manager, webSearchSvc WebSearchService) *Registry {
 	return &Registry{
-		deps:       deps,
-		mcpRepo:    mcpRepo,
-		mcpManager: mcpManager,
+		deps:         deps,
+		mcpRepo:      mcpRepo,
+		mcpManager:   mcpManager,
+		webSearchSvc: webSearchSvc,
 	}
 }
 
@@ -65,6 +68,12 @@ func (r *Registry) Build(agent *entity.Agent, userID uint) ([]tool.BaseTool, *Re
 		"kb_search": func() (tool.BaseTool, error) {
 			return NewKBSearchTool(r.deps, userID, searchCfg, collector)
 		},
+	}
+	// web_search 工具（开关驱动见前端 allTools 勾选；无 WebSearchService 时不注册）
+	if r.webSearchSvc != nil {
+		builders["web_search"] = func() (tool.BaseTool, error) {
+			return NewWebSearchTool(r.webSearchSvc, userID, parseUintID(cfg.WebSearchProviderID), toolMaxResults(cfg))
+		}
 	}
 
 	// 构建全部工具（内置 + MCP），再统一按 AllowedTools 白名单过滤（空 = 全部可用）

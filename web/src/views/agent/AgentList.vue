@@ -260,7 +260,7 @@
                           size="14px" />
                       </div>
                     </t-tooltip>
-                    <t-tooltip v-if="agent.config?.web_search_enabled" :content="$t('agent.features.webSearch')"
+                    <t-tooltip v-if="(agent.config?.allowed_tools || []).includes('web_search')" :content="$t('agent.features.webSearch')"
                       placement="top">
                       <div class="feature-badge web-search">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -452,7 +452,7 @@
                           size="14px" />
                       </div>
                     </t-tooltip>
-                    <t-tooltip v-if="agent.config?.web_search_enabled" :content="$t('agent.features.webSearch')"
+                    <t-tooltip v-if="(agent.config?.allowed_tools || []).includes('web_search')" :content="$t('agent.features.webSearch')"
                       placement="top">
                       <div class="feature-badge web-search">
                         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -607,7 +607,7 @@
                           size="14px" />
                       </div>
                     </t-tooltip>
-                    <t-tooltip v-if="shared.agent?.config?.web_search_enabled" :content="$t('agent.features.webSearch')"
+                    <t-tooltip v-if="(shared.agent?.config?.allowed_tools || []).includes('web_search')" :content="$t('agent.features.webSearch')"
                       placement="top">
                       <div class="feature-badge web-search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"
                           xmlns="http://www.w3.org/2000/svg">
@@ -783,7 +783,7 @@
               </div>
               <div class="shared-detail-row">
                 <span class="shared-detail-label">{{ $t('agent.shareScope.webSearch') }}</span>
-                <span class="shared-detail-value">{{ currentSharedAgent.agent.config.web_search_enabled ?
+                <span class="shared-detail-value">{{ (currentSharedAgent.agent.config?.allowed_tools || []).includes('web_search') ?
                   $t('agent.shareScope.enabled') : $t('agent.shareScope.disabled') }}</span>
               </div>
               <div class="shared-detail-row">

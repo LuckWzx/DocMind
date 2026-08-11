@@ -1,8 +1,10 @@
 import type { WebSearchProviderEntity } from '@/api/web-search-provider';
 
 export type AgentWebSearchConfig = {
+  // 兼容旧字段（工具化改造后不再写入）；能力判定以 allowed_tools 为准
   web_search_enabled?: boolean;
   web_search_provider_id?: string;
+  allowed_tools?: string[];
 };
 
 /** 解析智能体实际会使用的搜索引擎 ID（与后端 agent > tenant default 逻辑一致） */
@@ -18,8 +20,9 @@ export function resolveAgentWebSearchProviderId(
   return defaultProvider?.id ?? null;
 }
 
+/** 智能体是否具备联网搜索能力：工具化后由 allowed_tools 勾选 web_search 决定 */
 export function isAgentWebSearchEnabled(config: AgentWebSearchConfig | undefined): boolean {
-  return config?.web_search_enabled === true;
+  return (config?.allowed_tools || []).includes('web_search');
 }
 
 /** 智能体已启用网络搜索，且能解析到可用搜索引擎 */

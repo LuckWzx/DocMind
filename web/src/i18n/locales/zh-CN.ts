@@ -5632,6 +5632,7 @@ export default {
       wikiUpdateIssueDesc: "更新 Wiki 页面问题的处理状态",
       // 运行时系统注入（只读，用于预览）
       webSearch: "网络搜索",
+      webSearchDesc: "在互联网上搜索最新信息，需先在「设置-网页搜索」中配置搜索引擎提供方",
       webFetch: "网页抓取",
       // 分组
       groupBase: "基础",
