@@ -137,8 +137,9 @@ func SearchKB(ctx context.Context, deps *PipelineDeps, params *SearchKBParams) (
 	}
 
 	// 6. 关键字检索（BM25，与向量检索并行一路；失败或未注入时降级为空结果）
+	// 开关：config.yaml retrieval.disable_bm25（true=关闭）；关闭时仅剩向量检索一路
 	keywordResults := []SearchResult{}
-	if deps.KeywordSearch != nil {
+	if deps.KeywordSearch != nil && !deps.DisableBM25 {
 		kTopK := params.KeywordTopK
 		if kTopK <= 0 {
 			kTopK = 5

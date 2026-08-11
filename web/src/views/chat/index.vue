@@ -231,6 +231,29 @@ const loadSessionAndHydrate = async (sid) => {
                 // 离开会话时会从快照还原，避免本会话的状态污染新建对话。
                 useSettingsStoreInstance.snapshotAsDefaultsIfNeeded();
                 useSettingsStoreInstance.applyLastRequestState(lastState);
+            } else if (sessionRes.data?.agent_id) {
+                // 老会话（后端尚无 last_request_state 快照）：用会话绑定的 agent_id 兑底恢复模式。
+                // 只覆盖 agent 相关字段，不重置 KB/文件选择（applyLastRequestState 仅触碰传入字段）。
+                // 内置智能体归一化：会话存的是数字主键（"1"/"2"），而前端智能体识别统一用
+                // id_str（builtin-quick-answer/builtin-smart-reasoning），两者需映射一致；
+                // 同时按内置类型修正 agent_enabled，避免旧数据标记失真导致模式误判。
+                const boundAgentId = String(sessionRes.data.agent_id);
+                let normalizedAgentId = boundAgentId;
+                let normalizedEnabled = sessionRes.data.agent_enabled;
+                if (boundAgentId === '1' || boundAgentId === 'builtin-quick-answer') {
+                    normalizedAgentId = 'builtin-quick-answer';
+                    normalizedEnabled = false;
+                } else if (boundAgentId === '2' || boundAgentId === 'builtin-smart-reasoning') {
+                    normalizedAgentId = 'builtin-smart-reasoning';
+                    normalizedEnabled = true;
+                }
+                useSettingsStoreInstance.snapshotAsDefaultsIfNeeded();
+                useSettingsStoreInstance.applyLastRequestState({
+                    agent_id: normalizedAgentId,
+                    // agent_enabled 历史数据可能失真（如旧会话绑定智能推理但标记为 false），
+                    // 内置智能体按上表修正；自定义智能体保持会话记录值
+                    agent_enabled: normalizedEnabled,
+                });
             }
         }
     } catch (error) {

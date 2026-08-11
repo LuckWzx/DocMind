@@ -13,6 +13,9 @@ type SessionRepository interface {
 	FindByID(id uint) (*entity.Session, error)
 	ListByUser(userID uint, source string, page, pageSize int) ([]*entity.Session, int64, error)
 	UpdatePin(id uint, pinned bool) error
+	// UpdateModeState 更新会话的对话模式状态（AgentID/AgentEnabled/LastRequestState 快照），
+	// 部分更新不触碰其他字段；agentID 为空时保留原值（请求未携带智能体时不清空绑定）
+	UpdateModeState(id uint, agentID string, enabled bool, state *entity.SessionLastRequestState) error
 	IncrementMessageCount(id uint) error
 	UpdateLastMessage(id uint, preview string) error
 	CountBySession(sessionID uint) (int64, error)

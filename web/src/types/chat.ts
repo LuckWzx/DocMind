@@ -1,10 +1,34 @@
 // 聊天类型定义
 
+// 后端 sessions.last_request_state JSON 形状（与 stores/settings.ts SessionLastRequestStatePayload 对齐）。
+// 字段全部可选——历史会话或新建会话首发前的请求没有这条记录。
+export interface SessionLastRequestState {
+  agent_id?: string
+  agent_enabled?: boolean
+  model_id?: string
+  knowledge_base_ids?: string[]
+  knowledge_ids?: string[]
+  tag_ids?: string[]
+  mcp_service_ids?: string[]
+  skill_names?: string[]
+  mentioned_items?: Array<{
+    id: string
+    name?: string
+    type: string
+    kb_id?: string
+    kb_name?: string
+    skill_name?: string
+  }>
+  web_search_enabled?: boolean
+}
+
 export interface Session {
   id: string
   title?: string
   knowledge_base_ids?: string[]
   agent_id?: string
+  agent_enabled?: boolean
+  last_request_state?: SessionLastRequestState
   created_at: string
   updated_at: string
   source?: 'web' | 'im' | 'embed'

@@ -68,6 +68,7 @@ func BuildPipelineDeps(
 	kbRepo repository.KnowledgeBaseRepository,
 	vectorStoreRepo repository.VectorStoreRepository,
 	primaryDB *gorm.DB,
+	disableBM25 bool,
 ) *pipeline.PipelineDeps {
 	return &pipeline.PipelineDeps{
 		EmbedderFactory: llm.NewPipelineEmbedderFactory(embedderFactory),
@@ -76,6 +77,7 @@ func BuildPipelineDeps(
 		KBRepo:          kbRepo,
 		VectorStoreRepo: vectorStoreRepo,
 		PrimaryDB:       primaryDB,
+		DisableBM25:     disableBM25,
 		CreateDriver: func(store interface{}) (pipeline.PipelineVectorDriver, func(), error) {
 			vs, ok := store.(*entity.VectorStore)
 			if !ok {
@@ -106,9 +108,10 @@ func NewChatService(
 	memorySvc longterm.MemoryService,
 	mcpRepo repository.MCPServiceRepository,
 	mcpManager *mcp.Manager,
+	disableBM25 bool,
 ) (ChatService, error) {
 	// 构建 Pipeline 依赖（Agent kb_search 工具复用同一套依赖）
-	pipelineDeps := BuildPipelineDeps(embedderFactory, rerankerFactory, kbRepo, vectorStoreRepo, primaryDB)
+	pipelineDeps := BuildPipelineDeps(embedderFactory, rerankerFactory, kbRepo, vectorStoreRepo, primaryDB, disableBM25)
 
 	// 创建 RAG Pipeline
 	ragPipeline, err := pipeline.NewPipeline(pipelineDeps)
@@ -176,6 +179,11 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 	s.sessionRepo.UpdateLastMessage(sessionID, req.Query)
 
 	// 3. 从 Agent 解析配置（提前，用于确定历史轮数）
+	// 请求级 agent_id 优先覆盖会话绑定（与 AgentChat 一致），
+	// 避免会话陈旧绑定影响本次快速问答的模型/检索参数（如会话曾绑定智能推理）
+	if req.AgentID != "" {
+		session.AgentID = string(req.AgentID)
+	}
 	agentConfig := s.resolveAgentConfig(session, req, userID)
 
 	// 4. 加载短期记忆上下文：会话摘要（若有）+ 压缩边界之后的增量消息
@@ -272,6 +280,21 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 		}
 	}
 
+	// 4.2 回写会话模式状态：AgentID 覆盖 + last_request_state 快照（失败仅记日志，不阻断对话）。
+	// 使会话列表的模式标记与实际对话一致；前端打开历史会话时按快照恢复输入栏。
+	s.syncSessionModeState(ctx, sessionID, string(req.AgentID), false, buildLastRequestState(chatStateSnapshot{
+		agentID:          string(req.AgentID),
+		enabled:          false,
+		modelID:          agentConfig.ModelID,
+		kbIDs:            agentConfig.KnowledgeBaseIDs,
+		knowledgeIDs:     req.KnowledgeIDs,
+		tagIDs:           req.TagIDs,
+		mcpServiceIDs:    req.MCPServiceIDs,
+		skillNames:       req.SkillNames,
+		mentionedItems:   req.MentionedItems,
+		webSearchEnabled: req.WebSearchEnabled,
+	}))
+
 	// 5. 创建 Pipeline 上下文
 	pipelineCtx := &pipeline.Context{
 		Query:           req.Query,
@@ -344,12 +367,27 @@ func (s *chatService) AgentChat(ctx context.Context, sessionID uint, userID uint
 	// 3. 解析 Agent 实体（请求级 agent_id 优先覆盖会话绑定，内置模板 + 用户覆盖 / 会话内嵌配置）
 	// 仅临时覆盖内存中的 session 副本，不落库（会话绑定由前端切换会话/智能体接口维护）
 	if req.AgentID != "" {
-		session.AgentID = req.AgentID
+		session.AgentID = string(req.AgentID)
 	}
 	agt, err := s.resolveAgentForChat(ctx, session, userID)
 	if err != nil {
 		return nil, err
 	}
+
+	// 3.1 回写会话模式状态：AgentID 覆盖 + last_request_state 快照（失败仅记日志，不阻断对话）。
+	// 使会话列表的模式标记与实际对话一致；前端打开历史会话时按快照恢复输入栏。
+	s.syncSessionModeState(ctx, sessionID, string(req.AgentID), true, buildLastRequestState(chatStateSnapshot{
+		agentID:          string(req.AgentID),
+		enabled:          true,
+		modelID:          agt.Config.ModelID,
+		kbIDs:            s.resolveKBIDs(session, req.KnowledgeBaseIDs),
+		knowledgeIDs:     req.KnowledgeIDs,
+		tagIDs:           req.TagIDs,
+		mcpServiceIDs:    req.MCPServiceIDs,
+		skillNames:       req.SkillNames,
+		mentionedItems:   req.MentionedItems,
+		webSearchEnabled: req.WebSearchEnabled,
+	}))
 
 	// 4. 工具集：Registry 按 Agent 配置构建（AllowedTools 白名单 + kb_search 引用收集器 + MCP 工具挂载）
 	registry := tools.NewRegistry(s.pipelineDeps, s.mcpRepo, s.mcpManager)
@@ -407,6 +445,49 @@ func (s *chatService) AgentChat(ctx context.Context, sessionID uint, userID uint
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "Agent 运行失败", err)
 	}
 	return &AgentChatResponse{Stream: stream, Collector: collector}, nil
+}
+
+// syncSessionModeState 回写会话的对话模式状态：AgentID（非空时）+ AgentEnabled + LastRequestState 快照。
+// 部分更新不触碰其他字段；失败仅记日志，绝不阻断对话主流程。
+func (s *chatService) syncSessionModeState(ctx context.Context, sessionID uint, agentID string, enabled bool, state *entity.SessionLastRequestState) {
+	if err := s.sessionRepo.UpdateModeState(sessionID, agentID, enabled, state); err != nil {
+		logger.Warnf("[ChatService] 回写会话模式状态失败（不影响本次对话）: %v", err)
+	}
+}
+
+// chatStateSnapshot 组装 last_request_state 快照的输入（请求字段 + 解析后的对话配置）
+type chatStateSnapshot struct {
+	agentID          string
+	enabled          bool
+	modelID          string
+	kbIDs            []string
+	knowledgeIDs     []string
+	tagIDs           []string
+	mcpServiceIDs    []string
+	skillNames       []string
+	mentionedItems   []entity.StateMentionedItem
+	webSearchEnabled *bool
+}
+
+// buildLastRequestState 组装会话请求状态快照（字段对齐前端 SessionLastRequestStatePayload，
+// 前端打开历史会话时据此恢复输入栏）。快照无有效内容时返回 nil（不写入空记录）。
+func buildLastRequestState(in chatStateSnapshot) *entity.SessionLastRequestState {
+	st := &entity.SessionLastRequestState{
+		AgentID:          in.agentID,
+		AgentEnabled:     &in.enabled,
+		ModelID:          in.modelID,
+		KnowledgeBaseIDs: in.kbIDs,
+		KnowledgeIDs:     in.knowledgeIDs,
+		TagIDs:           in.tagIDs,
+		MCPServiceIDs:    in.mcpServiceIDs,
+		SkillNames:       in.skillNames,
+		MentionedItems:   in.mentionedItems,
+		WebSearchEnabled: in.webSearchEnabled,
+	}
+	if st.AgentID == "" && !in.enabled && st.ModelID == "" && len(st.KnowledgeBaseIDs) == 0 {
+		return nil
+	}
+	return st
 }
 
 // resolveAgentForChat 解析会话关联的 Agent 实体
@@ -501,7 +582,7 @@ func (s *chatService) resolveAgentConfig(session *entity.Session, req *Knowledge
 		EnableQueryRewrite: false,
 		EmbeddingTopK:      defaultTopK,
 		VectorThreshold:    0.5,
-		KeywordTopK:        defaultTopK,
+		KeywordTopK:        defaultTopK, // 全局开关由 config.yaml retrieval.disable_bm25 控制，此处保持原默认
 		RerankTopK:         defaultTopK,
 	}
 

@@ -80,6 +80,8 @@ type PipelineDeps struct {
 	VectorStoreRepo repository.VectorStoreRepository
 	PrimaryDB       interface{} // *gorm.DB，使用 interface 避免导入 gorm
 	CreateDriver    func(store interface{}) (PipelineVectorDriver, func(), error)
+	// DisableBM25 全局关闭 BM25 关键字检索（config.yaml retrieval.disable_bm25，应急降载）
+	DisableBM25 bool
 }
 
 // PipelineEmbedderFactory 嵌入模型工厂接口

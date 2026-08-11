@@ -106,7 +106,7 @@ func main() {
 	rerankerFactory := llm.NewRerankerFactory(modelRepo, &http.Client{Timeout: 30 * time.Second})
 	kbRepo := repository.NewKnowledgeBaseRepository(db)
 	vectorStoreRepo := repository.NewVectorStoreRepository(db)
-	pipelineDeps := service.BuildPipelineDeps(embedderFactory, rerankerFactory, kbRepo, vectorStoreRepo, db)
+	pipelineDeps := service.BuildPipelineDeps(embedderFactory, rerankerFactory, kbRepo, vectorStoreRepo, db, false)
 
 	// 检索用户上下文：优先选有规范检索数据（kb_id>0 且全局默认 store）的用户
 	var defaultStoreID uint

@@ -16,6 +16,7 @@ type Config struct {
 	Neo4j     Neo4jConfig     `mapstructure:"neo4j"`
 	Memory    MemoryConfig    `mapstructure:"memory"`
 	CozeLoop  CozeLoopConfig  `mapstructure:"cozeloop"`
+	Retrieval RetrievalConfig `mapstructure:"retrieval"`
 }
 
 // AppConfig 应用配置
@@ -139,6 +140,15 @@ type MemoryConfig struct {
 	ModelID               string `mapstructure:"model_id"`
 	RetrieveLimit         int    `mapstructure:"retrieve_limit"`
 	MaxEpisodesPerSession int    `mapstructure:"max_episodes_per_session"`
+}
+
+// RetrievalConfig 检索配置
+// DisableBM25=true 时关闭 BM25 关键字检索（仅剩向量检索一路，应急降载用）
+// 零值 false = 不关闭，未配置该段时行为与旧版一致
+// 生效方式：修改后重启后端；快速问答与智能推理（kb_search）同时受控
+// 注：Agent 级仍可用 keyword_top_k<=0 细粒度关闭（见 pipeline.SearchKB）
+type RetrievalConfig struct {
+	DisableBM25 bool `mapstructure:"disable_bm25"`
 }
 
 // CozeLoopConfig CozeLoop 链路追踪配置（可选，Eino 全局 Trace 上报）

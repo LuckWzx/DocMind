@@ -46,21 +46,41 @@ type ChatService interface {
 	GenerateSessionTitle(ctx context.Context, sessionID uint, userID uint, query string) (string, error)
 }
 
-// KnowledgeChatRequest 知识问答请求
+// KnowledgeChatRequest 快速问答请求（单步 RAG 管道）
+// AgentID：请求级智能体标识（id_str 或数字主键均可），非空时覆盖会话绑定，
+// 供 resolveAgentConfig 解析本次对话使用的配置（模型/检索参数等）
+// KnowledgeIDs/TagIDs/MCPServiceIDs/SkillNames/MentionedItems/WebSearchEnabled：
+// 前端已发送的输入状态字段，当前仅记录到会话 last_request_state 快照（供前端恢复），
+// 暂不参与检索过滤（检索范围由 KnowledgeBaseIDs 决定）
 type KnowledgeChatRequest struct {
 	Query            string   `json:"query"`
 	KnowledgeBaseIDs []string `json:"knowledge_base_ids"`
-	Channel          string   `json:"channel"`
+	KnowledgeIDs     []string `json:"knowledge_ids,omitempty"`
+	// AgentID 请求级智能体标识：兼容数字主键与 id_str 两种形态（前端可能传 number 或 string）
+	AgentID          entity.FlexString           `json:"agent_id"`
+	TagIDs           []string                    `json:"tag_ids,omitempty"`
+	MCPServiceIDs    []string                    `json:"mcp_service_ids,omitempty"`
+	SkillNames       []string                    `json:"skill_names,omitempty"`
+	MentionedItems   []entity.StateMentionedItem `json:"mentioned_items,omitempty"`
+	WebSearchEnabled *bool                       `json:"web_search_enabled,omitempty"`
+	Channel          string                      `json:"channel"`
 }
 
 // AgentChatRequest 智能推理对话请求（与 KnowledgeChatRequest 字段一致，复用前端入参）
 type AgentChatRequest struct {
 	Query            string   `json:"query"`
 	KnowledgeBaseIDs []string `json:"knowledge_base_ids"`
+	KnowledgeIDs     []string `json:"knowledge_ids,omitempty"`
 	// AgentID 请求级智能体标识（id_str 或数字主键均可），非空时覆盖会话绑定
-	// （前端切换智能体后按当前选择下发，避免会话旧绑定继续生效）
-	AgentID string `json:"agent_id"`
-	Channel string `json:"channel"`
+	// （前端切换智能体后按当前选择下发，避免会话旧绑定继续生效）；
+	// FlexString 兼容前端传数字主键的形态
+	AgentID          entity.FlexString           `json:"agent_id"`
+	TagIDs           []string                    `json:"tag_ids,omitempty"`
+	MCPServiceIDs    []string                    `json:"mcp_service_ids,omitempty"`
+	SkillNames       []string                    `json:"skill_names,omitempty"`
+	MentionedItems   []entity.StateMentionedItem `json:"mentioned_items,omitempty"`
+	WebSearchEnabled *bool                       `json:"web_search_enabled,omitempty"`
+	Channel          string                      `json:"channel"`
 }
 
 // AgentChatResponse 智能推理对话响应

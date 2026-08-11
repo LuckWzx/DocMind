@@ -359,7 +359,7 @@ func (a *App) initDependencies() error {
 	a.mcpManager = mcpManager
 	mcpSvc := service.NewMCPService(mcpRepo, mcpManager)
 
-	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc, mcpRepo, mcpManager)
+	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc, mcpRepo, mcpManager, a.cfg.Retrieval.DisableBM25)
 	if err != nil {
 		return fmt.Errorf("创建 ChatService 失败: %w", err)
 	}

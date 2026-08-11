@@ -65,6 +65,19 @@ func (r *sessionRepository) UpdatePin(id uint, pinned bool) error {
 		Update("pinned", pinned).Error
 }
 
+// UpdateModeState 部分更新会话的对话模式状态：AgentID（非空时）/ AgentEnabled / LastRequestState 快照。
+// 使用 map 更新避免 GORM Save 全字段覆盖；LastRequestState 为 nil 时更新为 NULL（清空快照）。
+func (r *sessionRepository) UpdateModeState(id uint, agentID string, enabled bool, state *entity.SessionLastRequestState) error {
+	fields := map[string]interface{}{
+		"agent_enabled":      enabled,
+		"last_request_state": state,
+	}
+	if agentID != "" {
+		fields["agent_id"] = agentID
+	}
+	return r.db.Model(&entity.Session{}).Where("id = ?", id).Updates(fields).Error
+}
+
 func (r *sessionRepository) IncrementMessageCount(id uint) error {
 	return r.db.Model(&entity.Session{}).Where("id = ?", id).
 		UpdateColumn("message_count", gorm.Expr("message_count + 1")).Error

@@ -164,7 +164,8 @@ const selectedAgent = computed(() => {
     );
     if (shared?.agent) return shared.agent as CustomAgent;
   }
-  const mine = agents.value.find(a => a.id === selectedAgentId.value);
+  const mine = agents.value.find(a => String(a.id) === String(selectedAgentId.value))
+    || agents.value.find(a => a.id_str === selectedAgentId.value);
   if (mine) return mine;
   return {
     id: BUILTIN_QUICK_ANSWER_ID,
@@ -843,13 +844,13 @@ const ensureSelectedAgentNotDisabled = () => {
   if (!disabledOwnAgentIds.value.includes(currentId)) return
 
   const isEnabled = (id: string) =>
-    agents.value.some(a => a.id === id) && !disabledOwnAgentIds.value.includes(id)
+    agents.value.some(a => String(a.id) === String(id) || a.id_str === id) && !disabledOwnAgentIds.value.includes(id)
 
   let fallback: CustomAgent | undefined
   if (isEnabled(BUILTIN_SMART_REASONING_ID)) {
-    fallback = agents.value.find(a => a.id === BUILTIN_SMART_REASONING_ID)
+    fallback = agents.value.find(a => String(a.id) === String(BUILTIN_SMART_REASONING_ID) || a.id_str === BUILTIN_SMART_REASONING_ID)
   } else if (isEnabled(BUILTIN_QUICK_ANSWER_ID)) {
-    fallback = agents.value.find(a => a.id === BUILTIN_QUICK_ANSWER_ID)
+    fallback = agents.value.find(a => String(a.id) === String(BUILTIN_QUICK_ANSWER_ID) || a.id_str === BUILTIN_QUICK_ANSWER_ID)
   } else {
     fallback = agents.value.find(a => !disabledOwnAgentIds.value.includes(a.id))
   }
@@ -1895,10 +1896,13 @@ const createSession = async (val: string) => {
   const agentToCheck = selectedAgent.value;
   let actualAgent = agentToCheck;
   if (agentToCheck.is_builtin && !settingsStore.selectedAgentSourceTenantId) {
-    let builtin = agents.value.find(a => a.id === selectedAgentId.value);
+    // agent id 存在多种形态（数字主键 / id_str），统一兼容匹配：先按数字 id（String 比较），再按 id_str
+    const findAgent = (id: string) => agents.value.find(a => String(a.id) === String(id))
+      || agents.value.find(a => a.id_str === id);
+    let builtin = findAgent(String(selectedAgentId.value));
     if (!builtin) {
       await loadAgents();
-      builtin = agents.value.find(a => a.id === selectedAgentId.value);
+      builtin = findAgent(String(selectedAgentId.value));
     }
     actualAgent = builtin || agentToCheck;
   }

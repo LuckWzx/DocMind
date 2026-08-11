@@ -53,6 +53,35 @@ func scanJSONStruct(value interface{}, target interface{}) error {
 	}
 }
 
+// FlexString 兼容 JSON string 与 number 的字符串类型。
+// 用途：请求 DTO 中可能收到数字或字符串形态的字段（如前端 agent_id 可能传数字主键 1 或 id_str），
+// 反序列化时自动归一化为字符串；序列化时统一输出字符串。
+type FlexString string
+
+// UnmarshalJSON 兼容 string / number / null 三种形态
+func (s *FlexString) UnmarshalJSON(data []byte) error {
+	if len(data) == 0 || string(data) == "null" {
+		*s = ""
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		*s = FlexString(str)
+		return nil
+	}
+	var num json.Number
+	if err := json.Unmarshal(data, &num); err == nil {
+		*s = FlexString(num.String())
+		return nil
+	}
+	return fmt.Errorf("cannot unmarshal %s into FlexString", string(data))
+}
+
+// MarshalJSON 统一输出字符串形态
+func (s FlexString) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(s))
+}
+
 func jsonStructValue(value interface{}) (driver.Value, error) {
 	raw, err := json.Marshal(value)
 	if err != nil {

@@ -14,7 +14,7 @@ func newKeywordSearchNode(deps *PipelineDeps) func(ctx context.Context, input *C
 			input.KeywordResults = []SearchResult{}
 			return input, nil
 		}
-		if deps == nil || deps.KeywordSearch == nil {
+		if deps == nil || deps.KeywordSearch == nil || deps.DisableBM25 {
 			input.KeywordResults = []SearchResult{}
 			return input, nil
 		}
@@ -31,7 +31,7 @@ func newKeywordSearchNode(deps *PipelineDeps) func(ctx context.Context, input *C
 			uintKBIDs = append(uintKBIDs, parseUint(id))
 		}
 
-		// 3. 确定 TopK
+		// 3. 确定 TopK（KeywordTopK<=0 时按原默认 5，与关闭开关无关）
 		topK := input.AgentConfig.KeywordTopK
 		if topK <= 0 {
 			topK = 5
