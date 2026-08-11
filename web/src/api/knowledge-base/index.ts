@@ -110,9 +110,26 @@ export function getKnowledgeBaseById(id: string, options?: { agent_id?: string }
 export function updateKnowledgeBase(id: string, data: {
   name: string;
   description?: string;
+  // 与创建接口对齐的顶层配置字段：编辑时随基本信息一并提交
+  embedding_model_id?: string;
+  summary_model_id?: string;
+  chunking_config?: any;
+  storage_provider_config?: { provider: string };
+  vlm_config?: {
+    enabled: boolean;
+    model_id?: string;
+    description_language?: string;
+    custom_instructions?: string;
+  };
+  asr_config?: {
+    enabled: boolean;
+    model_id?: string;
+    language?: string;
+  };
   config?: {
     chunking_config?: any;
     image_processing_config?: any;
+    extract_config?: any;
     faq_config?: any;
     wiki_config?: {
       synthesis_model_id?: string;

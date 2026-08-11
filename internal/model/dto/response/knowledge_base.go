@@ -19,6 +19,8 @@ type KnowledgeBaseResponse struct {
 	FAQConfig             *entity.FAQConfig             `json:"faq_config,omitempty"`
 	StorageProviderConfig *entity.StorageProviderConfig `json:"storage_provider_config,omitempty"`
 	IndexingStrategy      entity.IndexingStrategy       `json:"indexing_strategy"`
+	VLMConfig             *entity.VLMConfig             `json:"vlm_config,omitempty"`
+	ASRConfig             *entity.ASRConfig             `json:"asr_config,omitempty"`
 	CreatedAt             time.Time                     `json:"created_at"`
 	UpdatedAt             time.Time                     `json:"updated_at"`
 	DocumentCount         int64                         `json:"document_count"`

@@ -446,7 +446,6 @@ import KbCreateContextualGuide from '@/components/KbCreateContextualGuide.vue'
 import { KB_EDITOR_FOCUS_SECTION_EVENT, markContextualGuideDone } from '@/config/contextualGuides'
 import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 import { createKnowledgeBase, getKnowledgeBaseById, listKnowledgeFiles, updateKnowledgeBase, rebuildKBIndex } from '@/api/knowledge-base'
-import { updateKBConfig, type KBModelConfigRequest } from '@/api/initialization'
 import { type ModelConfig } from '@/api/model'
 import { useChatResourcesStore } from '@/stores/chatResources'
 import { useEditorResourcesStore } from '@/stores/editorResources'
@@ -832,7 +831,8 @@ const loadKBData = async () => {
       storageBackendId: (kb.storage_backend_id || '') as string,
       storageProvider: (kb.storage_provider_config?.provider || kb.storage_config?.provider || 'local') as string,
       multimodalConfig: {
-        enabled: !!kb.vlm_config?.enabled,
+        // 开关以 vlm_config 为准，兼容旧数据回退到 chunking_config.enable_mm
+        enabled: !!kb.vlm_config?.enabled || !!kb.chunking_config?.enable_mm,
         vllmModelId: kb.vlm_config?.model_id || '',
         descriptionLanguage: kb.vlm_config?.description_language || '',
         customInstructions: kb.vlm_config?.custom_instructions || ''
@@ -1313,7 +1313,7 @@ const doSubmit = async () => {
         throw new Error(t('knowledgeEditor.messages.missingId'))
       }
 
-      // 1. 更新基本信息（名称、描述）和 FAQ/Wiki 配置
+      // 1. 更新基本信息 + 全部配置（模型、分块、多模态、存储引擎、知识图谱等），一次请求完成
       const updateConfig: any = {}
       if (formData.value.type === 'faq' && formData.value.faqConfig) {
         updateConfig.faq_config = {
@@ -1338,55 +1338,27 @@ const doSubmit = async () => {
           graph_enabled: formData.value.indexingStrategy?.graphEnabled ?? false,
         }
       }
+      // 抽取配置：始终提交开关状态（GraphSettings 开关），后端仅持久化 enabled
+      if (data.extract_config) {
+        updateConfig.extract_config = { enabled: !!data.extract_config.enabled }
+      }
       await updateKnowledgeBase(props.kbId, {
         name: data.name,
         description: data.description,
-        config: updateConfig
-      })
-
-      // 2. 更新完整配置（模型、分块、多模态、存储引擎、知识图谱等）
-      const config: KBModelConfigRequest = {
-        llmModelId: data.summary_model_id,
-        embeddingModelId: data.embedding_model_id,
+        // 以下顶层字段与创建接口对齐，由后端统一持久化
+        embedding_model_id: data.embedding_model_id,
+        summary_model_id: data.summary_model_id,
+        // 分块配置（顶层 chunking_config）；enable_mm 由多模态开关映射
+        chunking_config: {
+          ...data.chunking_config,
+          enable_mm: !!formData.value.multimodalConfig.enabled
+        },
+        storage_provider_config: data.storage_provider_config,
+        // 多模态/语音识别配置：后端持久化到 vlm_config/asr_config，供再次打开回显
         vlm_config: data.vlm_config,
         asr_config: data.asr_config,
-        documentSplitting: {
-          chunkSize: data.chunking_config.chunk_size,
-          chunkOverlap: data.chunking_config.chunk_overlap,
-          separators: data.chunking_config.separators,
-          parserEngineRules: data.chunking_config.parser_engine_rules || undefined,
-          enableParentChild: data.chunking_config.enable_parent_child || false,
-          parentChunkSize: data.chunking_config.parent_chunk_size || 4096,
-          childChunkSize: data.chunking_config.child_chunk_size || 384,
-          // Always send strategy / tokenLimit / languages — backend treats
-          // empty/0/[] as a valid clear, so we must include them in the
-          // payload to let users reset back to defaults.
-          strategy: formData.value?.chunkingConfig.strategy ?? '',
-          tokenLimit: formData.value?.chunkingConfig.tokenLimit ?? 0,
-          languages: formData.value?.chunkingConfig.languages ?? [],
-          tableMetadataInstructions: formData.value?.chunkingConfig.tableMetadataInstructions ?? ''
-        },
-        multimodal: {
-          enabled: !!data.vlm_config?.enabled
-        },
-        storageBackendId: formData.value?.storageBackendId || '',
-        storageProvider: data.storage_provider_config?.provider || data.storage_config?.provider || 'local',
-        nodeExtract: {
-          enabled: data.extract_config?.enabled || false,
-          text: data.extract_config?.text || '',
-          tags: data.extract_config?.tags || [],
-          nodes: data.extract_config?.nodes || [],
-          relations: data.extract_config?.relations || [],
-          customInstructions: data.extract_config?.custom_instructions || ''
-        },
-        questionGeneration: {
-          enabled: data.question_generation_config?.enabled || false,
-          questionCount: data.question_generation_config?.question_count || 3,
-          customInstructions: data.question_generation_config?.custom_instructions || ''
-        }
-      }
-
-      await updateKBConfig(props.kbId, config)
+        config: updateConfig
+      })
       MessagePlugin.success(t('knowledgeEditor.messages.updateSuccess'))
 
       // Check if indexing strategy changed and offer rebuild

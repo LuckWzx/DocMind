@@ -79,6 +79,16 @@ func (s *knowledgeBaseService) Create(userID uint, request *req.CreateKnowledgeB
 	if err := decodeInto(request.IndexingStrategy, &kb.IndexingStrategy); err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInvalidParam, "indexing_strategy 格式错误", err)
 	}
+	if err := decodeInto(request.VLMConfig, &kb.VLMConfig); err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInvalidParam, "vlm_config 格式错误", err)
+	}
+	if err := decodeInto(request.ASRConfig, &kb.ASRConfig); err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInvalidParam, "asr_config 格式错误", err)
+	}
+	// 多模态开关同步到分块配置，解析链路统一读 EnableMM
+	if kb.VLMConfig != nil {
+		kb.ChunkingConfig.EnableMM = kb.VLMConfig.Enabled
+	}
 	if kb.StorageProviderConfig == nil {
 		kb.StorageProviderConfig = &entity.StorageProviderConfig{Provider: "mock"}
 	}
@@ -113,7 +123,15 @@ func (s *knowledgeBaseService) Update(userID, id uint, request *req.UpdateKnowle
 	}
 	kb.Name = strings.TrimSpace(request.Name)
 	kb.Description = strings.TrimSpace(request.Description)
-	if err := decodeInto(request.Config.ChunkingConfig, &kb.ChunkingConfig); err != nil {
+	// 模型配置（与创建接口的顶层字段对齐）
+	kb.EmbeddingModelID = strings.TrimSpace(request.EmbeddingModelID)
+	kb.SummaryModelID = strings.TrimSpace(request.SummaryModelID)
+	// 分块配置：顶层 chunking_config 优先，兼容旧的 config.chunking_config 嵌套传参
+	chunking := request.ChunkingConfig
+	if chunking == nil {
+		chunking = request.Config.ChunkingConfig
+	}
+	if err := decodeInto(chunking, &kb.ChunkingConfig); err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInvalidParam, "chunking_config 格式错误", err)
 	}
 	if err := decodeInto(request.Config.ExtractConfig, &kb.ExtractConfig); err != nil {
@@ -124,6 +142,23 @@ func (s *knowledgeBaseService) Update(userID, id uint, request *req.UpdateKnowle
 	}
 	if err := decodeInto(request.Config.IndexingStrategy, &kb.IndexingStrategy); err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInvalidParam, "indexing_strategy 格式错误", err)
+	}
+	// 存储提供方：只合并显式传入的字段，避免覆盖既有 bucket/密钥等细节
+	if request.StorageProviderConfig != nil {
+		if kb.StorageProviderConfig == nil {
+			kb.StorageProviderConfig = &entity.StorageProviderConfig{}
+		}
+		mergeStorageProvider(kb.StorageProviderConfig, request.StorageProviderConfig)
+	}
+	// 多模态/语音识别配置：不传时保留原值；开关同步到分块配置
+	if err := decodeInto(request.VLMConfig, &kb.VLMConfig); err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInvalidParam, "vlm_config 格式错误", err)
+	}
+	if err := decodeInto(request.ASRConfig, &kb.ASRConfig); err != nil {
+		return nil, bizerrors.NewWithErr(bizerrors.CodeInvalidParam, "asr_config 格式错误", err)
+	}
+	if kb.VLMConfig != nil {
+		kb.ChunkingConfig.EnableMM = kb.VLMConfig.Enabled
 	}
 	if err := s.kbRepo.Update(kb); err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "更新知识库失败", err)
@@ -392,6 +427,8 @@ func (s *knowledgeBaseService) toKnowledgeBaseResponse(item *entity.KnowledgeBas
 		FAQConfig:             item.FAQConfig,
 		StorageProviderConfig: storageCfg,
 		IndexingStrategy:      item.IndexingStrategy,
+		VLMConfig:             item.VLMConfig,
+		ASRConfig:             item.ASRConfig,
 		CreatedAt:             item.CreatedAt,
 		UpdatedAt:             item.UpdatedAt,
 		DocumentCount:         count,
@@ -487,6 +524,32 @@ func normalizeKBType(value string) string {
 		return "faq"
 	}
 	return "document"
+}
+
+// mergeStorageProvider 将 src 中非空字段合并进 dst，用于更新知识库时
+// 只覆盖显式传入的存储配置项，避免误清空既有 bucket/密钥等细节。
+func mergeStorageProvider(dst, src *entity.StorageProviderConfig) {
+	if src.Provider != "" {
+		dst.Provider = src.Provider
+	}
+	if src.BucketName != "" {
+		dst.BucketName = src.BucketName
+	}
+	if src.Endpoint != "" {
+		dst.Endpoint = src.Endpoint
+	}
+	if src.AccessKey != "" {
+		dst.AccessKey = src.AccessKey
+	}
+	if src.SecretKey != "" {
+		dst.SecretKey = src.SecretKey
+	}
+	if src.Region != "" {
+		dst.Region = src.Region
+	}
+	if src.Extra != nil {
+		dst.Extra = src.Extra
+	}
 }
 
 func normalizePage(page, pageSize int) (int, int) {

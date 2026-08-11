@@ -104,6 +104,39 @@ func (c StorageProviderConfig) Value() (driver.Value, error) {
 	return jsonStructValue(c)
 }
 
+// VLMConfig 多模态（视觉语言模型）配置
+// 开关状态与 ChunkingConfig.EnableMM 保持同步，EnableMM 用于解析链路，
+// VLMConfig 承载模型与描述参数供界面回显与上传/解析使用。
+type VLMConfig struct {
+	Enabled             bool   `json:"enabled"`
+	ModelID             string `json:"model_id"`
+	DescriptionLanguage string `json:"description_language"`
+	CustomInstructions  string `json:"custom_instructions"`
+}
+
+func (c *VLMConfig) Scan(value interface{}) error {
+	return scanJSONStruct(value, c)
+}
+
+func (c VLMConfig) Value() (driver.Value, error) {
+	return jsonStructValue(c)
+}
+
+// ASRConfig 语音识别（ASR）配置
+type ASRConfig struct {
+	Enabled  bool   `json:"enabled"`
+	ModelID  string `json:"model_id"`
+	Language string `json:"language"`
+}
+
+func (c *ASRConfig) Scan(value interface{}) error {
+	return scanJSONStruct(value, c)
+}
+
+func (c ASRConfig) Value() (driver.Value, error) {
+	return jsonStructValue(c)
+}
+
 // KnowledgeBase 知识库，知识条目的容器
 type KnowledgeBase struct {
 	BaseEntity
@@ -120,6 +153,8 @@ type KnowledgeBase struct {
 	StorageProviderConfig *StorageProviderConfig `gorm:"column:storage_provider_config;type:jsonb;comment:存储配置" json:"storage_provider_config"`
 	VectorStoreID         *uint                  `gorm:"index;comment:向量存储ID nil=使用默认" json:"vector_store_id"`
 	IndexingStrategy      IndexingStrategy       `gorm:"type:json;comment:索引策略" json:"indexing_strategy"`
+	VLMConfig             *VLMConfig             `gorm:"type:json;comment:多模态VLM配置" json:"vlm_config"`
+	ASRConfig             *ASRConfig             `gorm:"type:json;comment:语音识别配置" json:"asr_config"`
 }
 
 // TableName 指定表名
