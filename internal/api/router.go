@@ -8,6 +8,7 @@ import (
 	"docmind/internal/api/v1/initialization"
 	"docmind/internal/api/v1/knowledge"
 	"docmind/internal/api/v1/knowledgebase"
+	"docmind/internal/api/v1/mcp"
 	"docmind/internal/api/v1/models"
 	"docmind/internal/api/v1/tag"
 	"docmind/internal/api/v1/vectorstore"
@@ -37,6 +38,7 @@ type Router struct {
 	chatCtrl           *chat.Controller
 	agentCtrl          *agent.Controller
 	tagCtrl            *tag.Controller
+	mcpCtrl            *mcp.Controller
 }
 
 // NewRouter 创建路由
@@ -52,6 +54,7 @@ func NewRouter(
 	tagService service.TagService,
 	chatService service.ChatService,
 	agentService service.AgentService,
+	mcpService service.MCPServiceService,
 	sseRegistry *sse.Registry,
 	redis *redis.Client,
 	sseCfg config.SSEConfig,
@@ -68,6 +71,7 @@ func NewRouter(
 		chatCtrl:           chat.NewController(chatService, sseRegistry, redis, sseCfg, memorySvc),
 		agentCtrl:          agent.NewController(agentService),
 		tagCtrl:            tag.NewController(tagService),
+		mcpCtrl:            mcp.NewController(mcpService),
 	}
 }
 
@@ -128,5 +132,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 		// 智能体路由
 		r.agentCtrl.RegisterRoutes(v1)
+
+		// MCP 服务路由
+		r.mcpCtrl.RegisterRoutes(v1)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"docmind/internal/agent"
 	"docmind/internal/agent/tools"
 	"docmind/internal/llm"
+	"docmind/internal/mcp"
 	"docmind/internal/memory"
 	"docmind/internal/memory/longterm"
 	"docmind/internal/model/entity"
@@ -50,6 +51,9 @@ type chatService struct {
 	kbRepo       repository.KnowledgeBaseRepository
 	ragPipeline  *pipeline.Pipeline
 	pipelineDeps *pipeline.PipelineDeps // Agent kb_search 工具复用同一套检索依赖
+	// mcpRepo / mcpManager Agent 外部 MCP 工具挂载依赖（可为 nil）
+	mcpRepo    repository.MCPServiceRepository
+	mcpManager *mcp.Manager
 	// tokenEstimator 历史 Token 估算器（短期记忆触发判定用）
 	tokenEstimator *token.Estimator
 	// memorySvc 长期记忆服务（跨会话知识图谱，nil 时跳过检索注入）
@@ -100,6 +104,8 @@ func NewChatService(
 	agentSvc AgentService,
 	primaryDB *gorm.DB,
 	memorySvc longterm.MemoryService,
+	mcpRepo repository.MCPServiceRepository,
+	mcpManager *mcp.Manager,
 ) (ChatService, error) {
 	// 构建 Pipeline 依赖（Agent kb_search 工具复用同一套依赖）
 	pipelineDeps := BuildPipelineDeps(embedderFactory, rerankerFactory, kbRepo, vectorStoreRepo, primaryDB)
@@ -127,6 +133,8 @@ func NewChatService(
 		pipelineDeps:   pipelineDeps,
 		tokenEstimator: tokenEstimator,
 		memorySvc:      memorySvc,
+		mcpRepo:        mcpRepo,
+		mcpManager:     mcpManager,
 	}, nil
 }
 
@@ -343,8 +351,8 @@ func (s *chatService) AgentChat(ctx context.Context, sessionID uint, userID uint
 		return nil, err
 	}
 
-	// 4. 工具集：Registry 按 Agent 配置构建（AllowedTools 白名单 + kb_search 引用收集器）
-	registry := tools.NewRegistry(s.pipelineDeps)
+	// 4. 工具集：Registry 按 Agent 配置构建（AllowedTools 白名单 + kb_search 引用收集器 + MCP 工具挂载）
+	registry := tools.NewRegistry(s.pipelineDeps, s.mcpRepo, s.mcpManager)
 	builtTools, collector, err := registry.Build(agt, userID)
 	if err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "构建 Agent 工具集失败", err)

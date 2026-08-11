@@ -29,7 +29,12 @@ DocMind/
 │   ├── config.yaml                   # 主配置（PostgreSQL / Redis / MinIO / DocReader）
 │   ├── config.yaml.example           # 配置示例
 │   └── skills/                       # Agent 技能目录（SKILL.md：front matter + 指令）
+│       ├── citation-generator/       # 引用生成技能
+│       ├── data-processor/           # 数据处理技能（scripts/ Python 脚本）
+│       ├── doc-coauthoring/          # 文档协同创作技能
 │       ├── doc-review/               # 文档质量评审技能
+│       ├── document-analyzer/        # 文档分析技能
+│       ├── openmaic-classroom/       # OpenMAIC 课堂技能（references/ + scripts/）
 │       └── rag-optimizer/            # RAG 优化顾问技能
 ├── internal/                         # 内部模块（不对外暴露）
 │   ├── api/                          # HTTP API 层
@@ -45,6 +50,7 @@ DocMind/
 │   │       ├── initialization/       # 系统初始化
 │   │       ├── knowledge/            # 知识条目（文件上传/解析/向量化）
 │   │       ├── knowledgebase/        # 知识库（CRUD / FAQ / 文件导入）
+│   │       ├── mcp/                  # MCP 服务管理（外部工具接入）
 │   │       ├── models/               # LLM 模型配置
 │   │       ├── tag/                  # 标签模块（独立 CRUD）
 │   │       └── vectorstore/          # 向量存储配置
@@ -62,10 +68,10 @@ DocMind/
 │   │   ├── types.go                   # 统一事件类型与 RunRequest
 │   │   ├── skills/                    # 技能系统（官方 skill middleware 适配层）
 │   │   │   ├── backend.go             # 本地文件系统 Backend（filesystem.Backend 实现）
-│   │   │   ├── adapter.go             # SelectedSkills 白名单 + middleware 组装
-│   │   │   └── data-processor/        # 数据处理技能（SKILL.md + scripts/ Python 脚本）
+│   │   │   └── adapter.go             # SelectedSkills 白名单 + middleware 组装
 │   │   └── tools/                     # Agent 工具集
 │   │       ├── kb_search.go           # 知识库检索工具（向量‖BM25→RRF→rerank）
+│   │       ├── mcp_tool.go            # MCP 工具适配（外部工具调用）
 │   │       └── registry.go            # 工具注册表（AllowedTools 白名单）
 │   ├── pipeline/                      # RAG 检索管道（节点式编排）
 │   │   ├── node_build_prompt.go       # 提示词构建节点
@@ -79,6 +85,10 @@ DocMind/
 │   │   ├── pipeline.go                # 管道编排入口
 │   │   ├── search.go                  # 检索执行
 │   │   └── types.go                   # 管道类型定义
+│   ├── mcp/                           # MCP 客户端与连接管理
+│   │   ├── client.go                  # MCP 客户端实现
+│   │   ├── client_test.go             # 客户端测试
+│   │   └── manager.go                 # 连接管理器
 │   ├── memory/                        # 记忆系统（短期会话摘要 + 长期知识图谱）
 │   │   ├── consolidator.go            # 摘要整合（LLM 增量压缩）
 │   │   ├── degrade.go                 # 降级归档（原文降级）
@@ -100,8 +110,8 @@ DocMind/
 │   │   └── recovery.go              # 异常恢复
 │   ├── model/                        # 数据模型
 │   │   ├── dto/                      # 数据传输对象
-│   │   │   ├── request/              # 请求 DTO（9个模块：auth / chunker / faq / knowledge / knowledge_base / model / tag / user / vector_store）
-│   │   │   └── response/             # 响应 DTO（8个模块：chunker / faq / knowledge / knowledge_base / model / tag / user / vector_store）
+│   │   │   ├── request/              # 请求 DTO（10个模块：auth / chunker / faq / knowledge / knowledge_base / mcp / model / tag / user / vector_store）
+│   │   │   └── response/             # 响应 DTO（9个模块：chunker / faq / knowledge / knowledge_base / mcp / model / tag / user / vector_store）
 │   │   └── entity/                   # 数据库实体（GORM）
 │   │       ├── base.go               # BaseEntity（自增主键+软删除）
 │   │       ├── user.go               # 用户
@@ -109,6 +119,7 @@ DocMind/
 │   │       ├── agent_override.go     # Agent 覆盖配置
 │   │       ├── session.go            # 对话会话
 │   │       ├── message.go            # 对话消息
+│   │       ├── mcp_service.go        # MCP 服务配置
 │   │       ├── knowledge_base.go     # 知识库
 │   │       ├── knowledge.go          # 知识条目
 │   │       ├── chunk.go              # 分块
@@ -123,10 +134,10 @@ DocMind/
 │   │       ├── model_context_window_missing.go # 模型上下文窗口缺失记录
 │   │       └── types.go              # 通用类型（JSON等）
 │   ├── repository/                   # 数据访问层
-│   │   ├── *_interface.go            # 仓储接口（31个文件，覆盖全部实体）
-│   │   └── *_repository.go           # 仓储实现（含 agent 覆盖 / 会话摘要 / 上下文窗口回填）
+│   │   ├── *_interface.go            # 仓储接口（33个文件，覆盖全部实体）
+│   │   └── *_repository.go           # 仓储实现（含 agent 覆盖 / 会话摘要 / 上下文窗口回填 / MCP 服务）
 │   ├── service/                      # 业务逻辑层
-│   │   ├── *_interface.go            # 服务接口（13个模块）
+│   │   ├── *_interface.go            # 服务接口（14个模块）
 │   │   ├── *_service.go              # 服务实现
 │   │   ├── model_service_http.go     # 模型服务 HTTP 工具（JSON/Multipart 请求、认证头、URL 拼接）
 │   │   ├── model_service_ollama.go   # 模型服务 Ollama（状态、模型列表、异步下载、embed/chat）
@@ -165,6 +176,7 @@ DocMind/
 │   └── utils/                        # 通用工具（字符串、时间）
 ├── scripts/                          # 脚本
 │   ├── build.sh                      # 编译脚本
+│   ├── mcp_test_server.py            # MCP 联调测试服务端（stdio，纯标准库）
 │   └── migrate.sql                   # 初始迁移 SQL
 ├── docs/                             # 设计文档
 │   ├── API.md                        # API 文档
@@ -177,11 +189,14 @@ DocMind/
 │   ├── 甲.md / 乙.md                 # 数据库结构体设计 & 数据流交互
 │   ├── 乙模块结构体评审.md             # 乙模块结构体评审
 │   ├── 分割策略.md                    # 文档分割策略
+│   ├── python沙箱和docker沙箱你选对了吗？.md # 沙箱方案对比选型
 │   ├── SSE流式连接企业级优化方案.md     # SSE 流式连接优化方案
 │   ├── 阶段一.md / 阶段二.md          # 分阶段开发规划
+│   ├── 阶段二甲实施规划.md             # 阶段二甲实施规划
 │   ├── 阶段二设计步骤以及逻辑.md        # 阶段二设计步骤与核心逻辑
 │   ├── 知识库api.md                   # 知识库 API 规范
 │   ├── 标签crud.md                   # 标签 CRUD 设计
+│   ├── 默认模块2.md                   # 默认模块2说明
 │   ├── 模型集成.md                   # LLM 模型集成方案
 │   └── 思维导图.md                   # 系统思维导图
 ├── web/                              # 前端项目（Vue 3 + TypeScript）
@@ -283,6 +298,7 @@ export async function listKnowledgeBases() {
 | **标签** | 标签独立 CRUD，支持按知识库筛选 | `internal/api/v1/tag/` |
 | **聊天** | 会话管理、消息收发、SSE 流式响应（knowledge-chat 快速问答 / agent-chat 智能推理） | `internal/api/v1/chat/` |
 | **Agent** | 智能体 CRUD、复制、内置 Agent 种子数据（快速问答 + 智能推理）、技能系统（SKILL.md） | `internal/api/v1/agent/` |
+| **MCP** | MCP 服务管理（外部工具/资源接入 Agent 工具链） | `internal/api/v1/mcp/` |
 | **模型** | LLM / Embedding / Rerank / VLLM / ASR 多类型模型 CRUD、凭据管理、连通性探测、调试调用 | `internal/api/v1/models/` |
 | **向量存储** | PostgreSQL（pgvector）向量引擎配置与语义检索 | `internal/api/v1/vectorstore/` |
 | **认证** | 登录、注册、Token 刷新、登出 | `internal/api/v1/auth/` |
@@ -327,10 +343,11 @@ export async function listKnowledgeBases() {
 ✅ **Agent 智能推理** — ADK 引擎封装 + 状态机 + 事件流自动生成步骤记录，技能系统（SKILL.md 白名单），SSE 全事件推送  
 ✅ **混合检索** — 向量 + BM25 + RRF 融合三段式检索，重排序（Rerank）  
 ✅ **短期记忆** — 会话摘要增量压缩（LLM / 原文降级归档），上下文窗口缺失回填  
+✅ **MCP 集成** — 外部 MCP 工具接入 Agent 工具链（客户端 + 连接管理 + 工具适配）  
 ✅ **SSE 流式对话** — 知识问答流式响应，检索结果引用溯源  
 ✅ **15 张数据表** — AutoMigrate 自动迁移，PostgreSQL JSONB + pgvector 支持  
 ✅ **多模型管理** — 6 个供应商（OpenAI / 阿里云 / SiliconFlow / 智谱 / Jina / 自定义），5 类模型统一管理，凭据脱敏存储，Ollama 本地模型下载与管理  
-✅ **11 个 API 模块** — 按功能模块分离，完整的前后端类型定义  
+✅ **12 个 API 模块** — 按功能模块分离，完整的前后端类型定义  
 ✅ **Go 后端** — Gin + GORM 分层架构（API → Service → Repository），Swagger 文档，JWT 双 Token  
 ✅ **文档解析服务** — Python gRPC 微服务，支持 PDF/DOCX/MD/Excel/Web/Image  
 ✅ **完整的前端框架** — Vue 3 + TypeScript + Vite + TDesign UI  

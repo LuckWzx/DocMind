@@ -150,10 +150,10 @@ func main() {
 		},
 	}
 
-	// 5. 工具集：Registry 按 Agent 配置构建（AllowedTools 白名单）
+	// 5. 工具集：Registry 按 Agent 配置构建（AllowedTools 白名单；Demo 不挂载 MCP，传 nil）
 	calcTool, err := utils.InferTool[CalculatorArgs, string]("calculator", "计算两个整数的四则运算，参数 a、b 必须为整数，op 为运算符(+ - * /)", calcFn)
 	must(err)
-	registry := tools.NewRegistry(pipelineDeps)
+	registry := tools.NewRegistry(pipelineDeps, nil, nil)
 	builtTools, collector, err := registry.Build(agt, userID)
 	must(err)
 	allTools := append(builtTools, calcTool)

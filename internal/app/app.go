@@ -14,6 +14,7 @@ import (
 
 	"docmind/internal/api"
 	"docmind/internal/llm"
+	"docmind/internal/mcp"
 	"docmind/internal/memory/longterm"
 	"docmind/internal/model/entity"
 	"docmind/internal/repository"
@@ -42,6 +43,8 @@ type App struct {
 	server          *http.Server
 	sseRegistry     *sse.Registry
 	cozeLoopTracer  *tracing.CozeLoopTracer
+	// mcpManager MCP 连接管理器（外部 MCP Server 连接池，优雅关闭时断开全部）
+	mcpManager *mcp.Manager
 }
 
 // NewApp 创建应用实例
@@ -188,6 +191,7 @@ func (a *App) initDatabase() error {
 	//&entity.SessionSummary{},
 	//// 模型上下文大小缺失记录表（待补足内置映射表的模型清单）
 	//&entity.ModelContextWindowMissing{},
+	//&entity.MCPService{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {
@@ -349,7 +353,13 @@ func (a *App) initDependencies() error {
 		}
 	}
 
-	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc)
+	// MCP 服务（外部 MCP Server 注册 + 连接管理，Agent 工具集与 mcp-services 接口共用）
+	mcpRepo := repository.NewMCPServiceRepository(a.pgDB)
+	mcpManager := mcp.NewManager()
+	a.mcpManager = mcpManager
+	mcpSvc := service.NewMCPService(mcpRepo, mcpManager)
+
+	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc, mcpRepo, mcpManager)
 	if err != nil {
 		return fmt.Errorf("创建 ChatService 失败: %w", err)
 	}
@@ -358,7 +368,7 @@ func (a *App) initDependencies() error {
 	// SSE 活跃连接注册表（优雅关闭时向活跃连接广播 SERVER_SHUTDOWN）
 	sseRegistry := sse.NewRegistry()
 	a.sseRegistry = sseRegistry
-	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc, sseRegistry, a.redis, a.cfg.SSE, memorySvc)
+	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc, mcpSvc, sseRegistry, a.redis, a.cfg.SSE, memorySvc)
 
 	return nil
 }
@@ -432,6 +442,11 @@ func (a *App) gracefulShutdown() {
 	// 关闭数据库连接
 	_ = database.ClosePostgreSQL()
 	_ = database.CloseRedis()
+
+	// 断开全部 MCP 连接（外部 MCP Server 子进程/长连接）
+	if a.mcpManager != nil {
+		a.mcpManager.CloseAll()
+	}
 
 	// 关闭 CozeLoop 上报连接（冲刷未上报的 Trace）
 	a.cozeLoopTracer.Close(ctx)
