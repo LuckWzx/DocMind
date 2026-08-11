@@ -2,6 +2,22 @@ package config
 
 import "time"
 
+// MCPServicePresetConfig 全局（系统级）MCP 服务预置配置
+// 启动时 seed 到 mcp_services 表（user_id=0），所有用户可见但只读
+// 适合部署在 DocMind 所在机器上的本地程序（stdio）或公共远程服务（sse/http-streamable）
+type MCPServicePresetConfig struct {
+	Name          string            `mapstructure:"name"`
+	Description   string            `mapstructure:"description"`
+	TransportType string            `mapstructure:"transport_type"` // sse / stdio / http-streamable
+	URL           string            `mapstructure:"url"`            // 远程传输的服务地址
+	Enabled       *bool             `mapstructure:"enabled"`        // 默认 true
+	Command       string            `mapstructure:"command"`        // stdio 启动命令（如 node / npx）
+	Args          []string          `mapstructure:"args"`           // stdio 命令参数
+	Env           []string          `mapstructure:"env"`            // stdio 环境变量（KEY=VALUE）
+	Headers       map[string]string `mapstructure:"headers"`        // 自定义请求头
+	Timeout       int               `mapstructure:"timeout"`        // 超时（秒），默认 30
+}
+
 // Config 应用配置结构体
 type Config struct {
 	App       AppConfig       `mapstructure:"app"`
@@ -17,6 +33,8 @@ type Config struct {
 	Memory    MemoryConfig    `mapstructure:"memory"`
 	CozeLoop  CozeLoopConfig  `mapstructure:"cozeloop"`
 	Retrieval RetrievalConfig `mapstructure:"retrieval"`
+	// MCPPresetServices 全局 MCP 服务预置（user_id=0，系统级只读）
+	MCPPresetServices []MCPServicePresetConfig `mapstructure:"mcp_preset_services"`
 }
 
 // AppConfig 应用配置

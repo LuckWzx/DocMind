@@ -2,7 +2,7 @@
 """
 RAG 检索结果 → OpenMAIC Requirement 转换器
 
-将 WeKnora RAG 检索结果转换为结构化的 OpenMAIC 课程生成需求描述。
+将 DocMind RAG 检索结果转换为结构化的 OpenMAIC 课程生成需求描述。
 此脚本仅做数据转换，不涉及网络调用。
 
 用法:

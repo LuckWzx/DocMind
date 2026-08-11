@@ -5,7 +5,7 @@ description: 将 RAG 检索结果或文档块转换为 OpenMAIC 互动课程。�
 
 # OpenMAIC Classroom Generator
 
-将 WeKnora 知识库中的 RAG 检索结果或文档内容转换为 OpenMAIC 互动课程。
+将 DocMind 知识库中的 RAG 检索结果或文档内容转换为 OpenMAIC 互动课程。
 
 ## 核心能力
 
@@ -15,13 +15,13 @@ description: 将 RAG 检索结果或文档块转换为 OpenMAIC 互动课程。�
 
 ## 能力边界
 
-> **通过 WeKnora 注册的 mcp_api_requester MCP 工具，你可以直接调用 OpenMAIC API**（HTTP POST/GET 请求）。
-> 该工具在 WeKnora agent 中注册为 `mcp_{service_name}_{tool_name}` 格式（如 `mcp_mcp_api_requester_make_request`）。
+> **通过 DocMind 注册的 mcp_api_requester MCP 工具，你可以直接调用 OpenMAIC API**（HTTP POST/GET 请求）。
+> 该工具在 DocMind 中注册为 `mcp_{service_name}_{tool_name}` 格式（如 `mcp_mcp_api_requester_make_request`）。
 > **必须**使用该 MCP 工具调用 API。如果 MCP 工具未配置或不可用，引导用户先部署 mcp-api-requester，不提供 curl 命令。
 
 > **⚠️ MCP 可用性检查（每次读取此文件后必须执行）：**
 > 在开始工作前，检查可用的 MCP 工具列表中是否存在名称包含 `mcp_api_requester` 的工具。
-> - **如果未找到**：必须提醒用户："未检测到 `mcp_api_requester` MCP 服务。请先从 https://github.com/yryuu/mcp-api-requester 下载代码并部署，然后在 WeKnora 中注册该 MCP 服务。"
+> - **如果未找到**：必须提醒用户：“未检测到 `mcp_api_requester` MCP 服务。请先从 https://github.com/yryuu/mcp-api-requester 下载代码并部署，然后在 DocMind 中注册该 MCP 服务。”
 > - **如果已找到**：继续后续流程，使用该 MCP 工具调用 API。
 
 ## 模式选择
@@ -39,13 +39,8 @@ OpenMAIC 有两种使用模式，**根据用户场景选择**：
 - 用户未明确说明时，优先询问用户使用哪个模式
 
 **本地模式 Base URL 处理**：
-1. 用户选择本地模式后，必须询问用户："请输入你的 OpenMAIC 本地部署地址（例如 `http://localhost:3000` 或 `http://192.168.1.100:3000`）"
-2. 收到用户提供的地址后，进行如下处理：
-   - 将地址中的 `127.0.0.1` 替换为 `host.docker.internal`
-   - 将地址中的 `localhost` 替换为 `host.docker.internal`
-   - 其他地址保持不变
-
-> ⚠️ WeKnora 运行在 Docker 容器内，`localhost` 和 `127.0.0.1` 指向容器自身，无法访问宿主机服务。必须使用 `host.docker.internal` 作为容器访问宿主机的桥接地址。
+1. 用户选择本地模式后，必须询问用户：“请输入你的 OpenMAIC 本地部署地址（例如 `http://localhost:3000` 或 `http://192.168.1.100:3000`）”
+2. 收到用户提供的地址后直接使用，**无需任何替换**——DocMind 为本地进程，`localhost` / `127.0.0.1` 指向本机，可直接访问宿主机服务
 
 ## 前置条件
 
@@ -71,7 +66,7 @@ OpenMAIC 有两种使用模式，**根据用户场景选择**：
 
 1. **纯需求生成**: 用户直接描述教学主题，无需额外文档
    → 直接使用用户描述作为 `requirement`，**无需调用脚本**
-2. **RAG 检索结果**: 先通过 `knowledge_search` 检索相关知识，再将结果组织为 requirement
+2. **RAG 检索结果**: 先通过 `kb_search` 检索相关知识（或使用主对话已完成的检索结果），再将结果组织为 requirement
    → 使用 `scripts/rag-to-requirement.py` 脚本转换检索结果为结构化 requirement（见 Phase 1.1）
 3. **PDF 文件**: 用户提供 PDF 文件路径，先解析再调用生成 API
    → 提取 PDF 文本后构建 requirement，**无需调用脚本**
@@ -100,6 +95,7 @@ execute_skill_script(
 - 必须将 chunks 数据作为 `input` 参数传入（等价于 `echo '{"chunks":...}' | python script.py`）
 - **不要**在没有任何参数的情况下调用此脚本，否则会报错退出
 - 如果脚本执行失败，可直接根据检索结果手动构建 requirement
+- **DocMind 沙箱未接入时**：`execute_skill_script` 工具不可用，跳过脚本调用，直接根据检索结果手动构建 requirement（Phase 2 模板）
 
 ### Phase 2: 构建 Generation Request
 
@@ -123,7 +119,7 @@ execute_skill_script(
 
 ### Phase 3: 调用 OpenMAIC API
 
-**优先方式**：通过 WeKnora 注册的 MCP 工具直接调用 API。
+**优先方式**：通过 DocMind 注册的 MCP 工具直接调用 API。
 
 **第一步：识别 HTTP 请求工具**
 - 在你可用的 MCP 工具中，找到用于 HTTP 请求的工具
@@ -136,7 +132,7 @@ execute_skill_script(
 | 模式 | Base URL | 认证 Header |
 |------|----------|-------------|
 | 托管模式 | `https://open.maic.chat` | `Authorization: Bearer <access-code>` |
-| 本地模式 | 用户提供的地址（已将 `localhost`/`127.0.0.1` 替换为 `host.docker.internal`） | 无 |
+| 本地模式 | 用户提供的地址（DocMind 本地进程直接使用，无需替换） | 无 |
 
 **第三步：Feature Detection（发送可选功能前）**
 
@@ -195,7 +191,7 @@ execute_skill_script(
 
 告知用户：
 
-> 未检测到 `mcp_api_requester` MCP 服务。请先从 https://github.com/yryuu/mcp-api-requester 下载代码并部署，然后在 WeKnora 中注册该 MCP 服务。
+> 未检测到 `mcp_api_requester` MCP 服务。请先从 https://github.com/yryuu/mcp-api-requester 下载代码并部署，然后在 DocMind 中注册该 MCP 服务。
 
 ### Phase 4: 查询任务进度
 
@@ -263,10 +259,10 @@ Classroom URL:
 
 ## 注意事项
 
-- 脚本在 Docker 沙箱中执行，**沙箱默认禁用网络访问**
-- **必须通过 WeKnora MCP 工具调用 OpenMAIC API**——不提供 curl 命令作为降级方案
+- 脚本在本机执行（Python 沙箱接入前直接跳过脚本调用，手动构建 requirement），**脚本仅做数据转换，不涉及网络调用**
+- **必须通过 DocMind 的 MCP 工具调用 OpenMAIC API**——不提供 curl 命令作为降级方案
 - MCP 工具名称格式为 `mcp_{service_name}_{tool_name}`，根据描述识别 HTTP 请求工具
-- 如果 MCP 工具未启用或不可用，告知用户先从 https://github.com/yryuu/mcp-api-requester 下载代码并部署，然后在 WeKnora 中注册该 MCP 服务
+- 如果 MCP 工具未启用或不可用，告知用户先从 https://github.com/yryuu/mcp-api-requester 下载代码并部署，然后在 DocMind 中注册该 MCP 服务
 - 单次生成任务预计 2-10 分钟，取决于内容复杂度和可选功能
 - 托管模式（open.maic.chat）每天最多 10 次生成配额，独立于 Web UI 配额
 - 如果用户在同一个 job 仍在运行时要求生成新课程，不要重复提交——先检查已有 job 状态

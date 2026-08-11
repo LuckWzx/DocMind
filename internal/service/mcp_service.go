@@ -79,10 +79,14 @@ func (s *mcpService) Create(userID uint, req *request.CreateMCPServiceRequest) (
 }
 
 // Update 更新 MCP 服务（变更连接相关配置后强制断开，下次访问自动重连）
+// 系统级（user_id=0）服务只读：配置文件是唯一事实源，不允许用户修改
 func (s *mcpService) Update(userID, id uint, req *request.UpdateMCPServiceRequest) (*dto.MCPServiceResponse, error) {
 	svc, err := s.GetEntityByUser(userID, id)
 	if err != nil {
 		return nil, err
+	}
+	if svc.UserID == 0 {
+		return nil, bizerrors.New(bizerrors.CodeForbidden, "系统级 MCP 服务只读，不可修改（由配置文件 mcp_preset_services 管理）")
 	}
 
 	if req.Name != "" {
@@ -128,10 +132,14 @@ func (s *mcpService) Update(userID, id uint, req *request.UpdateMCPServiceReques
 }
 
 // Delete 删除 MCP 服务
+// 系统级（user_id=0）服务只读：删除请修改配置文件 mcp_preset_services 后重启
 func (s *mcpService) Delete(userID, id uint) error {
 	svc, err := s.GetEntityByUser(userID, id)
 	if err != nil {
 		return err
+	}
+	if svc.UserID == 0 {
+		return bizerrors.New(bizerrors.CodeForbidden, "系统级 MCP 服务只读，不可删除（由配置文件 mcp_preset_services 管理）")
 	}
 	s.manager.Close(svc.ID)
 	return s.repo.Delete(svc.ID)

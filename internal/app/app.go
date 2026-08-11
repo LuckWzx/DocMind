@@ -360,6 +360,10 @@ func (a *App) initDependencies() error {
 	mcpRepo := repository.NewMCPServiceRepository(a.pgDB)
 	mcpManager := mcp.NewManager()
 	a.mcpManager = mcpManager
+	// 预置全局（系统级）MCP 服务：配置文件声明的服务写入 user_id=0，所有用户可见但只读
+	if err := seedPresetMCPServices(a.pgDB, a.cfg.MCPPresetServices, mcpManager); err != nil {
+		return err
+	}
 	mcpSvc := service.NewMCPService(mcpRepo, mcpManager)
 
 	// 网页搜索（web_search 工具：provider 管理按用户隔离 + 多引擎适配）

@@ -1,6 +1,6 @@
 # 需求构建指南
 
-将 WeKnora RAG 检索结果转换为 OpenMAIC 课程生成所需的 `requirement` 格式。
+将 DocMind RAG 检索结果转换为 OpenMAIC 课程生成所需的 `requirement` 格式。
 
 ## 核心原则
 
@@ -26,7 +26,7 @@ OpenMAIC 的 `requirement` 字段需要是**结构化的教学需求描述**，�
 
 ```
 步骤：
-1. 使用 knowledge_search 检索相关知识
+1. 使用 kb_search 检索相关知识
 2. 从检索结果中提取：
    - 核心主题/概念
    - 关键知识点

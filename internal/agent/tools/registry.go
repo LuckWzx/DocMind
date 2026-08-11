@@ -130,8 +130,9 @@ func (r *Registry) Build(agent *entity.Agent, userID uint) ([]tool.BaseTool, *Re
 }
 
 // buildMCPTools 按 Agent 配置挂载外部 MCP 工具：
-//   - MCPSelectionMode == "manual" 且 MCPServices 非空 → 按服务 ID 白名单选择
-//   - 其他（all / 未配置）→ 用户全部已启用服务
+//   - MCPSelectionMode "none"        → 不挂载任何 MCP 工具
+//   - MCPSelectionMode "selected"/"manual" 且 MCPServices 非空 → 按服务 ID 白名单选择
+//   - 其他（"all" / 未配置）→ 用户全部已启用服务
 //
 // 工具名统一加前缀 mcp_<service>_<tool>（见 prefixedTool），单个服务连接失败不影响其他服务
 func (r *Registry) buildMCPTools(agent *entity.Agent, userID uint) ([]tool.BaseTool, error) {
@@ -140,8 +141,13 @@ func (r *Registry) buildMCPTools(agent *entity.Agent, userID uint) ([]tool.BaseT
 	}
 	cfg := agent.Config
 
+	// 前端契约：all / selected / none（兼容旧值 manual）
+	if cfg.MCPSelectionMode == "none" {
+		return nil, nil
+	}
+
 	var svcs []*entity.MCPService
-	if cfg.MCPSelectionMode == "manual" && len(cfg.MCPServices) > 0 {
+	if (cfg.MCPSelectionMode == "selected" || cfg.MCPSelectionMode == "manual") && len(cfg.MCPServices) > 0 {
 		for _, idStr := range cfg.MCPServices {
 			id, err := strconv.ParseUint(strings.TrimSpace(idStr), 10, 64)
 			if err != nil {
@@ -166,7 +172,14 @@ func (r *Registry) buildMCPTools(agent *entity.Agent, userID uint) ([]tool.BaseT
 
 	ctx := context.Background()
 	var out []tool.BaseTool
+	// 工具名前缀去重：系统级与用户级可能存在同名服务（如用户自建 mcp_api_requester），
+	// 工具名 mcp_<name>_<tool> 冲突时保留先注册者（系统级优先，ListEnabledByUser 按 user_id ASC 排序）
+	seen := make(map[string]struct{}, len(svcs))
 	for _, svc := range svcs {
+		prefix := "mcp_" + sanitizeToolName(svc.Name)
+		if _, ok := seen[prefix]; ok {
+			continue
+		}
 		cli, err := r.mcpManager.GetClient(ctx, svc)
 		if err != nil {
 			// 单个服务连接失败不影响其他服务挂载
@@ -176,7 +189,7 @@ func (r *Registry) buildMCPTools(agent *entity.Agent, userID uint) ([]tool.BaseT
 		if err != nil {
 			continue
 		}
-		prefix := "mcp_" + sanitizeToolName(svc.Name)
+		seen[prefix] = struct{}{}
 		for _, t := range einoTools {
 			out = append(out, &prefixedTool{inner: t, prefix: prefix})
 		}

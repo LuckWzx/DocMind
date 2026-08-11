@@ -50,11 +50,16 @@ func NewEngineConfig(a *entity.Agent) *EngineConfig {
 	if cfg.LLMCallTimeout != nil {
 		c.LLMCallTimeout = *cfg.LLMCallTimeout
 	}
-	// 技能系统：all（默认）→ 全部技能可用；manual → 按 SelectedSkills 白名单过滤
+	// 技能系统（前端契约：all / selected / none，兼容旧值 manual）：
+	// - all / 未配置 → nil（全部技能可用）
+	// - selected / manual → 按 SelectedSkills 白名单过滤
+	// - none → 空切片（全部禁用）
 	c.SkillsBaseDir = skills.DefaultSkillsDir
 	switch cfg.SkillsSelectionMode {
-	case "manual":
+	case "selected", "manual":
 		c.SelectedSkills = cfg.SelectedSkills
+	case "none":
+		c.SelectedSkills = []string{}
 	default:
 		c.SelectedSkills = nil
 	}
