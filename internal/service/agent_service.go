@@ -93,7 +93,9 @@ func (s *agentService) ResolveForUser(userID uint, idStr string) (*entity.Agent,
 	if !agent.IsBuiltin {
 		return agent, nil
 	}
-	ov, err := s.overrideRepo.Find(userID, idStr)
+	// 覆盖表统一以 id_str 为键：调用方可能传数字主键（旧会话/共享入口绑定），
+	// FindByIDStr 兜底按主键命中后必须用 agent.IDStr 匹配覆盖，否则用户个性化配置失效
+	ov, err := s.overrideRepo.Find(userID, agent.IDStr)
 	if err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "查询智能体覆盖失败", err)
 	}

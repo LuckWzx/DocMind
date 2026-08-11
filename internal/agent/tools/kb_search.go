@@ -98,7 +98,8 @@ func NewKBSearchTool(
 		})
 		if err != nil {
 			// 检索失败不中断 Agent：返回降级文案，由模型组织降级回答（规划 3.2.6 ⑤）
-			return fmt.Sprintf("检索服务暂时不可用，请稍后重试。（错误：%v）", err), nil
+			// 注意：文案避免"请稍后重试"等重试暗示，防止模型反复调用工具耗尽迭代上限
+			return fmt.Sprintf("知识库检索失败（错误：%v），本次无法获取知识库资料，请基于已有知识直接回答，不要编造。", err), nil
 		}
 		if len(results) == 0 {
 			return "未找到相关资料：知识库中没有与问题相关的内容，请基于已有知识回答，不要编造。", nil

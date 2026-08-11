@@ -333,7 +333,11 @@ func (s *chatService) AgentChat(ctx context.Context, sessionID uint, userID uint
 	s.sessionRepo.IncrementMessageCount(sessionID)
 	s.sessionRepo.UpdateLastMessage(sessionID, req.Query)
 
-	// 3. 解析 Agent 实体（内置模板 + 用户覆盖 / 会话内嵌配置）
+	// 3. 解析 Agent 实体（请求级 agent_id 优先覆盖会话绑定，内置模板 + 用户覆盖 / 会话内嵌配置）
+	// 仅临时覆盖内存中的 session 副本，不落库（会话绑定由前端切换会话/智能体接口维护）
+	if req.AgentID != "" {
+		session.AgentID = req.AgentID
+	}
 	agt, err := s.resolveAgentForChat(ctx, session, userID)
 	if err != nil {
 		return nil, err

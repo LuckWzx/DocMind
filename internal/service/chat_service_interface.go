@@ -57,7 +57,10 @@ type KnowledgeChatRequest struct {
 type AgentChatRequest struct {
 	Query            string   `json:"query"`
 	KnowledgeBaseIDs []string `json:"knowledge_base_ids"`
-	Channel          string   `json:"channel"`
+	// AgentID 请求级智能体标识（id_str 或数字主键均可），非空时覆盖会话绑定
+	// （前端切换智能体后按当前选择下发，避免会话旧绑定继续生效）
+	AgentID string `json:"agent_id"`
+	Channel string `json:"channel"`
 }
 
 // AgentChatResponse 智能推理对话响应

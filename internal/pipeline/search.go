@@ -36,19 +36,33 @@ func SearchKB(ctx context.Context, deps *PipelineDeps, params *SearchKBParams) (
 		return []SearchResult{}, nil
 	}
 
-	// 1. 根据第一个知识库确定 Embedding 模型
-	kbID := parseUint(params.KnowledgeBaseIDs[0])
-	kb, err := deps.KBRepo.FindByID(kbID)
-	if err != nil || kb == nil {
-		return nil, fmt.Errorf("向量检索: 知识库不存在: %s", params.KnowledgeBaseIDs[0])
+	// 1. 过滤无效知识库（已删除/不存在），全部无效时返回空结果而非报错：
+	// 配置残留的失效 ID 不应让整次检索失败（否则工具侧包装降级文案会诱导模型重试，耗尽迭代上限）
+	validIDs := make([]string, 0, len(params.KnowledgeBaseIDs))
+	for _, idStr := range params.KnowledgeBaseIDs {
+		kb, err := deps.KBRepo.FindByID(parseUint(idStr))
+		if err != nil {
+			return nil, fmt.Errorf("向量检索: 查询知识库失败: %s", idStr)
+		}
+		if kb == nil {
+			continue // 知识库已删除或不存在，跳过
+		}
+		validIDs = append(validIDs, idStr)
 	}
+	if len(validIDs) == 0 {
+		return []SearchResult{}, nil
+	}
+
+	// 2. 根据第一个有效知识库确定 Embedding 模型
+	kbID := parseUint(validIDs[0])
+	kb, _ := deps.KBRepo.FindByID(kbID)
 
 	embedderID := kb.EmbeddingModelID
 	if embedderID == "" {
 		embedderID = "default"
 	}
 
-	// 2. 创建 Embedder 并生成查询向量
+	// 3. 创建 Embedder 并生成查询向量
 	embedder, err := deps.EmbedderFactory.CreateEmbedder(ctx, embedderID)
 	if err != nil {
 		return nil, fmt.Errorf("向量检索: 创建 Embedder 失败: %w", err)
@@ -90,8 +104,8 @@ func SearchKB(ctx context.Context, deps *PipelineDeps, params *SearchKBParams) (
 		return nil, fmt.Errorf("向量检索: 初始化向量表失败: %w", err)
 	}
 
-	uintKBIDs := make([]uint, 0, len(params.KnowledgeBaseIDs))
-	for _, id := range params.KnowledgeBaseIDs {
+	uintKBIDs := make([]uint, 0, len(validIDs))
+	for _, id := range validIDs {
 		uintKBIDs = append(uintKBIDs, parseUint(id))
 	}
 	topK := params.EmbeddingTopK
