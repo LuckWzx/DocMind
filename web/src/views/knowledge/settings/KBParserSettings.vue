@@ -47,7 +47,6 @@
             />
           </t-select>
           <div v-if="!hasAvailableEngine(group.extensions)" class="no-engine-warning">
-            <a class="go-settings" @click.prevent="goToParserSettings">{{ $t('kbSettings.parser.goConfig') }}</a>
           </div>
         </div>
       </div>
@@ -238,10 +237,6 @@ function buildCompleteRules(): ParserEngineRule[] {
   return rules
 }
 
-function goToParserSettings() {
-  uiStore.openSettings('parser')
-}
-
 async function loadEngines(force = false) {
   loading.value = true
   try {
@@ -398,17 +393,6 @@ watch(() => props.parserEngineRules, (v) => {
   font-size: 12px;
   color: var(--td-warning-color);
   line-height: 1.4;
-
-  .go-settings {
-    color: var(--td-brand-color);
-    cursor: pointer;
-    white-space: nowrap;
-    text-decoration: none;
-
-    &:hover {
-      text-decoration: underline;
-    }
-  }
 }
 
 // ---- 下拉选项样式 ----

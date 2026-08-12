@@ -101,11 +101,6 @@
                     <VectorStoreSettings />
                   </div>
 
-                  <!-- 解析引擎 -->
-                  <div v-if="currentSection === 'parser'" class="section">
-                    <ParserEngineSettings />
-                  </div>
-
                   <!-- 存储引擎 -->
                   <div v-if="currentSection === 'storage'" class="section">
                     <StorageEngineSettings />
@@ -165,7 +160,6 @@ import OllamaSettings from './OllamaSettings.vue'
 import McpSettings from './McpSettings.vue'
 import WebSearchSettings from './WebSearchSettings.vue'
 import VectorStoreSettings from './VectorStoreSettings.vue'
-import ParserEngineSettings from './ParserEngineSettings.vue'
 import StorageEngineSettings from './StorageBackendSettings.vue'
 import SystemSettings from '@/views/system/SystemSettings.vue'
 import RuntimeQueues from '@/views/system/RuntimeQueues.vue'
@@ -203,7 +197,7 @@ type NavGroup = {
 
 // 设置二级导航的最低可见角色：和 internal/router/router.go 的守卫矩阵对齐。
 // 以「页面里至少有 1 个有意义的写操作所要求的最低角色」为基准，把基础设
-// 施配置（models 写、ollama 下载、websearch 写、parser/storage/vector/mcp
+// 施配置（models 写、ollama 下载、websearch 写、storage/vector/mcp
 // CRUD、chat-history 配置）统一收到 admin；只读类（general / system info /
 // tenant-info / members 名册）保留 viewer 可见；最高敏感的 reset api
 // key 是 owner-only。改这张表前请在 router.go 里复核对应路由组。
@@ -222,7 +216,6 @@ const SECTION_MIN_ROLE: Record<string, RoleKey> = {
   models: 'viewer',
   websearch: 'admin',
   vectorstore: 'admin',
-  parser: 'admin',
   storage: 'admin',
   mcp: 'admin',
   system: 'viewer',
@@ -292,7 +285,6 @@ const navItems = computed(() => {
     { key: 'models', icon: 'control-platform', label: t('settings.modelManagement') },
     { key: 'websearch', icon: 'search', label: t('settings.webSearchConfig') },
     { key: 'vectorstore', icon: 'data-base', label: t('settings.vectorStoreEngine') },
-    { key: 'parser', icon: 'file-search', label: t('settings.parserEngine') },
     { key: 'storage', icon: 'cloud', label: t('settings.storageEngine') },
     { key: 'mcp', icon: 'tools', label: t('settings.mcpService') },
     { key: 'system', icon: 'info-circle', label: t('settings.versionInfo') },
@@ -339,7 +331,6 @@ const navGroups = computed<NavGroup[]>(() => {
       label: t('settings.navGroups.dataExtensions'),
       items: pickItems([
         'vectorstore',
-        'parser',
         'storage',
         'websearch',
         'mcp',
