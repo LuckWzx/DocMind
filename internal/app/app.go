@@ -371,7 +371,7 @@ func (a *App) initDependencies() error {
 	webSearchFactory := websearch.NewEngineFactory(&http.Client{Timeout: 15 * time.Second})
 	webSearchSvc := service.NewWebSearchService(webSearchRepo, webSearchFactory)
 
-	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc, mcpRepo, mcpManager, a.cfg.Retrieval.DisableBM25, webSearchSvc)
+	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc, mcpRepo, mcpManager, a.cfg.Retrieval.DisableBM25, webSearchSvc, knowledgeRepo)
 	if err != nil {
 		return fmt.Errorf("创建 ChatService 失败: %w", err)
 	}

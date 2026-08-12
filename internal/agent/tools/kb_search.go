@@ -16,8 +16,9 @@ import (
 // ResultCollector 检索引用收集器
 // 每次工具构建绑定一个实例，Run 结束后读取 → SSE references 事件（规划 3.2.6 ⑥）
 type ResultCollector struct {
-	mu   sync.Mutex
-	refs []entity.Reference
+	mu      sync.Mutex
+	refs    []entity.Reference
+	cleanup func() // 工具资源清理钩子（如数据分析 DuckDB 会话），流结束后由调用方触发
 }
 
 // Add 追加引用（工具执行线程内调用）
@@ -36,6 +37,23 @@ func (c *ResultCollector) All() []entity.Reference {
 	return out
 }
 
+// SetCleanup 注册工具资源清理钩子（Registry.Build 挂载，如数据分析 DuckDB 会话）
+func (c *ResultCollector) SetCleanup(fn func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cleanup = fn
+}
+
+// Cleanup 执行注册的清理钩子（幂等：执行后清除，可安全重复调用）
+func (c *ResultCollector) Cleanup() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.cleanup != nil {
+		c.cleanup()
+		c.cleanup = nil
+	}
+}
+
 // KBSearchArgs kb_search 工具参数（模型按 JSON Schema 填充）
 type KBSearchArgs struct {
 	Query string `json:"query"`
@@ -43,8 +61,10 @@ type KBSearchArgs struct {
 }
 
 // kbSearchHit 工具返回的单条命中
+// knowledge_id 供模型作为 data_analysis/data_schema 等工具的入参（文件级定位）
 type kbSearchHit struct {
 	ChunkID        uint    `json:"chunk_id"`
+	KnowledgeID    uint    `json:"knowledge_id"`
 	KnowledgeTitle string  `json:"knowledge_title"`
 	Content        string  `json:"content"`
 	Score          float64 `json:"score"`
@@ -120,6 +140,7 @@ func NewKBSearchTool(
 			})
 			hits = append(hits, kbSearchHit{
 				ChunkID:        r.ChunkID,
+				KnowledgeID:    r.KnowledgeID,
 				KnowledgeTitle: r.KnowledgeTitle,
 				Content:        r.Content,
 				Score:          r.Score,

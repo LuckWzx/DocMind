@@ -656,6 +656,8 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 		stats.close("error")
 		return
 	}
+	// 工具资源清理（数据分析 DuckDB 会话等）：流消费结束（含超时/断连/错误路径）后统一释放
+	defer resp.Collector.Cleanup()
 
 	// 记录开始时间，用于计算 agent 执行时长
 	agentStartTime := time.Now()

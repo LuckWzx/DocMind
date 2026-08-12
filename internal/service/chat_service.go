@@ -56,6 +56,8 @@ type chatService struct {
 	mcpManager *mcp.Manager
 	// webSearchSvc Agent web_search 工具依赖（网页搜索 provider 管理与引擎调用）
 	webSearchSvc WebSearchService
+	// knowledgeRepo Agent data_analysis/data_schema 工具数据源（知识条目查询，可为 nil）
+	knowledgeRepo repository.KnowledgeRepository
 	// tokenEstimator 历史 Token 估算器（短期记忆触发判定用）
 	tokenEstimator *token.Estimator
 	// memorySvc 长期记忆服务（跨会话知识图谱，nil 时跳过检索注入）
@@ -112,6 +114,7 @@ func NewChatService(
 	mcpManager *mcp.Manager,
 	disableBM25 bool,
 	webSearchSvc WebSearchService,
+	knowledgeRepo repository.KnowledgeRepository, // data_analysis/data_schema 工具数据源（可为 nil）
 ) (ChatService, error) {
 	// 构建 Pipeline 依赖（Agent kb_search 工具复用同一套依赖）
 	pipelineDeps := BuildPipelineDeps(embedderFactory, rerankerFactory, kbRepo, vectorStoreRepo, primaryDB, disableBM25)
@@ -142,6 +145,7 @@ func NewChatService(
 		mcpRepo:        mcpRepo,
 		mcpManager:     mcpManager,
 		webSearchSvc:   webSearchSvc,
+		knowledgeRepo:  knowledgeRepo,
 	}, nil
 }
 
@@ -394,7 +398,7 @@ func (s *chatService) AgentChat(ctx context.Context, sessionID uint, userID uint
 	}))
 
 	// 4. 工具集：Registry 按 Agent 配置构建（AllowedTools 白名单 + kb_search 引用收集器 + MCP 工具挂载）
-	registry := tools.NewRegistry(s.pipelineDeps, s.mcpRepo, s.mcpManager, s.webSearchSvc)
+	registry := tools.NewRegistry(s.pipelineDeps, s.mcpRepo, s.mcpManager, s.webSearchSvc, s.knowledgeRepo)
 	builtTools, collector, err := registry.Build(agt, userID)
 	if err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "构建 Agent 工具集失败", err)
