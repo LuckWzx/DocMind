@@ -61,3 +61,9 @@ type UpdateMCPCredentialsRequest struct {
 	APIKey *string `json:"api_key"` // 非空则覆盖写入
 	Token  *string `json:"token"`   // 非空则覆盖写入
 }
+
+// SetMCPToolApprovalRequest 设置工具审批要求请求
+// require_approval=true 时 Agent 调用该工具前会被拦截，false 表示放行
+type SetMCPToolApprovalRequest struct {
+	RequireApproval bool `json:"require_approval"`
+}

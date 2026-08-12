@@ -164,6 +164,10 @@ func AuthConfig(svc *entity.MCPService) (*entity.MCPServiceAuthConfig, error) {
 	if err := json.Unmarshal(svc.AuthConfig, &cfg); err != nil {
 		return nil, fmt.Errorf("解析 auth_config 失败: %w", err)
 	}
+	// OAuth 授权码流程 v1 未实现：连接层明确拒绝，避免"选了 oauth 但实际未认证"的假象
+	if cfg.AuthType == entity.MCPAuthTypeOAuth {
+		return nil, fmt.Errorf("OAuth 认证流程暂未支持（服务 %q），请改用 api_key / bearer 或留空", svc.Name)
+	}
 	return &cfg, nil
 }
 

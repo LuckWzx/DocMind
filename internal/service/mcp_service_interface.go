@@ -25,4 +25,8 @@ type MCPServiceService interface {
 	ListEnabledByUser(userID uint) ([]*entity.MCPService, error)
 	// GetEntityByUser 按用户查询 MCP 服务实体（含内置），Agent 工具集构建使用
 	GetEntityByUser(userID, id uint) (*entity.MCPService, error)
+	// GetToolApprovals 查询用户对指定服务的工具审批设置
+	GetToolApprovals(userID, serviceID uint) ([]*dto.MCPToolApprovalResponse, error)
+	// SetToolApproval 设置（或清除）指定工具的审批要求
+	SetToolApproval(userID, serviceID uint, toolName string, requireApproval bool) error
 }

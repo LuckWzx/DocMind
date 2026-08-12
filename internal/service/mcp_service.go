@@ -15,15 +15,17 @@ import (
 
 // mcpService MCP 服务业务实现
 type mcpService struct {
-	repo    repository.MCPServiceRepository
-	manager *mcp.Manager
+	repo         repository.MCPServiceRepository
+	approvalRepo repository.MCPToolApprovalRepository
+	manager      *mcp.Manager
 }
 
 // NewMCPService 创建 MCP 服务业务
-func NewMCPService(repo repository.MCPServiceRepository, manager *mcp.Manager) MCPServiceService {
+func NewMCPService(repo repository.MCPServiceRepository, approvalRepo repository.MCPToolApprovalRepository, manager *mcp.Manager) MCPServiceService {
 	return &mcpService{
-		repo:    repo,
-		manager: manager,
+		repo:         repo,
+		approvalRepo: approvalRepo,
+		manager:      manager,
 	}
 }
 
@@ -52,6 +54,9 @@ func (s *mcpService) GetByID(userID, id uint) (*dto.MCPServiceResponse, error) {
 // Create 创建 MCP 服务
 func (s *mcpService) Create(userID uint, req *request.CreateMCPServiceRequest) (*dto.MCPServiceResponse, error) {
 	if err := validateTransport(req.TransportType, req.URL, req.StdioConfig); err != nil {
+		return nil, err
+	}
+	if err := validateAuthType(req.AuthConfig); err != nil {
 		return nil, err
 	}
 
@@ -108,6 +113,9 @@ func (s *mcpService) Update(userID, id uint, req *request.UpdateMCPServiceReques
 		svc.Headers = marshalJSONOrNil(req.Headers)
 	}
 	if req.AuthConfig != nil {
+		if err := validateAuthType(req.AuthConfig); err != nil {
+			return nil, err
+		}
 		svc.AuthConfig = marshalAuthConfig(req.AuthConfig)
 	}
 	if req.AdvancedConfig != nil {
@@ -308,6 +316,47 @@ func (s *mcpService) GetEntityByUser(userID, id uint) (*entity.MCPService, error
 		return nil, bizerrors.ErrResourceNotFound
 	}
 	return svc, nil
+}
+
+// GetToolApprovals 查询用户对指定服务的工具审批设置
+func (s *mcpService) GetToolApprovals(userID, serviceID uint) ([]*dto.MCPToolApprovalResponse, error) {
+	if _, err := s.GetEntityByUser(userID, serviceID); err != nil {
+		return nil, err
+	}
+	rows, err := s.approvalRepo.ListByUserAndService(userID, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*dto.MCPToolApprovalResponse, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, &dto.MCPToolApprovalResponse{
+			ID:              row.ID,
+			ServiceID:       row.ServiceID,
+			ToolName:        row.ToolName,
+			RequireApproval: row.RequireApproval,
+		})
+	}
+	return out, nil
+}
+
+// SetToolApproval 设置（或清除）指定工具的审批要求
+// 审批偏好按用户存储：对全局服务也可设置自己的偏好（不违反服务配置只读）
+func (s *mcpService) SetToolApproval(userID, serviceID uint, toolName string, requireApproval bool) error {
+	if _, err := s.GetEntityByUser(userID, serviceID); err != nil {
+		return err
+	}
+	if toolName == "" {
+		return bizerrors.New(bizerrors.CodeInvalidParam, "tool_name 不能为空")
+	}
+	return s.approvalRepo.Upsert(userID, serviceID, toolName, requireApproval)
+}
+
+// validateAuthType 校验认证类型：oauth 授权码流程 v1 未实现，明确拒绝避免"选了但实际未认证"的假象
+func validateAuthType(auth *request.MCPServiceAuthConfigRequest) error {
+	if auth != nil && auth.AuthType == "oauth" {
+		return bizerrors.New(bizerrors.CodeInvalidParam, "OAuth 认证流程暂未支持，请使用 api_key / bearer 或留空（不认证）")
+	}
+	return nil
 }
 
 // validateTransport 校验传输类型必填字段

@@ -340,6 +340,73 @@ func (ctrl *Controller) DeleteCredentialField(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// GetToolApprovals 查询 MCP 服务工具审批设置
+// @Summary 查询 MCP 服务工具审批设置
+// @Description 查询当前用户对指定服务各工具的人工审批设置（用户级偏好，全局服务也可设置）
+// @Tags MCP 服务
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param id path int true "MCP 服务ID"
+// @Success 200 {object} response.Response
+// @Router /api/v1/mcp-services/{id}/tool-approvals [get]
+func (ctrl *Controller) GetToolApprovals(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == 0 {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
+
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+
+	result, err := ctrl.mcpService.GetToolApprovals(userID, id)
+	if err != nil {
+		response.BizError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// SetToolApproval 设置（或清除）MCP 工具审批要求
+// @Summary 设置 MCP 工具审批要求
+// @Description 设置当前用户对指定服务某工具的人工审批要求（require_approval=false 表示放行）
+// @Tags MCP 服务
+// @Accept json
+// @Produce json
+// @Security Bearer
+// @Param id path int true "MCP 服务ID"
+// @Param toolName path string true "工具名（原始名，不含 mcp_<service>_ 前缀）"
+// @Param body body request.SetMCPToolApprovalRequest true "审批设置"
+// @Success 200 {object} response.Response
+// @Router /api/v1/mcp-services/{id}/tool-approvals/{toolName} [put]
+func (ctrl *Controller) SetToolApproval(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == 0 {
+		response.Unauthorized(c, "用户未登录")
+		return
+	}
+
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+
+	var req request.SetMCPToolApprovalRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	if err := ctrl.mcpService.SetToolApproval(userID, id, c.Param("toolName"), req.RequireApproval); err != nil {
+		response.BizError(c, err)
+		return
+	}
+	response.Success(c, nil)
+}
+
 // parseID 解析路径参数 id
 func parseID(c *gin.Context) (uint, bool) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)

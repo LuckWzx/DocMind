@@ -19,6 +19,7 @@ import (
 type Registry struct {
 	deps         *pipeline.PipelineDeps
 	mcpRepo      repository.MCPServiceRepository
+	approvalRepo repository.MCPToolApprovalRepository
 	mcpManager   *mcp.Manager
 	webSearchSvc WebSearchService
 }
@@ -26,10 +27,11 @@ type Registry struct {
 // NewRegistry 创建工具注册表（依赖与 RAG 管道共用，见 service.BuildPipelineDeps）
 // mcpRepo / mcpManager 可为 nil：不挂载 MCP 工具
 // webSearchSvc 可为 nil：不注册 web_search 工具
-func NewRegistry(deps *pipeline.PipelineDeps, mcpRepo repository.MCPServiceRepository, mcpManager *mcp.Manager, webSearchSvc WebSearchService) *Registry {
+func NewRegistry(deps *pipeline.PipelineDeps, mcpRepo repository.MCPServiceRepository, approvalRepo repository.MCPToolApprovalRepository, mcpManager *mcp.Manager, webSearchSvc WebSearchService) *Registry {
 	return &Registry{
 		deps:         deps,
 		mcpRepo:      mcpRepo,
+		approvalRepo: approvalRepo,
 		mcpManager:   mcpManager,
 		webSearchSvc: webSearchSvc,
 	}
@@ -175,6 +177,20 @@ func (r *Registry) buildMCPTools(agent *entity.Agent, userID uint) ([]tool.BaseT
 	// 工具名前缀去重：系统级与用户级可能存在同名服务（如用户自建 mcp_api_requester），
 	// 工具名 mcp_<name>_<tool> 冲突时保留先注册者（系统级优先，ListEnabledByUser 按 user_id ASC 排序）
 	seen := make(map[string]struct{}, len(svcs))
+	// 审批偏好：一次拉取当前用户全部设置，构建 serviceID→toolName→requireApproval 映射
+	approvals := map[uint]map[string]bool{}
+	if r.approvalRepo != nil {
+		if rows, err := r.approvalRepo.ListByUser(userID); err == nil {
+			for _, row := range rows {
+				if row.RequireApproval {
+					if approvals[row.ServiceID] == nil {
+						approvals[row.ServiceID] = map[string]bool{}
+					}
+					approvals[row.ServiceID][row.ToolName] = true
+				}
+			}
+		}
+	}
 	for _, svc := range svcs {
 		prefix := "mcp_" + sanitizeToolName(svc.Name)
 		if _, ok := seen[prefix]; ok {
@@ -190,8 +206,13 @@ func (r *Registry) buildMCPTools(agent *entity.Agent, userID uint) ([]tool.BaseT
 			continue
 		}
 		seen[prefix] = struct{}{}
+		svcApprovals := approvals[svc.ID]
 		for _, t := range einoTools {
-			out = append(out, &prefixedTool{inner: t, prefix: prefix})
+			info, err := t.Info(ctx)
+			if err != nil {
+				continue
+			}
+			out = append(out, &prefixedTool{inner: t, prefix: prefix, requireApproval: svcApprovals[info.Name]})
 		}
 	}
 	return out, nil

@@ -74,3 +74,12 @@ type MCPTestResultResponse struct {
 type McpCredentialsResponse struct {
 	Fields map[string]CredentialFieldMetadata `json:"fields"`
 }
+
+// MCPToolApprovalResponse 工具审批设置响应
+// 按用户维度存储：用户对可见服务（含全局）的工具设置是否需要人工审批
+type MCPToolApprovalResponse struct {
+	ID              uint   `json:"id"`
+	ServiceID       uint   `json:"service_id"`
+	ToolName        string `json:"tool_name"`
+	RequireApproval bool   `json:"require_approval"`
+}

@@ -12,6 +12,7 @@ const (
 	MCPAuthTypeNone   = ""
 	MCPAuthTypeAPIKey = "api_key"
 	MCPAuthTypeBearer = "bearer"
+	MCPAuthTypeOAuth  = "oauth" // v1 未实现授权码流程，创建/连接层明确拒绝
 )
 
 // MCPServiceAuthConfig MCP 服务认证配置

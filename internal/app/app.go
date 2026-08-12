@@ -192,9 +192,11 @@ func (a *App) initDatabase() error {
 	//&entity.SessionSummary{},
 	//// 模型上下文大小缺失记录表（待补足内置映射表的模型清单）
 	//&entity.ModelContextWindowMissing{},
-	//&entity.MCPService{},
 	// 网页搜索提供方表（用户隔离，Agent web_search 工具配置）
 	//&entity.WebSearchProvider{},
+	// MCP 服务与工具审批表（外接 MCP：服务注册 + 按工具的人工审批偏好）
+	//&entity.MCPService{},
+	//&entity.MCPToolApproval{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
 	} else {
@@ -358,20 +360,21 @@ func (a *App) initDependencies() error {
 
 	// MCP 服务（外部 MCP Server 注册 + 连接管理，Agent 工具集与 mcp-services 接口共用）
 	mcpRepo := repository.NewMCPServiceRepository(a.pgDB)
+	mcpApprovalRepo := repository.NewMCPToolApprovalRepository(a.pgDB)
 	mcpManager := mcp.NewManager()
 	a.mcpManager = mcpManager
 	// 预置全局（系统级）MCP 服务：配置文件声明的服务写入 user_id=0，所有用户可见但只读
 	if err := seedPresetMCPServices(a.pgDB, a.cfg.MCPPresetServices, mcpManager); err != nil {
 		return err
 	}
-	mcpSvc := service.NewMCPService(mcpRepo, mcpManager)
+	mcpSvc := service.NewMCPService(mcpRepo, mcpApprovalRepo, mcpManager)
 
 	// 网页搜索（web_search 工具：provider 管理按用户隔离 + 多引擎适配）
 	webSearchRepo := repository.NewWebSearchProviderRepository(a.pgDB)
 	webSearchFactory := websearch.NewEngineFactory(&http.Client{Timeout: 15 * time.Second})
 	webSearchSvc := service.NewWebSearchService(webSearchRepo, webSearchFactory)
 
-	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc, mcpRepo, mcpManager, a.cfg.Retrieval.DisableBM25, webSearchSvc)
+	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc, mcpRepo, mcpApprovalRepo, mcpManager, a.cfg.Retrieval.DisableBM25, webSearchSvc)
 	if err != nil {
 		return fmt.Errorf("创建 ChatService 失败: %w", err)
 	}

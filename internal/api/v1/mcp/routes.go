@@ -22,6 +22,8 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 		// 凭据子资源（密钥独立管理，响应脱敏）
 		mcpGroup.PUT("/:id/credentials", ctrl.UpdateCredentials)
 		mcpGroup.DELETE("/:id/credentials/:field", ctrl.DeleteCredentialField)
-		// v1 未实现：tool-approvals / oauth（前端契约保留，路由后置）
+		// 工具审批设置（用户级偏好：可对可见服务（含全局）的每个工具设置人工审批）
+		mcpGroup.GET("/:id/tool-approvals", ctrl.GetToolApprovals)
+		mcpGroup.PUT("/:id/tool-approvals/:toolName", ctrl.SetToolApproval)
 	}
 }
