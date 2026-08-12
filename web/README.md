@@ -65,6 +65,8 @@ web/
 │   │   ├── embed/                 # 嵌入式聊天
 │   │   ├── skill/                 # 技能管理
 │   │   ├── system/                # 系统管理
+│   │   ├── organization/          # 组织管理
+│   │   ├── tenant/                # 租户管理（成员/邀请/审计日志）
 │   │   ├── wiki/                  # 知识库 Wiki
 │   │   ├── index.ts               # 统一导出
 │   │   ├── retrieval.ts           # 检索配置
@@ -89,17 +91,26 @@ web/
 │   ├── directives/                # 自定义指令
 │   ├── hooks/                     # 钩子函数
 │   ├── i18n/                      # 国际化
+│   │   ├── embed.ts               # 嵌入式聊天语言包入口
+│   │   ├── index.ts               # i18n 初始化
 │   │   └── locales/               # 语言包（zh-CN / en-US / ko-KR / ru-RU）
+│   │       └── embed/             # 嵌入式语言包
 │   ├── router/                    # 路由配置与导航守卫
 │   ├── stores/                    # Pinia 状态管理（14 个 store）
 │   │   ├── app.ts                 # 应用全局状态
 │   │   ├── auth.ts                # 认证状态
 │   │   ├── chat.ts                # 聊天消息与会话
 │   │   ├── chatResources.ts       # 聊天资源（Web 搜索/文件）
+│   │   ├── commandPalette.ts      # 全局命令面板
+│   │   ├── editorResources.ts     # 编辑器资源
+│   │   ├── index.ts               # store 统一导出
 │   │   ├── knowledge.ts           # 知识条目状态
+│   │   ├── menu.ts                # 菜单状态
+│   │   ├── organization.ts        # 组织状态
 │   │   ├── settings.ts            # 系统设置
+│   │   ├── settingsStorage.ts     # 设置持久化
 │   │   ├── ui.ts                  # UI 状态（侧边栏等）
-│   │   └── ...                    # 其他 store
+│   │   └── uploadConfirm.ts       # 上传确认
 │   ├── styles/                    # 全局样式
 │   ├── types/                     # TypeScript 类型定义（agent / chat / chunker / knowledge 等）
 │   ├── utils/                     # 工具函数
@@ -117,11 +128,15 @@ web/
 │   │   ├── system/                # 系统管理（运行时队列等）
 │   ├── wailsjs/                   # Wails 桌面端桥接
 │   ├── App.vue                    # 根组件（OIDC 回调/主题/TDesign 配置）
+│   ├── embed-main.ts              # 嵌入式聊天入口
 │   └── main.ts                    # 应用入口
 ├── embed.html                     # Embed 入口 HTML
 ├── index.html                     # SPA 入口 HTML
+├── env.d.ts                       # 全局类型声明（.vue 模块/构建常量）
 ├── vite.config.ts                 # Vite 构建配置
-├── tsconfig.json                  # TypeScript 配置
+├── tsconfig.json                  # TypeScript 基础配置
+├── tsconfig.app.json              # 应用代码 TS 配置
+├── tsconfig.node.json             # Node 侧（构建脚本）TS 配置
 ├── package.json
 ├── pnpm-workspace.yaml
 ├── Dockerfile                     # 生产镜像（Nginx）
@@ -206,7 +221,7 @@ export VITE_DEV_PROXY_TARGET=http://your-backend:3888
 ### TypeScript 类型
 
 - `src/types/` 下定义业务类型（agent / chat / chunker / knowledge / knowledgeProcess / mention / tool-results 等）
-- `src/env.d.ts` 声明 `.vue` 模块类型和构建常量
+- `env.d.ts`（web 根目录）声明 `.vue` 模块类型和构建常量
 - 接口对接时以 `src/types/` 下的类型定义为准
 
 ### API 对接
