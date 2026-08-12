@@ -5278,6 +5278,7 @@ export default {
       executeSkillScript: "执行技能脚本",
       dataAnalysis: "数据分析",
       dataSchema: "数据结构",
+      pythonExec: "Python 代码执行",
       databaseQuery: "数据库查询",
     },
     summary: {
@@ -5604,6 +5605,8 @@ export default {
       dataAnalysisDesc: "理解数据文件并进行数据分析",
       dataSchema: "查看数据元信息",
       dataSchemaDesc: "获取表格文件的元信息",
+      pythonExec: "Python 代码执行",
+      pythonExecDesc: "在隔离沙箱中执行 Python 代码进行复杂分析（pandas/DuckDB/matplotlib），支持生成图表",
       requiresKb: "（需要配置知识库）",
       requiresRagKb: "（需要关联启用向量/关键词索引的知识库）",
       requiresWikiKb: "（需要关联启用 Wiki 能力的知识库）",

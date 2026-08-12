@@ -18,6 +18,7 @@ import (
 	"docmind/internal/memory/longterm"
 	"docmind/internal/model/entity"
 	"docmind/internal/repository"
+	"docmind/internal/sandbox"
 	"docmind/internal/service"
 	"docmind/internal/service/websearch"
 	"docmind/internal/tracing"
@@ -374,7 +375,24 @@ func (a *App) initDependencies() error {
 	webSearchFactory := websearch.NewEngineFactory(&http.Client{Timeout: 15 * time.Second})
 	webSearchSvc := service.NewWebSearchService(webSearchRepo, webSearchFactory)
 
-	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc, mcpRepo, mcpApprovalRepo, mcpManager, a.cfg.Retrieval.DisableBM25, webSearchSvc, knowledgeRepo)
+	// Python 沙箱（python_exec 工具执行环境）：配置启用且 Python 可用时创建，失败仅告警不阻断
+	var pySandbox sandbox.Sandbox
+	if a.cfg.Sandbox.Enabled {
+		sb, sbErr := sandbox.NewPythonSandbox(sandbox.Config{
+			PythonBin:  a.cfg.Sandbox.PythonBin,
+			Timeout:    a.cfg.Sandbox.Timeout,
+			MaxOutput:  a.cfg.Sandbox.MaxOutput,
+			MaxCodeLen: a.cfg.Sandbox.MaxCodeLen,
+		})
+		if sbErr != nil {
+			logger.Warn("Python 沙箱初始化失败，python_exec 工具不可用", zap.Error(sbErr))
+		} else {
+			pySandbox = sb
+			logger.Info("Python 沙箱已启用", zap.String("python_bin", a.cfg.Sandbox.PythonBin))
+		}
+	}
+
+	chatSvc, err := service.NewChatService(sessionRepo, messageRepo, summaryRepo, chatModelFactory, embedderFactory, rerankerFactory, knowledgeBaseRepo, vectorStoreRepo, agentSvc, a.pgDB, memorySvc, mcpRepo, mcpApprovalRepo, mcpManager, a.cfg.Retrieval.DisableBM25, webSearchSvc, knowledgeRepo, pySandbox)
 	if err != nil {
 		return fmt.Errorf("创建 ChatService 失败: %w", err)
 	}
@@ -383,7 +401,7 @@ func (a *App) initDependencies() error {
 	// SSE 活跃连接注册表（优雅关闭时向活跃连接广播 SERVER_SHUTDOWN）
 	sseRegistry := sse.NewRegistry()
 	a.sseRegistry = sseRegistry
-	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc, mcpSvc, webSearchSvc, sseRegistry, a.redis, a.cfg.SSE, memorySvc)
+	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc, mcpSvc, webSearchSvc, sseRegistry, a.redis, a.cfg.SSE, memorySvc, a.cfg.Storage.LocalRoot)
 
 	return nil
 }

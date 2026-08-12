@@ -5565,6 +5565,7 @@ export default {
       executeSkillScript: '스킬 스크립트 실행',
       dataAnalysis: '데이터 분석',
       dataSchema: '데이터 구조',
+      pythonExec: 'Python 코드 실행',
       databaseQuery: '데이터베이스 조회',
     },
     summary: {
@@ -5868,6 +5869,8 @@ export default {
       dataAnalysisDesc: '데이터 파일을 이해하고 데이터 분석 수행',
       dataSchema: '데이터 스키마 보기',
       dataSchemaDesc: '테이블 파일의 메타 정보 조회',
+      pythonExec: 'Python 코드 실행',
+      pythonExecDesc: '격리된 샌드박스에서 Python 코드를 실행해 복잡한 분석 수행 (pandas/DuckDB/matplotlib), 차트 생성 지원',
       requiresKb: '(지식베이스 설정 필요)',
       requiresRagKb: '(벡터/키워드 인덱싱이 활성화된 지식베이스가 필요합니다)',
       requiresWikiKb: '(Wiki 기능이 활성화된 지식베이스가 필요합니다)',

@@ -5065,6 +5065,7 @@ export default {
       executeSkillScript: 'Выполнение скрипта навыка',
       dataAnalysis: 'Анализ данных',
       dataSchema: 'Структура данных',
+      pythonExec: 'Выполнение Python',
       databaseQuery: 'Запрос к базе данных'
     },
     summary: {
@@ -5285,6 +5286,8 @@ export default {
       dataAnalysisDesc: 'Понимание файлов данных и проведение анализа',
       dataSchema: 'Схема данных',
       dataSchemaDesc: 'Получение метаинформации табличных файлов',
+      pythonExec: 'Выполнение Python',
+      pythonExecDesc: 'Выполнение Python-кода в изолированной песочнице для сложного анализа (pandas/DuckDB/matplotlib), поддержка генерации графиков',
       requiresKb: '(требуется настройка базы знаний)',
       requiresRagKb: '(требуется база знаний с включённым векторным/ключевым индексом)',
       requiresWikiKb: '(требуется база знаний с включённой Wiki)',

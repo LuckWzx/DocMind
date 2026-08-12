@@ -5538,6 +5538,7 @@ export default {
       executeSkillScript: 'Execute Skill Script',
       dataAnalysis: 'Data Analysis',
       dataSchema: 'Data Schema',
+      pythonExec: 'Python Execution',
       databaseQuery: 'Database Query',
     },
     summary: {
@@ -5781,6 +5782,8 @@ export default {
       dataAnalysisDesc: 'Understand data files and perform data analysis',
       dataSchema: 'View Data Schema',
       dataSchemaDesc: 'Get metadata of tabular files',
+      pythonExec: 'Python Execution',
+      pythonExecDesc: 'Execute Python code in an isolated sandbox for complex analysis (pandas/DuckDB/matplotlib), supports chart generation',
       requiresKb: '(requires knowledge base configuration)',
       requiresRagKb: '(requires a KB with vector/keyword indexing enabled)',
       requiresWikiKb: '(requires a Wiki-enabled knowledge base)',

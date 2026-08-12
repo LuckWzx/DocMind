@@ -10,6 +10,7 @@ import (
 	"docmind/internal/model/entity"
 	"docmind/internal/pipeline"
 	"docmind/internal/repository"
+	"docmind/internal/sandbox"
 
 	"github.com/cloudwego/eino/components/tool"
 )
@@ -19,24 +20,27 @@ import (
 type Registry struct {
 	deps          *pipeline.PipelineDeps
 	mcpRepo       repository.MCPServiceRepository
-	approvalRepo repository.MCPToolApprovalRepository
+	approvalRepo  repository.MCPToolApprovalRepository
 	mcpManager    *mcp.Manager
 	webSearchSvc  WebSearchService
 	knowledgeRepo repository.KnowledgeRepository // data_analysis/data_schema 数据源（可为 nil：不注册）
+	sandbox       sandbox.Sandbox                // python_exec 沙箱（可为 nil：不注册）
 }
 
 // NewRegistry 创建工具注册表（依赖与 RAG 管道共用，见 service.BuildPipelineDeps）
 // mcpRepo / mcpManager 可为 nil：不挂载 MCP 工具
 // webSearchSvc 可为 nil：不注册 web_search 工具
 // knowledgeRepo 可为 nil：不注册 data_analysis / data_schema 工具
-func NewRegistry(deps *pipeline.PipelineDeps, mcpRepo repository.MCPServiceRepository, approvalRepo repository.MCPToolApprovalRepository, mcpManager *mcp.Manager, webSearchSvc WebSearchService, knowledgeRepo repository.KnowledgeRepository) *Registry {
+// sb 可为 nil：不注册 python_exec 工具
+func NewRegistry(deps *pipeline.PipelineDeps, mcpRepo repository.MCPServiceRepository, approvalRepo repository.MCPToolApprovalRepository, mcpManager *mcp.Manager, webSearchSvc WebSearchService, knowledgeRepo repository.KnowledgeRepository, sb sandbox.Sandbox) *Registry {
 	return &Registry{
 		deps:          deps,
 		mcpRepo:       mcpRepo,
-		approvalRepo: approvalRepo,
+		approvalRepo:  approvalRepo,
 		mcpManager:    mcpManager,
 		webSearchSvc:  webSearchSvc,
 		knowledgeRepo: knowledgeRepo,
+		sandbox:       sb,
 	}
 }
 
@@ -106,6 +110,13 @@ func (r *Registry) Build(agent *entity.Agent, userID uint) ([]tool.BaseTool, *Re
 		}
 		builders["data_schema"] = func() (tool.BaseTool, error) {
 			return NewDataSchemaTool(r.knowledgeRepo, r.deps.KBRepo, userID, searchCfg.KnowledgeBaseIDs, analysisSession)
+		}
+	}
+
+	// Python 沙箱工具（python_exec）：模型生成代码 → 沙箱隔离执行（注册表持有沙箱时挂载）
+	if r.sandbox != nil && toolEnabled(cfg.AllowedTools, "python_exec") {
+		builders["python_exec"] = func() (tool.BaseTool, error) {
+			return NewPythonExecTool(r.sandbox, r.knowledgeRepo, r.deps.KBRepo, userID, searchCfg.KnowledgeBaseIDs)
 		}
 	}
 

@@ -5,6 +5,7 @@ import (
 	"docmind/internal/api/v1/auth"
 	"docmind/internal/api/v1/chat"
 	"docmind/internal/api/v1/chunker"
+	"docmind/internal/api/v1/files"
 	"docmind/internal/api/v1/initialization"
 	"docmind/internal/api/v1/knowledge"
 	"docmind/internal/api/v1/knowledgebase"
@@ -41,6 +42,7 @@ type Router struct {
 	tagCtrl            *tag.Controller
 	mcpCtrl            *mcp.Controller
 	webSearchCtrl      *websearch.Controller
+	filesCtrl          *files.Controller
 }
 
 // NewRouter 创建路由
@@ -62,6 +64,7 @@ func NewRouter(
 	redis *redis.Client,
 	sseCfg config.SSEConfig,
 	memorySvc longterm.MemoryService,
+	storageRoot string, // 本地存储根目录（config.storage.local_root，默认 data/files）
 ) *Router {
 	return &Router{
 		authCtrl:           auth.NewController(authService, userService),
@@ -76,6 +79,7 @@ func NewRouter(
 		tagCtrl:            tag.NewController(tagService),
 		mcpCtrl:            mcp.NewController(mcpService),
 		webSearchCtrl:      websearch.NewController(webSearchService),
+		filesCtrl:          files.NewController(storageRoot),
 	}
 }
 
@@ -103,6 +107,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 			ginSwagger.PersistAuthorization(true),
 		))
 	}
+
+	// 本地文件代理（渲染 Markdown 图片：沙箱图表等；前端带 token fetch → blob URL）
+	engine.GET("/files", middleware.Auth(), r.filesCtrl.Serve)
 
 	// API v1 路由组
 	v1 := engine.Group("/api/v1")

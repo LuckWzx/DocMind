@@ -1945,6 +1945,9 @@ const allTools = computed<ToolOption[]>(() => [
   // 数据分析
   { value: 'data_analysis', label: t('agentEditor.tools.dataAnalysis'), description: t('agentEditor.tools.dataAnalysisDesc'), group: 'data' },
   { value: 'data_schema', label: t('agentEditor.tools.dataSchema'), description: t('agentEditor.tools.dataSchemaDesc'), group: 'data' },
+  // python_exec：在隔离沙箱中执行模型生成的 Python 代码（pandas/DuckDB/matplotlib），
+  // 支持 SQL 无法完成的复杂分析与图表生成；依赖后端 sandbox 配置启用（config.yaml）
+  { value: 'python_exec', label: t('agentEditor.tools.pythonExec'), description: t('agentEditor.tools.pythonExecDesc'), group: 'data' },
 ]);
 
 // 工具分组元信息

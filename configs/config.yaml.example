@@ -99,3 +99,13 @@ memory:
   model_id: ""          # 提取/关键词模型 ID（空 = 由调用方传会话模型）
   retrieve_limit: 5     # 检索返回的最大 Episode 数
   max_episodes_per_session: 200  # 单会话可存储的 Episode 上限（超出后新问答不再录入）
+
+# Python 沙箱配置（数据计算工具 python_exec 的执行环境）
+# 首次使用请先运行一键初始化脚本（Windows: scripts\setup_sandbox.ps1，Linux: scripts/setup_sandbox.sh），
+# 脚本会在项目根目录创建 .venv 并安装 duckdb/pandas/matplotlib/openpyxl，然后把 venv 解释器路径填到 python_bin
+sandbox:
+  enabled: true         # 总开关：false 时不注册 python_exec 工具
+  python_bin: .venv\Scripts\python.exe   # Windows 用 .venv\Scripts\python.exe；Linux 用 .venv/bin/python（建议绝对路径）
+  timeout: 30s          # 单次执行超时
+  max_output: 1048576   # 输出上限（字节，1MB）
+  max_code_len: 20480   # 代码长度上限（字节，20KB）

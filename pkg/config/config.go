@@ -33,6 +33,7 @@ type Config struct {
 	Memory    MemoryConfig    `mapstructure:"memory"`
 	CozeLoop  CozeLoopConfig  `mapstructure:"cozeloop"`
 	Retrieval RetrievalConfig `mapstructure:"retrieval"`
+	Sandbox   SandboxConfig   `mapstructure:"sandbox"`
 	// MCPPresetServices 全局 MCP 服务预置（user_id=0，系统级只读）
 	MCPPresetServices []MCPServicePresetConfig `mapstructure:"mcp_preset_services"`
 }
@@ -178,4 +179,13 @@ type CozeLoopConfig struct {
 	WorkspaceID string `mapstructure:"workspace_id"`
 	APIToken    string `mapstructure:"api_token"`
 	APIBaseURL  string `mapstructure:"api_base_url"`
+}
+
+// SandboxConfig Python 沙箱配置（python_exec 工具执行环境）
+type SandboxConfig struct {
+	Enabled    bool          `mapstructure:"enabled"`      // 总开关：false 时不注册 python_exec 工具
+	PythonBin  string        `mapstructure:"python_bin"`   // Python 解释器（Windows: python，Linux: python3）
+	Timeout    time.Duration `mapstructure:"timeout"`      // 单次执行超时
+	MaxOutput  int           `mapstructure:"max_output"`   // 输出上限（字节）
+	MaxCodeLen int           `mapstructure:"max_code_len"` // 代码长度上限（字节）
 }
