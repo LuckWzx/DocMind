@@ -15,26 +15,42 @@ import (
 )
 
 // Registry 工具注册表：按 Agent 配置组装工具集
-// 内置工具（kb_search / web_search 等）+ 外部 MCP 工具（按 MCPServices 配置挂载）
+// 内置工具（kb_search / web_search / data_analysis 等）+ 外部 MCP 工具（按 MCPServices 配置挂载）
 type Registry struct {
-	deps         *pipeline.PipelineDeps
-	mcpRepo      repository.MCPServiceRepository
+	deps          *pipeline.PipelineDeps
+	mcpRepo       repository.MCPServiceRepository
 	approvalRepo repository.MCPToolApprovalRepository
-	mcpManager   *mcp.Manager
-	webSearchSvc WebSearchService
+	mcpManager    *mcp.Manager
+	webSearchSvc  WebSearchService
+	knowledgeRepo repository.KnowledgeRepository // data_analysis/data_schema 数据源（可为 nil：不注册）
 }
 
 // NewRegistry 创建工具注册表（依赖与 RAG 管道共用，见 service.BuildPipelineDeps）
 // mcpRepo / mcpManager 可为 nil：不挂载 MCP 工具
 // webSearchSvc 可为 nil：不注册 web_search 工具
-func NewRegistry(deps *pipeline.PipelineDeps, mcpRepo repository.MCPServiceRepository, approvalRepo repository.MCPToolApprovalRepository, mcpManager *mcp.Manager, webSearchSvc WebSearchService) *Registry {
+// knowledgeRepo 可为 nil：不注册 data_analysis / data_schema 工具
+func NewRegistry(deps *pipeline.PipelineDeps, mcpRepo repository.MCPServiceRepository, approvalRepo repository.MCPToolApprovalRepository, mcpManager *mcp.Manager, webSearchSvc WebSearchService, knowledgeRepo repository.KnowledgeRepository) *Registry {
 	return &Registry{
-		deps:         deps,
-		mcpRepo:      mcpRepo,
+		deps:          deps,
+		mcpRepo:       mcpRepo,
 		approvalRepo: approvalRepo,
-		mcpManager:   mcpManager,
-		webSearchSvc: webSearchSvc,
+		mcpManager:    mcpManager,
+		webSearchSvc:  webSearchSvc,
+		knowledgeRepo: knowledgeRepo,
 	}
+}
+
+// toolEnabled 判断工具是否在白名单内（空白名单 = 全部可用）
+func toolEnabled(allowed []string, name string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+	for _, a := range allowed {
+		if a == name {
+			return true
+		}
+	}
+	return false
 }
 
 // Build 构建该 Agent 的工具集
@@ -75,6 +91,21 @@ func (r *Registry) Build(agent *entity.Agent, userID uint) ([]tool.BaseTool, *Re
 	if r.webSearchSvc != nil {
 		builders["web_search"] = func() (tool.BaseTool, error) {
 			return NewWebSearchTool(r.webSearchSvc, userID, parseUintID(cfg.WebSearchProviderID), toolMaxResults(cfg))
+		}
+	}
+	// 数据分析工具（data_analysis / data_schema）：共享请求级 DuckDB 内存库，
+	// 生命周期挂到 collector.Cleanup()（controller 流结束后调用，见 ResultCollector.Cleanup）
+	if r.knowledgeRepo != nil && (toolEnabled(cfg.AllowedTools, "data_analysis") || toolEnabled(cfg.AllowedTools, "data_schema")) {
+		analysisSession, err := newAnalysisSession()
+		if err != nil {
+			return nil, nil, err
+		}
+		collector.SetCleanup(analysisSession.Close)
+		builders["data_analysis"] = func() (tool.BaseTool, error) {
+			return NewDataAnalysisTool(r.knowledgeRepo, r.deps.KBRepo, userID, searchCfg.KnowledgeBaseIDs, analysisSession)
+		}
+		builders["data_schema"] = func() (tool.BaseTool, error) {
+			return NewDataSchemaTool(r.knowledgeRepo, r.deps.KBRepo, userID, searchCfg.KnowledgeBaseIDs, analysisSession)
 		}
 	}
 
