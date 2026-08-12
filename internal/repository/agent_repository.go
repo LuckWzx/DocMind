@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"reflect"
 
 	"docmind/internal/model/entity"
 	"docmind/pkg/logger"
@@ -78,14 +79,24 @@ func (r *agentRepository) ListAll() ([]*entity.Agent, error) {
 	return agents, err
 }
 
-// EnsureBuiltin 确保内置智能体存在（不存在则创建）
+// EnsureBuiltin 确保内置智能体存在；模板（Config 等）变更时同步更新内置行
+// 用户个性化保存在独立的 override 表，不受此同步影响
 func (r *agentRepository) EnsureBuiltin(agent *entity.Agent) error {
 	existing, err := r.FindByIDStr(agent.IDStr)
 	if err != nil {
 		return err
 	}
-	if existing != nil {
-		return nil // 已存在
+	if existing == nil {
+		return r.db.Create(agent).Error
 	}
-	return r.db.Create(agent).Error
+	// 模板变更同步：仅更新内置行自身字段，不触碰 override
+	if existing.Name != agent.Name || existing.Description != agent.Description ||
+		existing.Avatar != agent.Avatar || !reflect.DeepEqual(existing.Config, agent.Config) {
+		existing.Name = agent.Name
+		existing.Description = agent.Description
+		existing.Avatar = agent.Avatar
+		existing.Config = agent.Config
+		return r.db.Save(existing).Error
+	}
+	return nil
 }

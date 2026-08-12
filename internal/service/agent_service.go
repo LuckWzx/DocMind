@@ -240,6 +240,9 @@ func SeedBuiltinAgents(agentRepo repository.AgentRepository) error {
 			RerankTopK:          5,
 			MultiTurnEnabled:    &defaultFalse,
 			HistoryTurns:        0,
+			// 系统默认：全部 MCP 服务与技能可用（空值语义等同 all，显式声明避免前端归一到 none）
+			MCPSelectionMode:    "all",
+			SkillsSelectionMode: "all",
 		},
 	}
 
@@ -261,6 +264,9 @@ func SeedBuiltinAgents(agentRepo repository.AgentRepository) error {
 			RerankTopK:          5,
 			MultiTurnEnabled:    &defaultTrue,
 			HistoryTurns:        3,
+			// 系统默认：全部 MCP 服务与技能可用（空值语义等同 all，显式声明避免前端归一到 none）
+			MCPSelectionMode:    "all",
+			SkillsSelectionMode: "all",
 		},
 	}
 

@@ -1803,21 +1803,22 @@ type McpSelectOption = { label: string; value: string; disabled?: boolean };
 const mcpOptions = computed<McpSelectOption[]>(() => {
   const services = editorResources.mcpServices || [];
   const selectedIds = new Set(formData.value.config.mcp_services || []);
-  const serviceById = new Map(services.map((mcp) => [mcp.id, mcp]));
+  // 注意：后端返回的 mcp.id 是 number，必须转字符串与 config.mcp_services（string[]）契约对齐
+  const serviceById = new Map(services.map((mcp) => [String(mcp.id), mcp]));
   const options: McpSelectOption[] = [];
 
   for (const mcp of services) {
     if (mcp.enabled) {
-      options.push({ label: mcp.name, value: mcp.id });
+      options.push({ label: mcp.name, value: String(mcp.id) });
     }
   }
 
   for (const id of selectedIds) {
-    const mcp = serviceById.get(id);
+    const mcp = serviceById.get(String(id));
     if (mcp && !mcp.enabled) {
       options.push({
         label: `${mcp.name} (${t('mcpSettings.disabled')})`,
-        value: mcp.id,
+        value: String(mcp.id),
         disabled: true,
       });
     } else if (!mcp) {
