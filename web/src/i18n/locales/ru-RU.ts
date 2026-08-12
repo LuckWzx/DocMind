@@ -5154,6 +5154,7 @@ export default {
       attachmentParsingFailed: 'Ошибка разбора вложений',
       queryUnderstanding: 'Анализ запроса...',
       queryUnderstandDone: 'Запрос понят',
+      cancelled: 'Отменено',
       called: 'Вызван {name}',
       calledFailed: 'Ошибка вызова {name}'
     },

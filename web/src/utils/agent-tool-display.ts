@@ -158,6 +158,7 @@ type RagPipelineEvent = {
   tool_name?: string
   pending?: boolean
   success?: boolean
+  canceled?: boolean
   arguments?: unknown
   tool_data?: Record<string, unknown> | null
 }
@@ -165,6 +166,11 @@ type RagPipelineEvent = {
 export function getRagPipelineStepTitle(t: ComposerTranslation, event: RagPipelineEvent): string {
   const toolName = String(event.tool_name || '')
   const pending = event.pending === true
+  // 步骤被取消（用户停止生成时未收尾的进行中步骤）：统一显示"已取消"，
+  // 避免 pending 置 false 后被误判为成功完成
+  if (event.canceled) {
+    return t('agentStream.toolStatus.cancelled')
+  }
   const query =
     getQueryText(event.arguments) ||
     getQueryText(event.tool_data)

@@ -5654,6 +5654,7 @@ export default {
       attachmentParsingFailed: '첨부 파일 파싱 실패',
       queryUnderstanding: '질문 이해 중...',
       queryUnderstandDone: '질문 이해 완료',
+      cancelled: '취소됨',
       called: '{name} 호출 완료',
       calledFailed: '{name} 호출 실패',
     },

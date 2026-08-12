@@ -74,7 +74,7 @@ func NewRouter(
 		knowledgeBaseCtrl:  knowledgebase.NewController(knowledgeBaseService, faqService, tagService),
 		modelCtrl:          models.NewController(modelService),
 		initializationCtrl: initialization.NewController(modelService),
-		chatCtrl:           chat.NewController(chatService, sseRegistry, redis, sseCfg, memorySvc),
+		chatCtrl:           chat.NewController(chatService, sseRegistry, redis, sseCfg, memorySvc, chat.NewRunRegistry()),
 		agentCtrl:          agent.NewController(agentService),
 		tagCtrl:            tag.NewController(tagService),
 		mcpCtrl:            mcp.NewController(mcpService),

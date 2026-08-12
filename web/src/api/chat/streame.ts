@@ -219,6 +219,9 @@ export function useStream() {
     isLoading.value = false;
   }
 
+  // 读取当前流代际：停止兜底时判断流是否已被其他路径关闭/替换，避免误 abort 新请求
+  const getStreamGeneration = () => streamGeneration
+
   // 组件卸载时自动清理
   onUnmounted(stopStream)
 
@@ -230,6 +233,7 @@ export function useStream() {
     lastStreamRequest,
     onChunk,
     startStream,     // 启动流
-    stopStream       // 手动停止
+    stopStream,      // 手动停止
+    getStreamGeneration, // 当前流代际
   }
 }

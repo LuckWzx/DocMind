@@ -2431,19 +2431,15 @@ const handleStop = async () => {
     return;
   }
 
-  if (!props.assistantMessageId) {
-    console.error('[Stop] Assistant message ID is empty');
-    MessagePlugin.warning(t('input.messages.messageMissing'));
-    return;
-  }
-
-  console.log('[Stop] Stopping generation for message:', props.assistantMessageId);
+  // assistantMessageId 允许为空：RAG 快速问答模式下后端未下发消息 ID，
+  // 后端 stop 接口按会话定位运行任务，不依赖 message_id
+  console.log('[Stop] Stopping generation for message:', props.assistantMessageId || '(empty)');
 
   // 发送 stop 事件，通知父组件立即清除 loading 状态
   emit('stop-generation');
 
   try {
-    await stopSession(props.sessionId, props.assistantMessageId);
+    await stopSession(props.sessionId, props.assistantMessageId || '');
     MessagePlugin.success(t('input.messages.stopSuccess'));
   } catch (error) {
     console.error('Failed to stop session:', error);
