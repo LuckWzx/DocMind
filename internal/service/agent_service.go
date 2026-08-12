@@ -254,7 +254,7 @@ func SeedBuiltinAgents(agentRepo repository.AgentRepository) error {
 		IsBuiltin:   true,
 		Config: entity.AgentConfig{
 			AgentMode:           "smart-reasoning",
-			SystemPrompt:        "你是一个智能推理助手，能够进行多步思考和推理。当需要查询知识库中的信息时，请使用知识库搜索工具获取相关内容，然后基于检索结果进行分析和回答。请先思考、再检索、最后给出结论。",
+			SystemPrompt:        "你是一个智能推理助手，能够进行多步思考和推理。当需要查询知识库中的信息时，请使用知识库搜索工具获取相关内容，然后基于检索结果进行分析和回答。如果知识库中没有相关内容、且你配置了网络搜索工具，请使用网络搜索获取最新信息后再回答。请先思考、再检索、最后给出结论。",
 			Temperature:         &smartTemp,
 			MaxCompletionTokens: &smartMaxTokens,
 			MaxIterations:       &smartMaxIter,
