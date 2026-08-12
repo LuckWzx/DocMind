@@ -47,6 +47,7 @@ DocMind/
 │   │       │   ├── routes.go         # 路由注册
 │   │       │   └── sse_event.go      # SSE 事件类型常量池
 │   │       ├── chunker/              # 分块配置模块
+│   │       ├── files/                # 文件管理（上传/访问）
 │   │       ├── initialization/       # 系统初始化
 │   │       ├── knowledge/            # 知识条目（文件上传/解析/向量化）
 │   │       ├── knowledgebase/        # 知识库（CRUD / FAQ / 文件导入）
@@ -77,6 +78,7 @@ DocMind/
 │   │       ├── data_schema.go         # 数据表结构探查
 │   │       ├── kb_search.go           # 知识库检索工具（向量‖BM25→RRF→rerank）
 │   │       ├── mcp_tool.go            # MCP 工具适配（外部工具调用）
+│   │       ├── python_exec.go         # Python 执行工具（沙箱运行）
 │   │       ├── registry.go            # 工具注册表（AllowedTools 白名单）
 │   │       └── web_search.go          # 网页搜索工具
 │   ├── pipeline/                      # RAG 检索管道（节点式编排）
@@ -143,6 +145,12 @@ DocMind/
 │   ├── repository/                   # 数据访问层
 │   │   ├── *_interface.go            # 仓储接口（37个文件，覆盖全部实体）
 │   │   └── *_repository.go           # 仓储实现（含 agent 覆盖 / 会话摘要 / 上下文窗口回填 / MCP 审批 / 网页搜索）
+│   ├── sandbox/                       # Python 沙箱执行（安全防护）
+│   │   ├── guard.go                   # Python 安全壳（受限 open 等）
+│   │   ├── interface.go               # 沙箱接口定义
+│   │   ├── precheck.go                # 执行前预检查
+│   │   ├── python.go                  # Python 执行器
+│   │   └── result.go                  # 执行结果封装
 │   ├── service/                      # 业务逻辑层
 │   │   ├── *_interface.go            # 服务接口（15个模块）
 │   │   ├── *_service.go              # 服务实现
@@ -312,6 +320,7 @@ export async function listKnowledgeBases() {
 | **网页搜索** | Web Search Provider 管理（外部搜索服务接入 Agent 工具链） | `internal/api/v1/websearch/` |
 | **认证** | 登录、注册、Token 刷新、登出 | `internal/api/v1/auth/` |
 | **分块** | 多策略文档分块（heading / heuristic / legacy / auto） | `internal/api/v1/chunker/` |
+| **文件** | 文件上传/访问管理 | `internal/api/v1/files/` |
 | **初始化** | 系统初始化配置向导、Ollama 状态/下载/模型列表、供应商列表 | `internal/api/v1/initialization/` |
 
 ## 🛠️ 技术栈
@@ -353,10 +362,11 @@ export async function listKnowledgeBases() {
 ✅ **混合检索** — 向量 + BM25 + RRF 融合三段式检索，重排序（Rerank）  
 ✅ **短期记忆** — 会话摘要增量压缩（LLM / 原文降级归档），上下文窗口缺失回填  
 ✅ **MCP 集成** — 外部 MCP 工具接入 Agent 工具链（客户端 + 连接管理 + 工具适配）  
+✅ **Python 沙箱** — 受限 Python 代码执行（安全壳 + 预检查），支撑数据分析链路  
 ✅ **SSE 流式对话** — 知识问答流式响应，检索结果引用溯源  
 ✅ **15 张数据表** — AutoMigrate 自动迁移，PostgreSQL JSONB + pgvector 支持  
 ✅ **多模型管理** — 6 个供应商（OpenAI / 阿里云 / SiliconFlow / 智谱 / Jina / 自定义），5 类模型统一管理，凭据脱敏存储，Ollama 本地模型下载与管理  
-✅ **13 个 API 模块** — 按功能模块分离，完整的前后端类型定义  
+✅ **14 个 API 模块** — 按功能模块分离，完整的前后端类型定义  
 ✅ **Go 后端** — Gin + GORM 分层架构（API → Service → Repository），Swagger 文档，JWT 双 Token  
 ✅ **文档解析服务** — Python gRPC 微服务，支持 PDF/DOCX/MD/Excel/Web/Image  
 ✅ **完整的前端框架** — Vue 3 + TypeScript + Vite + TDesign UI  

@@ -19,13 +19,16 @@ type prefixedTool struct {
 }
 
 // Info 返回改名后的工具元数据
+// 注意：inner 的 ToolInfo 可能是共享指针（eino mcp toolHelper.Info 返回内部共享对象），
+// 必须返回副本再改名，否则每次 Info 调用都会在原对象上叠加前缀（排序/过滤会多次调用 Info）
 func (p *prefixedTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 	info, err := p.inner.Info(ctx)
 	if err != nil {
 		return nil, err
 	}
-	info.Name = p.prefix + "_" + info.Name
-	return info, nil
+	cp := *info // 浅拷贝：Name 为值类型字符串，独立修改不影响共享对象
+	cp.Name = p.prefix + "_" + info.Name
+	return &cp, nil
 }
 
 // InvokableRun 转发工具调用（含人工审批拦截）
@@ -49,6 +52,7 @@ func (p *prefixedTool) InvokableRun(ctx context.Context, argumentsInJSON string,
 }
 
 // sanitizeToolName 清洗服务名为合法工具名前缀（小写，非字母数字转为下划线）
+// 全非 ASCII 名称（如中文）清洗后可能为空，此时用 svc 兜底避免前缀退化（mcp__tool 双下划线）
 func sanitizeToolName(name string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(name) {
@@ -58,5 +62,9 @@ func sanitizeToolName(name string) string {
 			b.WriteByte('_')
 		}
 	}
-	return strings.Trim(b.String(), "_")
+	s := strings.Trim(b.String(), "_")
+	if s == "" {
+		return "svc"
+	}
+	return s
 }

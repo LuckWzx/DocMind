@@ -529,10 +529,12 @@ func (s *chatService) resolveAgentForChat(ctx context.Context, session *entity.S
 }
 
 // historyToSchemaMessages 将实体消息转换为 eino schema 消息（跳过指定 ID，如刚保存的用户消息）
+// 跳过 content 为空的消息：assistant 工具调用轮次 content 可能为空（历史中无 tool_calls 上下文），
+// 空 content 会被部分模型服务端拒绝（missing field content），过滤后保证发给模型的消息都有实际内容
 func historyToSchemaMessages(msgs []*entity.Message, skipID uint) []*einoschema.Message {
 	history := make([]*einoschema.Message, 0, len(msgs))
 	for _, m := range msgs {
-		if m.ID == skipID {
+		if m.ID == skipID || strings.TrimSpace(m.Content) == "" {
 			continue
 		}
 		role := einoschema.User

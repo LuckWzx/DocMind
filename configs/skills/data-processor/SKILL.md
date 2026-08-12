@@ -37,24 +37,21 @@ echo '{"items": [1, 2, 3, 4, 5]}' | python scripts/analyze.py
 python scripts/analyze.py --file data.json
 ```
 
-**使用 execute_skill_script 工具时**:
-- 如果你有内存中的数据（如 JSON 字符串），使用 `input` 参数传入，不要使用 `args`
-- `--file` 参数仅用于读取技能目录中已存在的文件，不适用于传递内存数据
+**使用 python_exec 工具时**:
+- 脚本仅作为参考实现，**不要调用脚本执行类工具**（DocMind 无 execute_skill_script）
+- 数据处理由你直接完成：简单统计/格式转换/信息提取可自行计算；复杂计算用 `python_exec` 工具执行内联 Python 代码（沙箱预装 duckdb、pandas、matplotlib，禁网络/禁子进程）
+- 数据通过代码内嵌传入（如 `data = {...}`），计算结果用 print() 输出
 
 ```json
-// ✅ 正确：通过 input 传入数据
+// ✅ 正确：用 python_exec 内联实现（数据嵌入代码）
 {
-  "skill_name": "数据处理器",
-  "script_path": "scripts/analyze.py",
-  "input": "{\"items\": [1, 2, 3], \"query\": \"统计分析\"}"
+  "code": "import json\ndata = {'items': [1, 2, 3]}\nprint(f\"count={len(data['items'])} sum={sum(data['items'])}\")"
 }
 
-// ❌ 错误：--file 需要文件路径，不能单独使用
+// ❌ 错误：execute_skill_script 工具不存在，不要调用
 {
   "skill_name": "数据处理器",
-  "script_path": "scripts/analyze.py",
-  "args": ["--file"],
-  "input": "{...}"
+  "script_path": "scripts/analyze.py"
 }
 ```
 
@@ -111,7 +108,7 @@ echo "2024年销售额为100万元，同比增长15%" | python scripts/extract_i
 
 1. 收集检索到的文档片段
 2. 提取关键数据点
-3. 使用 `analyze.py` 进行统计
+3. 使用 `python_exec` 进行统计（逻辑参考 analyze.py）
 4. 整理并呈现分析结果
 
 **示例**：
@@ -119,12 +116,10 @@ echo "2024年销售额为100万元，同比增长15%" | python scripts/extract_i
 用户: "帮我统计知识库中提到的所有产品销售数据"
 
 步骤:
-1. 使用 knowledge_search 检索相关文档
+1. 使用 kb_search 检索相关文档
 2. 整理数据为 JSON 格式
-3. 调用 execute_skill_script:
-   - skill_name: "data-processor"
-   - script_path: "scripts/analyze.py"
-   - 通过 stdin 传入数据
+3. 使用 python_exec 执行统计（内联代码，逻辑参考 analyze.py）:
+   - code 内嵌数据与统计逻辑（计数/求和/平均值）
 4. 解析输出并生成报告
 ```
 
@@ -133,7 +128,7 @@ echo "2024年销售额为100万元，同比增长15%" | python scripts/extract_i
 当用户需要特定格式输出时：
 
 1. 整理数据为标准 JSON 格式
-2. 使用 `format_converter.py` 转换
+2. 格式转换可直接完成（JSON/CSV/Markdown 互转规则简单）；复杂转换用 python_exec 内联实现（逻辑参考 format_converter.py）
 3. 返回目标格式结果
 
 ## 最佳实践
@@ -169,7 +164,6 @@ echo "2024年销售额为100万元，同比增长15%" | python scripts/extract_i
 
 ## 注意事项
 
-- 脚本在 Docker 沙箱中执行，确保安全隔离
-- 执行超时默认为 60 秒
-- 输入数据大小有限制，大文件请分批处理
-- 脚本输出为 JSON 格式，便于后续处理
+- 脚本（analyze.py / format_converter.py / extract_info.py）为参考实现，**不通过脚本执行工具调用**，逻辑由你直接完成或用 python_exec 内联实现
+- python_exec 沙箱：一次性子进程、禁网络/禁子进程/禁读写工作目录外文件、超时约 30 秒
+- 数据量大时请分批处理，避免超时

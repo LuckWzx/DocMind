@@ -67,35 +67,33 @@ OpenMAIC 有两种使用模式，**根据用户场景选择**：
 1. **纯需求生成**: 用户直接描述教学主题，无需额外文档
    → 直接使用用户描述作为 `requirement`，**无需调用脚本**
 2. **RAG 检索结果**: 先通过 `kb_search` 检索相关知识（或使用主对话已完成的检索结果），再将结果组织为 requirement
-   → 使用 `scripts/rag-to-requirement.py` 脚本转换检索结果为结构化 requirement（见 Phase 1.1）
+   → 按 `references/requirement-builder.md` 模板构建结构化 requirement（见 Phase 1.1）
 3. **PDF 文件**: 用户提供 PDF 文件路径，先解析再调用生成 API
    → 提取 PDF 文本后构建 requirement，**无需调用脚本**
 
 ### Phase 1.1: RAG 结果 → Requirement 转换（仅适用于场景 2）
 
-当场景 2 有 RAG 检索结果时，调用 `scripts/rag-to-requirement.py` 将 chunks 转换为 requirement：
+根据检索结果（chunks），按照 `references/requirement-builder.md` 的模板**直接构建结构化 requirement**：
+
+1. 从检索结果中提取：核心主题/概念、关键知识点、文档来源信息
+2. 按模板 2（基于 RAG 检索结果）组织 requirement 文本：
 
 ```
-execute_skill_script(
-  skill_name: "openmaic-classroom",
-  script_path: "scripts/rag-to-requirement.py",
-  input: '{"chunks": [...检索结果...], "query": "用户查询", "audience": "目标受众"}'
-)
+基于以下知识内容，创建一个面向[目标受众]的[深度级别]课程：
+
+核心主题：[从检索结果提取的主要概念]
+关键知识点：
+- [知识点1]
+- [知识点2]
+- ...
+内容来源：[文档名称列表]
 ```
 
-**input 参数格式（JSON 字符串，必须通过 `input` 参数传入，不可用 `--file`）：**
-- `chunks`（必填）: RAG 检索结果数组，每项包含 `document_name`、`content`、`metadata`
-- `query`（可选）: 用户原始查询
-- `audience`（可选）: 目标受众描述，默认"相关领域的学习者"
-- `depth`（可选）: 教学深度 `beginner|intermediate|advanced`，默认 `intermediate`
-- `language`（可选）: `zh-CN|en-US`，默认 `zh-CN`
-- `focus_areas`（可选）: 重点领域数组
+3. 目标受众 / 教学深度 / 语言从用户描述或默认值确定（受众默认"相关领域的学习者"，深度默认中级，语言默认 zh-CN）
 
 **注意：**
-- 必须将 chunks 数据作为 `input` 参数传入（等价于 `echo '{"chunks":...}' | python script.py`）
-- **不要**在没有任何参数的情况下调用此脚本，否则会报错退出
-- 如果脚本执行失败，可直接根据检索结果手动构建 requirement
-- **DocMind 沙箱未接入时**：`execute_skill_script` 工具不可用，跳过脚本调用，直接根据检索结果手动构建 requirement（Phase 2 模板）
+- 转换由你直接完成，**不要尝试调用脚本执行类工具**（`scripts/rag-to-requirement.py` 仅为规则化参考实现，其逻辑——提取主题 + 拼接 requirement——由你直接执行，效果等同且能结合内容理解）
+- 若检索结果为空，直接用用户原始描述作为 `requirement`
 
 ### Phase 2: 构建 Generation Request
 
@@ -114,7 +112,7 @@ execute_skill_script(
 
 场景适配：
 - **场景 1（纯需求）**: `requirement` 直接使用用户描述
-- **场景 2（RAG 结果）**: `requirement` 使用 Phase 1.1 脚本输出中的 `requirement` 字段
+- **场景 2（RAG 结果）**: `requirement` 使用 Phase 1.1 构建的结果
 - **场景 3（PDF）**: `requirement` 根据 PDF 提取的文本构建，`pdfContent` 填入解析结果
 
 ### Phase 3: 调用 OpenMAIC API
@@ -195,33 +193,41 @@ execute_skill_script(
 
 ### Phase 4: 查询任务进度
 
-API 返回 `jobId` 和 `pollUrl` 后，执行以下流程：
+**提交响应解析（必须）**：POST 提交成功后，从响应 JSON 中提取并**记住**：
+- `jobId`（如 `ThQHsMlt0m`）
+- `pollUrl`——**查询进度必须使用 pollUrl，其固定格式为 `{base_url}/api/generate-classroom/{jobId}`**
+- 把 jobId 和 pollUrl 写入你的回复中，供后续用户询问进度时使用（不要只记在心里）
+
+**查询端点（唯一正确路径）**：`GET {base_url}/api/generate-classroom/{jobId}`
+
+> ⚠️ 不要尝试任何其他路径：`/api/jobs`、`/api/jobs/{id}`、`/api/classroom/generate`、`/api/restful/*` 等均**不存在**，会返回 404，纯属浪费时间。查询进度只有 `pollUrl` 这一个正确端点。
 
 **第 1 次查询（提交后立即执行）**：
-1. 调用 HTTP 请求工具 `GET {pollUrl}` 获取当前状态
+1. 调用 HTTP 请求工具 `GET {base_url}/api/generate-classroom/{jobId}`
 2. 检查 `status`：
    - 如果 `succeeded` → 进入 Phase 5
    - 如果 `failed` → 报告错误并停止
    - 如果 `queued` 或 `running` → **停止查询，告知用户**：
 
-     > 课程正在生成中，预计需要 2-10 分钟。请稍后询问我查询进度。
+     > 课程正在生成中（已生成 X/Y 个场景，progress 字段），预计需要 2-10 分钟。请稍后询问我查询进度。
      > Job ID: {jobId}
 
-**用户询问进度时（第 2 次查询）**：
-1. 再次调用 `GET {pollUrl}`
+**用户询问进度时（第 2 次及之后查询）**：
+1. 再次调用 `GET {base_url}/api/generate-classroom/{jobId}`（同一路径，jobId 不变）
 2. 检查 `status`：
-   - 如果 `succeeded` → 进入 Phase 5
+   - 如果 `succeeded` → 从响应 `result` 中提取 classroomId，进入 Phase 5
    - 如果 `failed` → 报告错误并停止
-   - 如果仍在 `queued` 或 `running` → **停止查询，告知用户继续等待**：
+   - 如果仍在 `queued` 或 `running` → **停止查询，告知用户继续等待**（附上当前 progress 进度）：
 
-     > 课程仍在生成中，请稍后再试。
+     > 课程仍在生成中（当前进度 X%），请稍后再试。
      > Job ID: {jobId}
 
 **重要规则**：
 - 提交后只查询 **1 次**，不要连续轮询
 - 用户询问进度时只查询 **1 次**，不要连续轮询
 - 仅在 `status` 为 `succeeded` 或 `failed` 时才继续下一步——否则必须停止并告知用户等待
-- 不要尝试重新提交 job——保持查询同一个 `pollUrl`
+- 不要尝试重新提交 job——保持查询同一个 pollUrl（`{base_url}/api/generate-classroom/{jobId}`）
+- **不要自己发明查询路径**：若不确定路径，就用 `{base_url}/api/generate-classroom/{jobId}`
 
 ### Phase 5: 返回结果
 
@@ -259,7 +265,7 @@ Classroom URL:
 
 ## 注意事项
 
-- 脚本在本机执行（Python 沙箱接入前直接跳过脚本调用，手动构建 requirement），**脚本仅做数据转换，不涉及网络调用**
+- requirement 构建由你直接完成（按 references/requirement-builder.md 模板），**不调用脚本执行类工具**；脚本仅做数据转换，不涉及网络调用
 - **必须通过 DocMind 的 MCP 工具调用 OpenMAIC API**——不提供 curl 命令作为降级方案
 - MCP 工具名称格式为 `mcp_{service_name}_{tool_name}`，根据描述识别 HTTP 请求工具
 - 如果 MCP 工具未启用或不可用，告知用户先从 https://github.com/yryuu/mcp-api-requester 下载代码并部署，然后在 DocMind 中注册该 MCP 服务
