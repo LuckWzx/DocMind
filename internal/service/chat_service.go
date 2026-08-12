@@ -888,11 +888,6 @@ func (s *chatService) PinSession(ctx context.Context, sessionID uint, userID uin
 	return s.sessionRepo.UpdatePin(sessionID, pinned)
 }
 
-// StopChat 停止对话（阶段一简化实现）
-func (s *chatService) StopChat(ctx context.Context, sessionID uint, userID uint, messageID string) error {
-	return nil
-}
-
 // ClearSessionMessages 清空会话消息
 func (s *chatService) ClearSessionMessages(ctx context.Context, sessionID uint, userID uint) error {
 	session, err := s.sessionRepo.FindByID(sessionID)

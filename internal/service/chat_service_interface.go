@@ -32,8 +32,6 @@ type ChatService interface {
 	BatchDeleteSessions(ctx context.Context, userID uint, sessionIDs []uint, deleteAll bool) error
 	// PinSession 置顶会话
 	PinSession(ctx context.Context, sessionID uint, userID uint, pinned bool) error
-	// StopChat 停止对话
-	StopChat(ctx context.Context, sessionID uint, userID uint, messageID string) error
 	// ClearSessionMessages 清空会话消息
 	ClearSessionMessages(ctx context.Context, sessionID uint, userID uint) error
 	// LoadMessages 加载历史消息

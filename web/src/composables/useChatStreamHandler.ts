@@ -90,9 +90,28 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
     return undefined
   }
 
+  /** 消息是否已被用户主动停止（markAssistantStopped 同步标记：is_completed + stop 事件） */
+  const isMessageStopped = (message: ChatMessage): boolean => {
+    if (message.is_completed) return true
+    const stream = message.agentEventStream as ChatMessage[] | undefined
+    return !!stream?.some((e) => e.type === 'stop')
+  }
+
   const markAssistantStopped = (message: ChatMessage) => {
     if (!message || message.is_completed) return
     message.is_completed = true
+    if (message.agentEventStream) {
+      const stream = message.agentEventStream as ChatMessage[]
+      // 将未收尾的进行中步骤（tool_call 无结果）标记为已取消：
+      // 停止后后端不再推送结果事件，否则 RAG 检索进度 / Agent 工具步骤会永远停留在
+      // "正在检索知识库…"之类的 pending 状态（外层已折叠为"检索完成"，展开后对不上）。
+      for (const ev of stream) {
+        if (ev.type === 'tool_call' && ev.pending) {
+          ev.pending = false
+          ev.canceled = true
+        }
+      }
+    }
     if (message.isAgentMode) {
       if (!message.agentEventStream) message.agentEventStream = []
       const stream = message.agentEventStream as ChatMessage[]
@@ -970,6 +989,9 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
           }
           if (responseType === 'error' && !toolName) {
             const errorMsg = String(data.content || t('chat.processError'))
+            // 用户已主动停止该消息（markAssistantStopped 同步标记）：停止导致的
+            // 取消错误（context canceled）不弹窗，静默收尾
+            if (isMessageStopped(message)) break
             message.content = errorMsg
             message.is_completed = true
             isReplying.value = false
@@ -981,6 +1003,8 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
           }
         } else if (responseType === 'error') {
           const errorMsg = String(data.content || t('chat.processError'))
+          // 用户已主动停止该消息：停止导致的取消错误不弹窗，静默收尾
+          if (isMessageStopped(message)) break
           message.content = errorMsg
           message.is_completed = true
           isReplying.value = false
@@ -1066,6 +1090,11 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
         for (const ev of stopStream) {
           if (ev.type === 'answer' && !ev.done && !ev.superseded) {
             ev.done = true
+          }
+          // 未收到结果的进行中步骤标记为已取消（与 markAssistantStopped 行为一致）
+          if (ev.type === 'tool_call' && ev.pending) {
+            ev.pending = false
+            ev.canceled = true
           }
         }
         stopStream.push({

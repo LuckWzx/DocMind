@@ -427,6 +427,7 @@ const messages = {
         "attachmentParsingFailed": "附件解析失败",
         "queryUnderstanding": "正在理解问题...",
         "queryUnderstandDone": "已完成问题理解",
+        "cancelled": "已取消",
         "called": "调用 {name}",
         "calledFailed": "调用 {name} 失败"
       },
@@ -918,6 +919,7 @@ const messages = {
         "attachmentParsingFailed": "Attachment parsing failed",
         "queryUnderstanding": "Understanding query...",
         "queryUnderstandDone": "Query understood",
+        "cancelled": "Cancelled",
         "called": "Called {name}",
         "calledFailed": "Failed to call {name}"
       },

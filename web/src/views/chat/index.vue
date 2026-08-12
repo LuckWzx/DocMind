@@ -186,9 +186,11 @@ const uiStore = useUIStore();
 const { navigateToKnowledgeBaseList } = useKnowledgeBaseCreationNavigation();
 const { t } = useI18n();
 const { firstQuery, firstMentionedItems, firstModelId, firstImageFiles, firstAttachmentFiles } = storeToRefs(usemenuStore);
-const { onChunk, error, startStream, stopStream, lastStreamRequest } = useStream();
+const { onChunk, error, startStream, stopStream, lastStreamRequest, getStreamGeneration } = useStream();
 /** Snapshot of the in-flight HTTP request for attaching to the next assistant message. */
 const pendingStreamDebug = ref(null);
+/** 停止生成后的兜底中断计时器（后端未及时关闭连接时强制 abort） */
+let stopFallbackTimer = null;
 
 const buildStreamDebugPayload = () => {
     const meta = lastStreamRequest.value;
@@ -673,7 +675,17 @@ const getmsgList = (data, isScrollType = false, scrollHeight) => {
 // 处理停止生成事件 - 立即清除 loading 状态
 const handleStopGeneration = () => {
     console.log('[Stop Generation] Immediately clearing loading state');
-    stopStream();
+    // 不再立即中断连接：由后端 stop API 主动终止流（保证已生成的部分内容可落库）。
+    // 兜底：若后端未在窗口内关闭连接（如 LLM 未及时响应取消），按代际判断后强制 abort，
+    // 避免误中断停止之后新发起的请求。
+    const stopGen = getStreamGeneration();
+    if (stopFallbackTimer) { clearTimeout(stopFallbackTimer); stopFallbackTimer = null; }
+    stopFallbackTimer = setTimeout(() => {
+        stopFallbackTimer = null;
+        if (getStreamGeneration() === stopGen) {
+            stopStream();
+        }
+    }, 5000);
     loading.value = false;
     isReplying.value = false;
     // 标记当前 assistant 为已结束，避免下一条 query 复用该消息行
@@ -1030,6 +1042,7 @@ const clearData = () => {
 onUnmounted(() => {
     window.removeEventListener(SESSION_MUTATION_EVENT, handleSessionMutation);
     if (recoverPollTimer) { clearTimeout(recoverPollTimer); recoverPollTimer = null; }
+    if (stopFallbackTimer) { clearTimeout(stopFallbackTimer); stopFallbackTimer = null; }
 });
 onBeforeRouteLeave((to, from, next) => {
     clearData()

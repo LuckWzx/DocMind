@@ -290,6 +290,7 @@ const steps = computed(() => {
       return {
         id: String(event.tool_call_id || `${toolName}-${event.timestamp || 0}`),
         pending,
+        cancelled: event.canceled === true,
         iconName: getAgentToolIconName(toolName, searchSource),
         title: getRagPipelineStepTitle(t, {
           tool_name: toolName,
@@ -360,6 +361,10 @@ const visible = computed(
 const collapsedStatusText = computed(() => {
   if (steps.value.length === 0) {
     return hasThinking.value ? t('agentStream.toolStatus.thinkingDone') : ''
+  }
+  // 存在被取消的步骤（用户停止生成）：外层状态与展开明细一致，显示"已取消"
+  if (steps.value.some((step) => step.cancelled)) {
+    return t('agentStream.toolStatus.cancelled')
   }
   return t('agentStream.ragPipeline.searchDone')
 })

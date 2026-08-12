@@ -5633,6 +5633,7 @@ export default {
       attachmentParsingFailed: 'Attachment parsing failed',
       queryUnderstanding: 'Understanding query...',
       queryUnderstandDone: 'Query understood',
+      cancelled: 'Cancelled',
       called: 'Called {name}',
       calledFailed: 'Failed to call {name}',
     },

@@ -38,16 +38,19 @@ type Controller struct {
 	sseCfg      config.SSEConfig
 	// memorySvc 长期记忆服务（跨会话知识图谱，nil 时跳过异步存储）
 	memorySvc longterm.MemoryService
+	// runRegistry 运行任务注册表（停止 API 按会话定位并取消进行中的流）
+	runRegistry *RunRegistry
 }
 
 // NewController 创建 Chat 控制器
-func NewController(chatService service.ChatService, sseRegistry *sse.Registry, redis *redis.Client, sseCfg config.SSEConfig, memorySvc longterm.MemoryService) *Controller {
+func NewController(chatService service.ChatService, sseRegistry *sse.Registry, redis *redis.Client, sseCfg config.SSEConfig, memorySvc longterm.MemoryService, runRegistry *RunRegistry) *Controller {
 	return &Controller{
 		chatService: chatService,
 		sseRegistry: sseRegistry,
 		redis:       redis,
 		sseCfg:      sseCfg,
 		memorySvc:   memorySvc,
+		runRegistry: runRegistry,
 	}
 }
 
@@ -205,7 +208,7 @@ func (ctrl *Controller) UnpinSession(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// StopSession 停止会话
+// StopSession 停止会话（用户主动终止正在进行的生成）
 func (ctrl *Controller) StopSession(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	sessionID, ok := parseSessionID(c)
@@ -216,11 +219,18 @@ func (ctrl *Controller) StopSession(c *gin.Context) {
 		MessageID string `json:"message_id"`
 	}
 	_ = c.ShouldBindJSON(&req)
-	if err := ctrl.chatService.StopChat(c.Request.Context(), sessionID, userID, req.MessageID); err != nil {
-		response.BizError(c, err)
-		return
-	}
-	response.Success(c, nil)
+
+	// 通过运行任务注册表按会话定位并取消正在进行的流。
+	// message_id 仅记录日志，不参与定位：后端消息 ID 在流结束后才生成，
+	// RAG 快速问答模式下前端传的是占位 ID，与注册表 key（userID:sessionID）无关。
+	stopped := ctrl.runRegistry.Cancel(runKey(userID, sessionID))
+	logger.Info("StopSession",
+		zap.Uint("user_id", userID),
+		zap.Uint("session_id", sessionID),
+		zap.String("message_id", req.MessageID),
+		zap.Bool("stopped", stopped),
+	)
+	response.Success(c, gin.H{"stopped": stopped})
 }
 
 // ClearSessionMessages 清空消息
@@ -374,9 +384,17 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 	stats.markOpen()
 	defer stats.close("done") // 正常路径在 complete 后显式 close；closed 幂等保证异常路径不重复
 
-	// 6. 总执行超时（覆盖 pre-work + 整个流）
-	ctx, cancel := context.WithTimeout(c.Request.Context(), ctrl.sseCfg.TotalTimeout)
-	defer cancel()
+	// 6. 总执行超时（覆盖 pre-work + 整个流）。
+	// WithCancelCause 包裹：stop 时 cancel(ErrUserStopped) 写入自定义取消原因，
+	// 用于区分"用户主动停止"（保存部分内容）与"客户端断开/总超时"（静默/报错）
+	baseCtx, baseCancel := context.WithTimeout(c.Request.Context(), ctrl.sseCfg.TotalTimeout)
+	ctx, cancel := context.WithCancelCause(baseCtx)
+	defer baseCancel()
+	defer cancel(context.Canceled)
+
+	// 6.1 注册运行任务（停止 API 按 userID:sessionID 取消本流；Remove 保证不泄漏）
+	ctrl.runRegistry.Register(runKey(userID, sessionID), cancel)
+	defer ctrl.runRegistry.Remove(runKey(userID, sessionID))
 
 	// 7. pump goroutine：service 调用 + 流式读取（首 token 超时在 pump 内保护），
 	//    使 handler 可以对 pre-work 超时、客户端断开做出响应
@@ -414,7 +432,28 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 	var searchResults []service.VectorSearchResult
 	select {
 	case item := <-out:
+		if item.kind == "" {
+			// out 已被 pump 关闭且无有效消息（取消路径）：按取消原因收尾，
+			// 避免把超时/断连误当正常完成
+			if ctx.Err() == context.DeadlineExceeded {
+				sw.WriteError(sse.ErrorContract{
+					Code:         sse.ErrCodeLLMTimeout,
+					Retryable:    true,
+					RetryAfterMs: 3000,
+					Message:      "执行超时，请重试",
+				})
+				stats.close("timeout")
+				return
+			}
+			stats.close("abort")
+			return
+		}
 		if item.kind == "error" {
+			if ctx.Err() == context.Canceled {
+				// 流已取消（用户停止 / 客户端断开 / 被新流顶替）：静默终止，不发错误事件
+				stats.close("abort")
+				return
+			}
 			sw.WriteError(contractForError(item.err, item.timeout))
 			stats.close("error")
 			return
@@ -430,7 +469,7 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 			})
 		}
 	case <-time.After(ctrl.sseCfg.FirstTokenTimeout):
-		cancel() // 终止 pump 的 pre-work
+		cancel(context.Canceled) // 终止 pump 的 pre-work（非用户主动停止语义）
 		sw.WriteError(sse.ErrorContract{
 			Code:         sse.ErrCodeFirstTokenTimeout,
 			Retryable:    true,
@@ -438,6 +477,25 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 			Message:      "处理超时（首 token 超时），请重试",
 		})
 		stats.close("first_token_timeout")
+		return
+	case <-ctx.Done():
+		// 停止 API / 客户端断开 / 总超时：按取消原因区分处理
+		if errors.Is(context.Cause(ctx), ErrUserStopped) {
+			// 用户主动停止：pre-work 阶段尚未产生回答内容，静默终止
+			stats.close("abort")
+			return
+		}
+		if ctx.Err() == context.DeadlineExceeded {
+			sw.WriteError(sse.ErrorContract{
+				Code:         sse.ErrCodeLLMTimeout,
+				Retryable:    true,
+				RetryAfterMs: 3000,
+				Message:      "执行超时，请重试",
+			})
+			stats.close("timeout")
+			return
+		}
+		stats.close("abort") // 客户端断开
 		return
 	case <-c.Request.Context().Done():
 		stats.close("abort") // 客户端断开
@@ -460,6 +518,14 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 				Ts:           time.Now().UnixMilli(),
 			})
 		case "error":
+			if ctx.Err() == context.Canceled {
+				// 流被取消：用户主动停止（保存已生成的部分内容）或客户端断开（静默丢弃）
+				if errors.Is(context.Cause(ctx), ErrUserStopped) {
+					ctrl.saveKnowledgeAnswer(ctx, sessionID, userID, req.Query, fullContent, searchResults, stepInfos, agentStartTime)
+				}
+				stats.close("abort")
+				return
+			}
 			if item.timeout {
 				sw.WriteError(sse.ErrorContract{
 					Code:         sse.ErrCodeFirstTokenTimeout,
@@ -490,80 +556,31 @@ func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 	}
 streamDone:
 
-	// 10. 计算 agent 执行时长
-	agentDurationMs := time.Since(agentStartTime).Milliseconds()
-
-	// 11. 构建 agent_steps（使用步骤回调收集的实际执行信息）
-	var agentSteps entity.AgentSteps
-	if len(stepInfos) > 0 {
-		// 使用回调收集的步骤信息
-		for i, step := range stepInfos {
-			agentSteps = append(agentSteps, entity.AgentStep{
-				Iteration: i + 1,
-				Timestamp: step.StartTime,
-				Duration:  step.Duration,
-				ToolCalls: []entity.AgentStepToolCall{{
-					ID:   step.ToolCallID,
-					Name: step.StepName,
-					Result: &entity.AgentStepToolResult{
-						Success: step.Success,
-						Data:    step.Data,
-					},
-				}},
+	// 10. out 被 pump 在取消路径静默关闭（无 eof/error 消息）：按取消原因收尾，
+	//     避免误当正常完成发送 complete 事件
+	if ctx.Err() != nil {
+		if errors.Is(context.Cause(ctx), ErrUserStopped) {
+			// 用户主动停止：保存已生成的部分内容
+			ctrl.saveKnowledgeAnswer(ctx, sessionID, userID, req.Query, fullContent, searchResults, stepInfos, agentStartTime)
+			stats.close("abort")
+			return
+		}
+		if ctx.Err() == context.DeadlineExceeded {
+			sw.WriteError(sse.ErrorContract{
+				Code:         sse.ErrCodeLLMTimeout,
+				Retryable:    true,
+				RetryAfterMs: 3000,
+				Message:      "执行超时，请重试",
 			})
+			stats.close("timeout")
+			return
 		}
-	} else {
-		// 兜底：如果没有步骤回调（理论上不会发生）
-		agentSteps = entity.AgentSteps{
-			{
-				Iteration: 1,
-				Timestamp: agentStartTime,
-				Duration:  0,
-				ToolCalls: []entity.AgentStepToolCall{{
-					ID:   "rag-history-query-understand",
-					Name: "query_understand",
-				}},
-			},
-			{
-				Iteration: 2,
-				Timestamp: agentStartTime,
-				Duration:  agentDurationMs,
-				ToolCalls: []entity.AgentStepToolCall{{
-					ID:   "rag-history-knowledge-search",
-					Name: "knowledge_search",
-					Result: &entity.AgentStepToolResult{
-						Success: true,
-						Data: map[string]interface{}{
-							"count": len(searchResults),
-						},
-					},
-				}},
-			},
-		}
+		stats.close("abort") // 客户端断开/被新流顶替：不落库
+		return
 	}
 
-	// 12. 判断是否为兜底回复（没有搜索结果）
-	isFallback := len(searchResults) == 0
-
-	// 13. 保存助手消息
-	if fullContent != "" {
-		var references []entity.Reference
-		for _, r := range searchResults {
-			references = append(references, entity.Reference{
-				ChunkID:        r.ChunkID,
-				Content:        r.Content,
-				Score:          r.Score,
-				KnowledgeID:    r.KnowledgeID,
-				KnowledgeTitle: r.KnowledgeTitle,
-			})
-		}
-		_ = ctrl.chatService.SaveAssistantMessage(
-			c.Request.Context(), sessionID, fullContent, references,
-			agentSteps, true, agentDurationMs, isFallback,
-		)
-		// 长期记忆：对话结束后异步提取落图（提取模型跟随当前用户会话的模型配置）
-		ctrl.triggerMemoryStore(c.Request.Context(), userID, sessionID, ctrl.resolveSessionModelID(c.Request.Context(), userID, sessionID), req.Query, fullContent)
-	}
+	// 11. 正常完成：保存助手消息（含引用 / agent_steps / 耗时 / 兜底标记；与停止共用落库逻辑）
+	ctrl.saveKnowledgeAnswer(c.Request.Context(), sessionID, userID, req.Query, fullContent, searchResults, stepInfos, agentStartTime)
 
 	// 14. 首条消息后自动生成会话标题并推送，前端据此把侧栏的“新对话”更新为实际标题。
 	//     仅当标题仍为默认占位时生成，避免覆盖用户手动重命名的会话。
@@ -641,9 +658,17 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 	stats.markOpen()
 	defer stats.close("done") // 正常路径在 complete 后显式 close；closed 幂等保证异常路径不重复
 
-	// 6. 总执行超时（覆盖整个 Agent 执行 + 事件消费）
-	ctx, cancel := context.WithTimeout(c.Request.Context(), ctrl.sseCfg.TotalTimeout)
-	defer cancel()
+	// 6. 总执行超时（覆盖整个 Agent 执行 + 事件消费）。
+	// WithCancelCause 包裹：stop 时 cancel(ErrUserStopped) 写入自定义取消原因，
+	// 用于区分"用户主动停止"（保存部分内容）与"客户端断开/总超时"（静默/报错）
+	baseCtx, baseCancel := context.WithTimeout(c.Request.Context(), ctrl.sseCfg.TotalTimeout)
+	ctx, cancel := context.WithCancelCause(baseCtx)
+	defer baseCancel()
+	defer cancel(context.Canceled)
+
+	// 6.1 注册运行任务（停止 API 按 userID:sessionID 取消本流；Remove 保证不泄漏）
+	ctrl.runRegistry.Register(runKey(userID, sessionID), cancel)
+	defer ctrl.runRegistry.Remove(runKey(userID, sessionID))
 
 	// 7. 调用 ChatService 获取引擎事件流
 	resp, err := ctrl.chatService.AgentChat(ctx, sessionID, userID, &req)
@@ -675,12 +700,21 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 	select {
 	case r := <-first:
 		if r.ok {
+			// 取消（停止/断连/超时）后引擎可能回吐 "context canceled" 错误事件：
+			// 静默终止，不推给前端弹错
+			if r.ev.Type == agent.EventError && ctx.Err() != nil {
+				if errors.Is(context.Cause(ctx), ErrUserStopped) {
+					ctrl.saveAgentAnswer(ctx, sessionID, userID, req.Query, fullContent, resp, agentStartTime)
+				}
+				stats.close("abort")
+				return
+			}
 			emitAgentEvent(sw, r.ev, &fullContent)
 			stats.markFirstToken()
 			stats.markEvent()
 		}
 	case <-time.After(ctrl.sseCfg.FirstTokenTimeout):
-		cancel() // 终止引擎执行
+		cancel(context.Canceled) // 终止引擎执行（非用户主动停止语义）
 		sw.WriteError(sse.ErrorContract{
 			Code:         sse.ErrCodeFirstTokenTimeout,
 			Retryable:    true,
@@ -690,6 +724,10 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 		stats.close("first_token_timeout")
 		return
 	case <-ctx.Done():
+		// 用户主动停止（保存已生成的部分内容）或客户端断开（静默）
+		if errors.Is(context.Cause(ctx), ErrUserStopped) {
+			ctrl.saveAgentAnswer(ctx, sessionID, userID, req.Query, fullContent, resp, agentStartTime)
+		}
 		stats.close("abort")
 		return
 	}
@@ -698,6 +736,10 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			// 用户主动停止（保存已生成的部分内容）或客户端断开（静默）
+			if errors.Is(context.Cause(ctx), ErrUserStopped) {
+				ctrl.saveAgentAnswer(ctx, sessionID, userID, req.Query, fullContent, resp, agentStartTime)
+			}
 			stats.close("abort")
 			return
 		default:
@@ -706,16 +748,20 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 		if !ok {
 			break
 		}
+		// 停止/断连/超时后引擎可能回吐 "context canceled" 错误事件：静默终止，不推给前端弹错
+		if ev.Type == agent.EventError && ctx.Err() != nil {
+			if errors.Is(context.Cause(ctx), ErrUserStopped) {
+				ctrl.saveAgentAnswer(ctx, sessionID, userID, req.Query, fullContent, resp, agentStartTime)
+			}
+			stats.close("abort")
+			return
+		}
 		emitAgentEvent(sw, ev, &fullContent)
 		stats.markEvent()
 	}
 
-	// 计算 agent 执行时长
-	agentDurationMs := time.Since(agentStartTime).Milliseconds()
-
 	// 引用溯源（kb_search 工具收集，规划 3.2.6 ⑥）+ 步骤记录（事件流自动生成）
 	references := resp.Collector.All()
-	agentSteps := resp.Stream.Steps()
 	refs := make([]reference, 0, len(references))
 	for _, r := range references {
 		refs = append(refs, reference{
@@ -732,15 +778,8 @@ func (ctrl *Controller) AgentChat(c *gin.Context) {
 		sw.WriteMessage(sseEvent{ResponseType: SSEEventReferences, References: refs})
 	}
 
-	// 保存助手消息（含引用 / agent_steps / 耗时 / 兜底标记）
-	if fullContent != "" {
-		_ = ctrl.chatService.SaveAssistantMessage(
-			c.Request.Context(), sessionID, fullContent, references,
-			agentSteps, true, agentDurationMs, len(references) == 0,
-		)
-		// 长期记忆：对话结束后异步提取落图（提取模型跟随当前用户会话的模型配置）
-		ctrl.triggerMemoryStore(c.Request.Context(), userID, sessionID, ctrl.resolveSessionModelID(c.Request.Context(), userID, sessionID), req.Query, fullContent)
-	}
+	// 保存助手消息（含引用 / agent_steps / 耗时 / 兜底标记；与用户主动停止共用同一落库逻辑）
+	ctrl.saveAgentAnswer(c.Request.Context(), sessionID, userID, req.Query, fullContent, resp, agentStartTime)
 
 	// 首条消息后自动生成会话标题并推送
 	if req.Query != "" {
@@ -800,6 +839,98 @@ func writeSSEEvent(w http.ResponseWriter, event sseEvent) {
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", sseProtocolEvent, string(data))
 }
 
+// saveKnowledgeAnswer 保存知识问答（quick-answer）助手消息。
+// 正常完成与用户主动停止共用：停止路径 ctx 已取消，内部用 WithoutCancel 保证落库不中断。
+func (ctrl *Controller) saveKnowledgeAnswer(ctx context.Context, sessionID, userID uint, query, fullContent string, searchResults []service.VectorSearchResult, stepInfos []pipeline.StepInfo, agentStartTime time.Time) {
+	if fullContent == "" {
+		return
+	}
+	saveCtx := context.WithoutCancel(ctx)
+	agentDurationMs := time.Since(agentStartTime).Milliseconds()
+
+	// 引用溯源（RAG 检索结果 → entity.Reference）
+	var references []entity.Reference
+	for _, r := range searchResults {
+		references = append(references, entity.Reference{
+			ChunkID:        r.ChunkID,
+			Content:        r.Content,
+			Score:          r.Score,
+			KnowledgeID:    r.KnowledgeID,
+			KnowledgeTitle: r.KnowledgeTitle,
+		})
+	}
+
+	// 步骤记录：优先使用步骤回调收集的实际执行信息，缺失时用兜底结构
+	var agentSteps entity.AgentSteps
+	if len(stepInfos) > 0 {
+		for i, step := range stepInfos {
+			agentSteps = append(agentSteps, entity.AgentStep{
+				Iteration: i + 1,
+				Timestamp: step.StartTime,
+				Duration:  step.Duration,
+				ToolCalls: []entity.AgentStepToolCall{{
+					ID:   step.ToolCallID,
+					Name: step.StepName,
+					Result: &entity.AgentStepToolResult{
+						Success: step.Success,
+						Data:    step.Data,
+					},
+				}},
+			})
+		}
+	} else {
+		// 兜底：如果没有步骤回调（理论上不会发生）
+		agentSteps = entity.AgentSteps{
+			{
+				Iteration: 1,
+				Timestamp: agentStartTime,
+				Duration:  0,
+				ToolCalls: []entity.AgentStepToolCall{{
+					ID:   "rag-history-query-understand",
+					Name: "query_understand",
+				}},
+			},
+			{
+				Iteration: 2,
+				Timestamp: agentStartTime,
+				Duration:  agentDurationMs,
+				ToolCalls: []entity.AgentStepToolCall{{
+					ID:   "rag-history-knowledge-search",
+					Name: "knowledge_search",
+					Result: &entity.AgentStepToolResult{
+						Success: true,
+						Data: map[string]interface{}{
+							"count": len(searchResults),
+						},
+					},
+				}},
+			},
+		}
+	}
+
+	_ = ctrl.chatService.SaveAssistantMessage(saveCtx, sessionID, fullContent, references, agentSteps, true, agentDurationMs, len(searchResults) == 0)
+	// 长期记忆：对话结束后异步提取落图（提取模型跟随当前用户会话的模型配置）
+	ctrl.triggerMemoryStore(saveCtx, userID, sessionID, ctrl.resolveSessionModelID(saveCtx, userID, sessionID), query, fullContent)
+}
+
+// saveAgentAnswer 保存 Agent（smart-reasoning）助手消息。
+// 正常完成与用户主动停止共用：停止路径 ctx 已取消，内部用 WithoutCancel 保证落库不中断。
+func (ctrl *Controller) saveAgentAnswer(ctx context.Context, sessionID, userID uint, query, fullContent string, resp *service.AgentChatResponse, agentStartTime time.Time) {
+	if fullContent == "" {
+		return
+	}
+	saveCtx := context.WithoutCancel(ctx)
+	agentDurationMs := time.Since(agentStartTime).Milliseconds()
+
+	// 引用溯源（kb_search 工具收集）+ 步骤记录（事件流自动生成）
+	references := resp.Collector.All()
+	agentSteps := resp.Stream.Steps()
+
+	_ = ctrl.chatService.SaveAssistantMessage(saveCtx, sessionID, fullContent, references, agentSteps, true, agentDurationMs, len(references) == 0)
+	// 长期记忆：对话结束后异步提取落图（提取模型跟随当前用户会话的模型配置）
+	ctrl.triggerMemoryStore(saveCtx, userID, sessionID, ctrl.resolveSessionModelID(saveCtx, userID, sessionID), query, fullContent)
+}
+
 // triggerMemoryStore 对话结束后异步提取长期记忆并落图（Neo4j 知识图谱）。
 // modelID 为当前用户会话实际使用的对话模型（nil 时由工厂内部兑底）。
 // 异步执行 + 失败仅记日志，绝不阻断 SSE 响应主流程。
@@ -849,6 +980,9 @@ func pumpKnowledgeChat(ctx context.Context, svc service.ChatService, sessionID, 
 	defer close(out)
 	stream, searchResults, err := svc.KnowledgeChat(ctx, sessionID, userID, req, stepCallback)
 	if err != nil {
+		if ctx.Err() != nil {
+			return // 已取消/超时：handler 已通过 ctx.Done 分支收尾，不再投递
+		}
 		out <- streamItem{kind: "error", err: err}
 		return
 	}
@@ -868,10 +1002,15 @@ func pumpKnowledgeChat(ctx context.Context, svc service.ChatService, sessionID, 
 	case <-time.After(firstTokenTimeout):
 		out <- streamItem{kind: "error", err: errors.New("LLM 首 token 超时"), timeout: true}
 		return
+	case <-ctx.Done():
+		return // 停止/断连/超时：静默退出
 	}
 
 	// 后续流式读取
 	for {
+		if ctx.Err() != nil {
+			return // 取消：静默退出，避免向已无消费者的 out 写入阻塞
+		}
 		chunk, recvErr := stream.Recv()
 		if !emitChunk(out, chunk, recvErr) {
 			return
