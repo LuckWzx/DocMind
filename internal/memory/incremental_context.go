@@ -102,7 +102,7 @@ func BuildAgentContext(
 	if len(incremental) > 1 {
 		currentTokens := consolidator.estimator.EstimateString(summaryContent) +
 			consolidator.estimator.EstimateMessages(incremental)
-		if consolidator.ShouldConsolidate(currentTokens) {
+		if consolidator.ShouldConsolidate(currentTokens, CountUserTurns(incremental)) {
 			newSummary, count, isRaw := consolidator.ConsolidateIncremental(ctx, summaryContent, incremental)
 			if count > 0 {
 				summaryType := entity.SummaryTypeLLM

@@ -53,11 +53,12 @@ const (
 //   - tool_call 边界保护：从历史尾部回扫时按"tool 组 + 前驱 assistant"整体保留
 //   - 降级：LLM 摘要失败 3 次 → rawArchive 原文归档
 type Consolidator struct {
-	createModel   func(ctx context.Context) (model.BaseModel[*schema.Message], error)
-	estimator     *token.Estimator
-	maxTokens     int     // 上下文窗口
-	threshold     float64 // 触发比例（0-1，默认 0.5）
-	preserveTurns int     // 压缩时保底保留的最近完整轮数（<=0 用默认 5）
+	createModel    func(ctx context.Context) (model.BaseModel[*schema.Message], error)
+	estimator      *token.Estimator
+	maxTokens      int     // 上下文窗口
+	threshold      float64 // 触发比例（0-1，默认 0.5）
+	preserveTurns  int     // 压缩时保底保留的最近完整轮数（<=0 用默认 5）
+	turnsThreshold int     // 增量轮数触发阈值（>0 生效：增量轮数达到即触发，与 token 阈值任一满足）
 
 	mu       sync.Mutex
 	model    model.BaseModel[*schema.Message]
@@ -68,13 +69,16 @@ type Consolidator struct {
 // createModel 为摘要模型工厂（懒创建 + 缓存，避免未触发压缩时产生模型开销）；
 // maxTokens 为上下文窗口 Token 数；threshold 为触发比例（0-1，0 使用默认 0.5）；
 // preserveTurns 为压缩时保底保留的最近完整轮数（<=0 使用默认 5），
-// 与 Agent 模式中间件的 PreserveTurns 语义一致。
+// 与 Agent 模式中间件的 PreserveTurns 语义一致；
+// turnsThreshold 为增量轮数触发阈值（<=0 退化为纯 token 触发，
+// 推荐用 TurnsThresholdForWindow 按模型上下文分档）。
 func NewConsolidator(
 	createModel func(ctx context.Context) (model.BaseModel[*schema.Message], error),
 	estimator *token.Estimator,
 	maxTokens int,
 	threshold float64,
 	preserveTurns int,
+	turnsThreshold int,
 ) *Consolidator {
 	if threshold <= 0 || threshold >= 1 {
 		threshold = DefaultConsolidationThreshold
@@ -83,21 +87,27 @@ func NewConsolidator(
 		preserveTurns = DefaultPreserveTurns
 	}
 	return &Consolidator{
-		createModel:   createModel,
-		estimator:     estimator,
-		maxTokens:     maxTokens,
-		threshold:     threshold,
-		preserveTurns: preserveTurns,
+		createModel:    createModel,
+		estimator:      estimator,
+		maxTokens:      maxTokens,
+		threshold:      threshold,
+		preserveTurns:  preserveTurns,
+		turnsThreshold: turnsThreshold,
 	}
 }
 
-// ShouldConsolidate 判断当前 Token 数是否达到触发阈值（maxTokens × threshold）
-func (c *Consolidator) ShouldConsolidate(currentTokens int) bool {
+// ShouldConsolidate 判断是否达到压缩触发条件：Token 超阈值（maxTokens × threshold）
+// 或增量轮数达 turnsThreshold（>0 时生效），任一满足即触发。
+// 轮数触发解决低 token 密度对话长期不触发的问题；token 阈值兜底防爆窗。
+func (c *Consolidator) ShouldConsolidate(currentTokens int, currentTurns int) bool {
 	if c.maxTokens <= 0 {
 		return false
 	}
 	triggerAt := int(float64(c.maxTokens) * c.threshold)
-	return currentTokens > triggerAt
+	if currentTokens > triggerAt {
+		return true
+	}
+	return c.turnsThreshold > 0 && currentTurns >= c.turnsThreshold
 }
 
 // Consolidate 压缩对话历史：将可压缩部分替换为一条摘要 system 消息。
@@ -169,7 +179,7 @@ func (c *Consolidator) Consolidate(ctx context.Context, messages []*schema.Messa
 }
 
 // ConsolidateIncremental 增量压缩：将持久化的旧摘要与压缩边界后的增量消息
-// 合并为一份新摘要。
+// 合并为一份新摘要（预算驱动：预算足够保留全部历史时不压缩，原文优于摘要）。
 //
 // 与 Consolidate（全量重算）的区别：LLM 的输入只有"旧摘要 + 增量消息"，
 // 压缩成本与历史总长度无关，只与增量大小有关——历史越长收益越大。
@@ -181,6 +191,21 @@ func (c *Consolidator) Consolidate(ctx context.Context, messages []*schema.Messa
 // 返回新摘要正文（由调用方持久化并包装为 system 消息）、本次并入摘要的消息条数，
 // 以及是否降级为原文归档（LLM 摘要失败时降级为"旧摘要 + 原文归档"，对话不中断）。
 func (c *Consolidator) ConsolidateIncremental(ctx context.Context, oldSummary string, incremental []*schema.Message) (newSummary string, consolidatedCount int, isRaw bool) {
+	return c.consolidateIncremental(ctx, oldSummary, incremental, false, 0)
+}
+
+// ConsolidateIncrementalForced 强制增量压缩（手动压缩语义）：保留最近 preserveTurns
+// 轮原文（含当前轮），其余增量全部并入摘要——不按"预算足够就全保留"的优化逻辑，
+// 用户主动操作优先于摘要损耗权衡；token 预算仅作防爆窗兜底（保底轮数超窗时
+// 退化为预算驱动）。返回与 ConsolidateIncremental 一致。
+func (c *Consolidator) ConsolidateIncrementalForced(ctx context.Context, oldSummary string, incremental []*schema.Message, preserveTurns int) (newSummary string, consolidatedCount int, isRaw bool) {
+	return c.consolidateIncremental(ctx, oldSummary, incremental, true, preserveTurns)
+}
+
+// consolidateIncremental 增量压缩核心实现。forced=true 时保留策略反转：
+// 自动模式 = max(预算保留, 保底保留)（尽量多保留原文）；
+// 强制模式 = min(预算保留, 保底保留)（尽量多压缩，预算防爆窗）。
+func (c *Consolidator) consolidateIncremental(ctx context.Context, oldSummary string, incremental []*schema.Message, forced bool, forcedPreserveTurns int) (newSummary string, consolidatedCount int, isRaw bool) {
 	if len(incremental) <= 1 {
 		return oldSummary, 0, false
 	}
@@ -200,15 +225,22 @@ func (c *Consolidator) ConsolidateIncremental(ctx context.Context, oldSummary st
 	history := incremental[:lastUserIdx]
 	tail := incremental[lastUserIdx:]
 
-	// 2. 预算内保留最近的历史：把旧摘要折算为一条 system 消息参与预算计算，
+	// 2. 保留策略：把旧摘要折算为一条 system 消息参与预算计算，
 	//    使增量模式与全量模式的保留策略一致（复用 findKeepBoundary 的 tool 配对保护）；
-	//    再叠加保底保留最近 preserveTurns 轮原文（用户显式配置）
+	//    再叠加保底保留最近 N 轮原文（自动用 c.preserveTurns，强制用调用方指定）
 	systemMsgs := []*schema.Message{}
 	if oldSummary != "" {
 		systemMsgs = append(systemMsgs, &schema.Message{Role: schema.System, Content: oldSummary})
 	}
 	keepFromEnd := c.findKeepBoundary(history, int(float64(c.maxTokens)*c.threshold*consolidationTargetRatio), systemMsgs, c.estimator.EstimateMessages(tail))
-	keepFromEnd = c.applyPreserveTurns(keepFromEnd, history, tail)
+	if forced {
+		// 强制模式：以保底保留为上限（尽量多压）；保底不可用（超窗）时保持预算结果防爆窗
+		if minKeep := c.preserveTurnsKeep(history, tail, forcedPreserveTurns); minKeep >= 0 && minKeep < keepFromEnd {
+			keepFromEnd = minKeep
+		}
+	} else {
+		keepFromEnd = c.applyPreserveTurns(keepFromEnd, history, tail)
+	}
 
 	// 3. 预算足够保留全部增量 → 无需压缩，摘要保持不变
 	if keepFromEnd >= len(history) {
@@ -304,6 +336,27 @@ func (c *Consolidator) buildIncrementalPrompt(oldSummary string, incremental []*
 	return sb.String()
 }
 
+// preserveTurnsKeep 计算"保底保留最近 turns 轮原文"的消息条数：
+// 历史不足 turns 轮返回 0（无可保底）；窗口校验不通过（保底轮数原文 + 当前轮 +
+// 摘要预留超过 maxTokens）返回 -1（表示保底不可用，调用方退化为预算驱动）。
+func (c *Consolidator) preserveTurnsKeep(history []*schema.Message, tail []*schema.Message, turns int) int {
+	if turns <= 0 {
+		return -1
+	}
+	keepStart := tailKeepStart(history, turns)
+	if keepStart == 0 {
+		return 0
+	}
+	minKeep := len(history) - keepStart
+	// 窗口校验：保底轮数原文 + 当前轮 + 摘要预留 ≤ maxTokens 才允许保底
+	keepTokens := c.estimator.EstimateMessages(history[keepStart:])
+	tailTokens := c.estimator.EstimateMessages(tail)
+	if keepTokens+tailTokens+summaryReserveTokens <= c.maxTokens {
+		return minKeep
+	}
+	return -1
+}
+
 // applyPreserveTurns 在预算保留的基础上叠加"保底保留最近 N 轮原文"：
 // 用户显式配置的轮数（如 3）保证最近 3 轮对话始终以原文形式保留，
 // 只有更早的历史才被压缩。校验规则：保底轮数 + 当前轮 + 摘要预留
@@ -312,21 +365,11 @@ func (c *Consolidator) applyPreserveTurns(keepFromEnd int, history []*schema.Mes
 	if c.preserveTurns <= 0 {
 		return keepFromEnd
 	}
-	keepStart := tailKeepStart(history, c.preserveTurns)
-	if keepStart == 0 {
-		return keepFromEnd
-	}
-	minKeep := len(history) - keepStart
+	minKeep := c.preserveTurnsKeep(history, tail, c.preserveTurns)
 	if minKeep <= keepFromEnd {
 		return keepFromEnd
 	}
-	// 窗口校验：保底轮数原文 + 当前轮 + 摘要预留 ≤ maxTokens 才允许保底
-	keepTokens := c.estimator.EstimateMessages(history[keepStart:])
-	tailTokens := c.estimator.EstimateMessages(tail)
-	if keepTokens+tailTokens+summaryReserveTokens <= c.maxTokens {
-		return minKeep
-	}
-	return keepFromEnd
+	return minKeep
 }
 
 // findKeepBoundary 从历史尾部回扫，计算在预算内最多保留多少条消息。

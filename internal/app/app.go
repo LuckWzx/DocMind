@@ -189,7 +189,7 @@ func (a *App) initDatabase() error {
 	//&entity.Message{},
 	//&entity.Agent{},
 	//&entity.AgentOverride{},
-	//// 短期记忆增量摘要表（会话摘要持久化，见 internal/memory 增量压缩设计）
+	// 短期记忆增量摘要表（会话摘要持久化，见 internal/memory 增量压缩设计）
 	//&entity.SessionSummary{},
 	//// 模型上下文大小缺失记录表（待补足内置映射表的模型清单）
 	//&entity.ModelContextWindowMissing{},

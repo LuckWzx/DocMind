@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"slices"
 	"time"
 
 	"docmind/internal/model/entity"
@@ -47,8 +48,11 @@ func (r *messageRepository) ListBySession(sessionID uint, limit int, beforeTime 
 	if beforeTime != nil {
 		query = query.Where("created_at < ?", *beforeTime)
 	}
-	// 按时间正序排列（最早的在前，最新的在后）
-	err := query.Order("created_at ASC").Limit(limit).Find(&messages).Error
+	// 取截止 before_time 的最近 limit 条：先时间倒序 LIMIT，再反转成正序返回
+	// （最早的在前）。调用方语义为"最近 N 条"，且与前端分页契约一致——
+	// 打开会话显示最近消息，翻页时以 page[0].created_at 为游标向前追溯。
+	err := query.Order("created_at DESC").Limit(limit).Find(&messages).Error
+	slices.Reverse(messages)
 	return messages, err
 }
 
@@ -69,5 +73,11 @@ func (r *messageRepository) DeleteBySession(sessionID uint) error {
 func (r *messageRepository) CountBySession(sessionID uint) (int64, error) {
 	var count int64
 	err := r.db.Model(&entity.Message{}).Where("session_id = ?", sessionID).Count(&count).Error
+	return count, err
+}
+
+func (r *messageRepository) CountUserTurnsBySession(sessionID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&entity.Message{}).Where("session_id = ? AND role = 'user'", sessionID).Count(&count).Error
 	return count, err
 }

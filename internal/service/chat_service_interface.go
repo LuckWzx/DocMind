@@ -42,6 +42,36 @@ type ChatService interface {
 	ResolveChatModelID(ctx context.Context, userID uint, session *entity.Session) string
 	// GenerateSessionTitle 若会话标题仍为默认占位（"新对话"），则用首条用户消息生成标题并落库，返回新标题。已被用户手动重命名的会话不会被覆盖。
 	GenerateSessionTitle(ctx context.Context, sessionID uint, userID uint, query string) (string, error)
+	// GetMemoryStatus 计算会话短期记忆状态（前端上下文状态条展示；未开启多轮时返回 nil）
+	GetMemoryStatus(ctx context.Context, sessionID uint, userID uint) (*MemoryStatus, error)
+	// CompressMemory 手动压缩会话短期记忆（增量合并进摘要并写回边界），返回压缩后状态
+	CompressMemory(ctx context.Context, sessionID uint, userID uint) (*MemoryStatus, error)
+}
+
+// MemoryStatus 会话短期记忆状态（前端上下文状态条数据）
+type MemoryStatus struct {
+	// ModelID 当前会话对话模型 ID
+	ModelID string `json:"model_id"`
+	// ContextWindow 模型上下文窗口 Token 数（未知时为 0）
+	ContextWindow int `json:"context_window"`
+	// CurrentTokens 当前记忆占用 Token（摘要 + 增量 + 当前轮，BPE 估算）
+	CurrentTokens int `json:"current_tokens"`
+	// TokenThreshold Token 触发阈值（窗口 × 50%）
+	TokenThreshold int `json:"token_threshold"`
+	// CurrentTurns 距上次压缩的增量轮数（含当前轮）
+	CurrentTurns int `json:"current_turns"`
+	// TotalTurns 会话累计轮数
+	TotalTurns int `json:"total_turns"`
+	// TurnsThreshold 增量轮数触发阈值（按上下文窗口分档；0 = 未启用轮数触发）
+	TurnsThreshold int `json:"turns_threshold"`
+	// CompressedCount 已压缩进摘要的累计消息条数（无摘要为 0）
+	CompressedCount int `json:"compressed_count"`
+	// SummaryType 摘要类型：llm / raw（LLM 失败降级原文归档）/ 空（无摘要）
+	SummaryType string `json:"summary_type"`
+	// LastCompressedCount 最近一次压缩并入摘要的消息条数（手动压缩响应专用；0 = 本次未实际压缩）
+	LastCompressedCount int `json:"last_compressed_count"`
+	// Attention 是否达到任一触发阈值（token 超阈值或增量轮数达阈值），前端高亮提示
+	Attention bool `json:"attention"`
 }
 
 // KnowledgeChatRequest 快速问答请求（单步 RAG 管道）

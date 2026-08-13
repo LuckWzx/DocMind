@@ -333,6 +333,38 @@ func (ctrl *Controller) LoadMessages(c *gin.Context) {
 
 // ===== 核心：SSE 知识问答 =====
 
+// GetMemoryStatus 查询会话短期记忆状态（前端上下文状态条数据；
+// 会话未开启多轮对话时返回 null，前端不展示状态条）
+func (ctrl *Controller) GetMemoryStatus(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	sessionID, ok := parseUintFromPath(c, "id")
+	if !ok {
+		return
+	}
+	status, err := ctrl.chatService.GetMemoryStatus(c.Request.Context(), sessionID, userID)
+	if err != nil {
+		response.BizError(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
+// CompressMemory 手动压缩会话短期记忆（跳过触发判断直接增量合并进摘要），
+// 返回压缩后的最新状态；同一会话压缩互斥，进行中时返回 409
+func (ctrl *Controller) CompressMemory(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	sessionID, ok := parseUintFromPath(c, "id")
+	if !ok {
+		return
+	}
+	status, err := ctrl.chatService.CompressMemory(c.Request.Context(), sessionID, userID)
+	if err != nil {
+		response.BizError(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
 // KnowledgeChat SSE 流式知识问答（第一批优化：事件协议规范化 + 执行护栏 + 生命周期日志）
 func (ctrl *Controller) KnowledgeChat(c *gin.Context) {
 	// 1. 请求体大小限制（护栏：防止超大请求拖垮服务）

@@ -26,6 +26,10 @@ func (ctrl *Controller) RegisterRoutes(r *gin.RouterGroup) {
 		group.DELETE("sessions/:id/messages", ctrl.ClearSessionMessages)
 		group.POST("sessions/:id/generate_title", ctrl.GenerateTitle)
 
+		// 短期记忆：上下文状态查询 + 手动压缩
+		group.GET("sessions/:id/memory/status", ctrl.GetMemoryStatus)
+		group.POST("sessions/:id/memory/compress", ctrl.CompressMemory)
+
 		// 消息历史
 		group.GET("messages/:session_id/load", ctrl.LoadMessages)
 

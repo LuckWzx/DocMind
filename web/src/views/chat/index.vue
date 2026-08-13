@@ -111,6 +111,7 @@
             </div>
         </transition>
         <div class="input-container" :class="{ 'is-embedded': embeddedMode }">
+            <MemoryStatusBar ref="memoryStatusBarRef" :session-id="session_id" />
             <InputField ref="inputFieldRef"
                 @send-msg="(query, modelId, mentionedItems, imageFiles, attachmentFiles) => sendMsg(query, modelId, mentionedItems, imageFiles, attachmentFiles)"
                 @stop-generation="handleStopGeneration" :isReplying="isReplying" :sessionId="session_id"
@@ -128,6 +129,7 @@ import { storeToRefs } from 'pinia';
 import { ref, onMounted, onBeforeMount, onUnmounted, nextTick, watch, reactive, computed } from 'vue';
 import { useRoute, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
 import InputField from '../../components/Input-field.vue';
+import MemoryStatusBar from '../../components/MemoryStatusBar.vue';
 import botmsg from './components/botmsg.vue';
 import usermsg from './components/usermsg.vue';
 import { getMessageList, getSession } from "@/api/chat/index";
@@ -438,6 +440,15 @@ watch(
     debouncedFetchSuggestions,
     { deep: true },
 );
+
+// 对话结束后刷新上下文状态条（自动压缩触发 / 增量轮数变化后重新计算占用）
+// 会话切换时组件自身 watch sessionId 刷新，此处只处理"回答完成"时机
+const memoryStatusBarRef = ref();
+watch(isReplying, (replying, wasReplying) => {
+    if (wasReplying && !replying) {
+        memoryStatusBarRef.value?.refresh();
+    }
+});
 
 function fileToBase64(file) {
     return new Promise((resolve, reject) => {

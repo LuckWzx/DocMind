@@ -268,9 +268,10 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 			maxContextTokens,
 			0,                        // 触发比例默认 0.5
 			agentConfig.HistoryTurns, // 压缩时保底保留的最近完整轮数（原文不压缩）
+			memory.TurnsThresholdForWindow(maxContextTokens), // 增量轮数触发阈值（按上下文分档）
 		)
 		currentTokens := s.tokenEstimator.EstimateString(summaryContent) + s.tokenEstimator.EstimateMessages(incremental)
-		if consolidator.ShouldConsolidate(currentTokens) {
+		if consolidator.ShouldConsolidate(currentTokens, memory.CountUserTurns(incremental)) {
 			newSummary, count, isRaw := consolidator.ConsolidateIncremental(ctx, summaryContent, incremental)
 			if count > 0 {
 				// 写回摘要：边界 = 被压缩增量中最后一条消息的 ID（压缩的是增量前缀）
@@ -424,16 +425,35 @@ func (s *chatService) AgentChat(ctx context.Context, sessionID uint, userID uint
 	}
 	eng := agent.NewEngine(chatModelAgent, true)
 
-	// 6. 多轮历史加载（排除刚保存的 userMsg，按 HistoryTurns 截断）
+	// 6. 短期记忆上下文：跨请求增量压缩（摘要 + 边界后的增量消息）。
+	// 无摘要时全量加载历史（上限 500 条），让 Token/轮数自然累积触发压缩；
+	// 有摘要时只加载边界后的增量，压缩成本与历史总长度无关。
+	// HistoryTurns 语义 = 压缩时保底保留的最近完整轮数（与 quick-answer 一致）。
 	var messages []*einoschema.Message
 	if agt.Config.MultiTurnEnabled != nil && *agt.Config.MultiTurnEnabled {
 		historyTurns := agt.Config.HistoryTurns
 		if historyTurns <= 0 {
-			historyTurns = 5
+			historyTurns = memory.DefaultPreserveTurns
 		}
-		historyMsgs, err := s.messageRepo.ListBySession(sessionID, historyTurns*2+1, nil)
-		if err == nil {
-			messages = historyToSchemaMessages(historyMsgs, userMsg.ID)
+		maxContextTokens := memory.DefaultMaxContextTokens
+		if w := s.resolveContextWindowForModel(agt.Config.ModelID, userID); w > 0 {
+			maxContextTokens = w
+		}
+		consolidator := memory.NewConsolidator(
+			func(ctx context.Context) (model.BaseModel[*einoschema.Message], error) {
+				return s.modelFactory.CreateChatModel(ctx, agt.Config.ModelID)
+			},
+			s.tokenEstimator,
+			maxContextTokens,
+			0,            // 触发比例默认 0.5
+			historyTurns, // 压缩时保底保留的最近完整轮数（原文不压缩）
+			memory.TurnsThresholdForWindow(maxContextTokens), // 增量轮数触发阈值（按上下文分档）
+		)
+		built, ctxErr := memory.BuildAgentContext(ctx, sessionID, s.summaryRepo, s.messageRepo, consolidator, 0, nil)
+		if ctxErr != nil {
+			logger.Warnf("[MemoryConsolidator] Agent 上下文组装失败（本次无历史）: %v", ctxErr)
+		} else {
+			messages = built
 		}
 	}
 	// 6.5 长期记忆检索：相关历史片段注入当前问题（失败仅记日志，不阻断对话）。
@@ -448,7 +468,17 @@ func (s *chatService) AgentChat(ctx context.Context, sessionID uint, userID uint
 			query += mc.Text()
 		}
 	}
-	messages = append(messages, &einoschema.Message{Role: einoschema.User, Content: query})
+	if len(messages) > 0 {
+		// 短期记忆已包含当前轮 user 消息（刚保存的 userMsg），替换为注入记忆后的 query
+		for i := len(messages) - 1; i >= 0; i-- {
+			if messages[i].Role == einoschema.User {
+				messages[i].Content = query
+				break
+			}
+		}
+	} else {
+		messages = append(messages, &einoschema.Message{Role: einoschema.User, Content: query})
+	}
 
 	// 7. 运行引擎，返回事件流（controller 消费并映射 SSE 事件）
 	stream, err := eng.Run(ctx, &agent.RunRequest{

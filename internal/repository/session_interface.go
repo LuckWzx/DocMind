@@ -31,4 +31,6 @@ type MessageRepository interface {
 	ListAfterID(sessionID uint, afterID uint, limit int) ([]*entity.Message, error)
 	DeleteBySession(sessionID uint) error
 	CountBySession(sessionID uint) (int64, error)
+	// CountUserTurnsBySession 统计会话中的对话轮数（user 角色消息数，短期记忆状态展示用）
+	CountUserTurnsBySession(sessionID uint) (int64, error)
 }

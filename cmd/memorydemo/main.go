@@ -130,6 +130,7 @@ func main() {
 		200, // 触发阈值 100：旧摘要 31 + 增量 139 > 100 触发
 		0,
 		3, // 保底保留最近 3 轮原文
+		0, // 轮数触发关闭（demo 演示 token 触发）
 	)
 	// 旧摘要 + 新累积的增量（5 轮 + 当前轮）
 	oldSummary := "用户在第 1-20 轮讨论了 DocMind 知识库问答系统的架构设计。"
@@ -137,7 +138,7 @@ func main() {
 	totalTokens := est.EstimateString(oldSummary) + est.EstimateMessages(incremental)
 	fmt.Printf("旧摘要 token=%d + 增量 token=%d（消息 %d 条）\n",
 		est.EstimateString(oldSummary), est.EstimateMessages(incremental), len(incremental))
-	if consolidator.ShouldConsolidate(totalTokens) {
+	if consolidator.ShouldConsolidate(totalTokens, memory.CountUserTurns(incremental)) {
 		newSummary, count, isRaw := consolidator.ConsolidateIncremental(context.Background(), oldSummary, incremental)
 		fmt.Printf("触发压缩：%d 条增量并入摘要（降级=%v）\n", count, isRaw)
 		fmt.Printf("新摘要（含旧摘要+增量合并结果）前 120 字符：\n  %s...\n", truncatePreview(newSummary, 120))
