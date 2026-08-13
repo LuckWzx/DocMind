@@ -103,6 +103,7 @@ DocMind/
 │   │   ├── incremental_context.go     # 增量上下文构建
 │   │   ├── raw_archive.go             # 原文归档
 │   │   ├── summary_middleware.go      # 会话摘要中间件（Eino summarization 适配）
+│   │   ├── turns_trigger.go           # 轮次触发压缩策略（窗口分档阈值）
 │   │   ├── types.go                   # 记忆类型定义
 │   │   └── longterm/                  # 长期记忆（跨会话知识图谱，Neo4j）
 │   │       ├── extractor.go           # 对话信息提取器
@@ -158,6 +159,7 @@ DocMind/
 │   │   ├── model_service_ollama.go   # 模型服务 Ollama（状态、模型列表、异步下载、embed/chat）
 │   │   ├── model_service_utils.go    # 模型服务工具（JSON 响应解析、类型转换、文件读取）
 │   │   ├── knowledge_embedder.go     # 知识分块自动向量化（分批处理）
+│   │   ├── memory_status.go          # 短期记忆状态查询与手动压缩（前端上下文状态条）
 │   │   ├── vector_driver_postgres.go # pgvector 向量检索驱动
 │   │   ├── image_storage_*.go        # 文档图片存储（MinIO / Noop）
 │   │   ├── knowledge_image_pipeline.go  # 图片提取与URL替换管道
@@ -172,10 +174,12 @@ DocMind/
 │   ├── database/                     # 数据库驱动（PostgreSQL / MySQL / Redis）
 │   ├── docreader/                    # 文档解析微服务（Python + gRPC）
 │   │   ├── client/                   # Go gRPC 客户端
+│   │   ├── engine.go                 # 解析引擎选择器（fileType→engine 匹配 + 默认引擎回退）
 │   │   ├── models/                   # Python 数据模型
 │   │   ├── ocr/                      # OCR 识别（Paddle / VLM）
 │   │   ├── parser/                   # 文档解析器（PDF / DOCX / MD / Excel / Web / Image）
 │   │   ├── proto/                    # Protobuf 定义
+│   │   ├── scripts/                  # Python 辅助脚本（download_deps / generate_proto）
 │   │   ├── splitter/                 # 文档分割器
 │   │   ├── utils/                    # Python 工具函数
 │   │   ├── config.py                 # Python 服务配置
@@ -214,6 +218,7 @@ DocMind/
 │   ├── 标签crud.md                   # 标签 CRUD 设计
 │   ├── 默认模块2.md                   # 默认模块2说明
 │   ├── 模型集成.md                   # LLM 模型集成方案
+│   ├── 问答页面优化方案.md            # 问答页面优化方案
 │   └── 思维导图.md                   # 系统思维导图
 ├── web/                              # 前端项目（Vue 3 + TypeScript）
 │   ├── src/
@@ -245,7 +250,7 @@ DocMind/
 ### 环境要求
 
 **后端：**
-- Go >= 1.23
+- Go >= 1.26
 - PostgreSQL >= 15
 - Redis >= 7（可选）
 - Python >= 3.10（docreader 文档解析服务）
@@ -261,7 +266,8 @@ DocMind/
 cp .env.example .env
 # 编辑 .env 填入数据库连接信息
 
-# 2. 启动服务（自动执行数据库迁移）
+# 2. 启动服务
+# 数据库迁移：AutoMigrate 已注释，表结构按 scripts/migrate.sql 初始化
 go run cmd/server/main.go
 ```
 
@@ -364,7 +370,7 @@ export async function listKnowledgeBases() {
 ✅ **MCP 集成** — 外部 MCP 工具接入 Agent 工具链（客户端 + 连接管理 + 工具适配）  
 ✅ **Python 沙箱** — 受限 Python 代码执行（安全壳 + 预检查），支撑数据分析链路  
 ✅ **SSE 流式对话** — 知识问答流式响应，检索结果引用溯源  
-✅ **15 张数据表** — AutoMigrate 自动迁移，PostgreSQL JSONB + pgvector 支持  
+✅ **19 张数据表** — GORM 实体定义齐全（AutoMigrate 已注释，按 migrate.sql 初始化），PostgreSQL JSONB + pgvector 支持  
 ✅ **多模型管理** — 6 个供应商（OpenAI / 阿里云 / SiliconFlow / 智谱 / Jina / 自定义），5 类模型统一管理，凭据脱敏存储，Ollama 本地模型下载与管理  
 ✅ **14 个 API 模块** — 按功能模块分离，完整的前后端类型定义  
 ✅ **Go 后端** — Gin + GORM 分层架构（API → Service → Repository），Swagger 文档，JWT 双 Token  

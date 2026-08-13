@@ -7,7 +7,7 @@ DocMind 智能知识管理平台的前端项目，基于 Vue 3 + TypeScript + Vi
 | 类别 | 技术 | 版本 |
 |------|------|------|
 | 框架 | Vue 3 + Composition API | ^3.5 |
-| 语言 | TypeScript | ~5.5 |
+| 语言 | TypeScript | ~6.0 |
 | 构建 | Vite | ^7 |
 | UI 组件 | TDesign Vue Next | ^1.19 |
 | 状态管理 | Pinia | ^3.0 |
@@ -70,8 +70,13 @@ web/
 │   │   ├── wiki/                  # 知识库 Wiki
 │   │   ├── index.ts               # 统一导出
 │   │   ├── retrieval.ts           # 检索配置
+│   │   ├── chat-history.ts        # 聊天记录管理
+│   │   ├── message-suggestion.ts  # 追问建议
+│   │   ├── storage-backend.ts     # 存储引擎配置
+│   │   ├── user-favorites.ts      # 用户收藏
 │   │   ├── vector-store.ts        # 向量存储配置
 │   │   ├── web-search.ts          # 网页搜索
+│   │   ├── web-search-provider.ts # 网页搜索提供商
 │   │   ├── mcp-service.ts         # MCP 服务管理
 │   │   └── ...                    # 其他 API 模块
 │   ├── assets/                    # 静态资源（图片/字体/主题 CSS）
