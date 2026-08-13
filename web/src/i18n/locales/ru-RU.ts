@@ -3978,6 +3978,10 @@ export default {
 	attachmentStillProcessing: 'Вложение {name} ещё обрабатывается',
 	attachmentParseTimeout: 'Время обработки вложения истекло. Повторите попытку позже.',
     thinkingAlt: 'Обдумывание...',
+    agentStateThinking: 'Обдумывание...',
+    agentStateSearching: 'Вызов инструментов...',
+    agentStateGenerating: 'Формирование ответа...',
+    agentStateCancelled: 'Остановлено',
     deepThoughtCompleted: 'Глубокий анализ завершён',
     deepThoughtAlt: 'Глубокий анализ'
   },

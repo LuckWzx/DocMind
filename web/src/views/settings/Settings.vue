@@ -243,9 +243,6 @@ const isIntegrationSection = (section: string) => {
 }
 
 const normalizeSettingsSection = (section: string) => {
-  if (section === 'api') {
-    return integrationSectionKey('api')
-  }
   if (section === 'integrations') {
     return integrationSectionKey(integrationTabFromSection((route.query.tab as string) || 'im'))
   }
@@ -322,8 +319,6 @@ const navGroups = computed<NavGroup[]>(() => {
       label: t('integrations.title'),
       items: pickItems([
         integrationSectionKey('im'),
-        integrationSectionKey('embed'),
-        integrationSectionKey('api'),
       ]),
     },
     {

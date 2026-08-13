@@ -110,6 +110,10 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
           ev.pending = false
           ev.canceled = true
         }
+        // 状态机事件收尾：结束"进行中"展示
+        if (ev.type === 'state') {
+          ev.pending = false
+        }
       }
     }
     if (message.isAgentMode) {
@@ -722,6 +726,25 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
     const dataPayload = data.data as ChatMessage | undefined
 
     switch (responseType) {
+      case 'state': {
+        // 后端状态机事件（thinking/searching/generating/cancelled）：
+        // 与后端 state 事件一一对应，同轮只保留最新状态（替换旧的），
+        // 终态标记 pending=false，供 AgentStreamDisplay 实时渲染"正在思考/调用工具/生成回答"
+        const newState = data.state as string | undefined
+        if (!newState) break
+        if (!message.agentEventStream) message.agentEventStream = []
+        const stream = message.agentEventStream as ChatMessage[]
+        for (let i = stream.length - 1; i >= 0; i--) {
+          if (stream[i].type === 'state') stream.splice(i, 1)
+        }
+        stream.push({
+          type: 'state',
+          state: newState,
+          pending: !['completed', 'cancelled', 'failed'].includes(newState),
+          timestamp: Date.now(),
+        })
+        break
+      }
       case 'thinking': {
         const eventId = dataPayload?.event_id as string | undefined
         log('[Thinking Event]', {
@@ -900,45 +923,114 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
         break
       }
       case 'agent_step': {
-        // 处理后端实时发送的步骤事件（query_understand, vector_search 等）
+        // 处理后端实时发送的步骤事件（query_understand, vector_search 等）。
+        // 区分两种形态：声明（有 tool_args / 无 tool_result）→ 创建/复用 pending=true
+        // 的"正在调用"卡片；结果（有 tool_result）→ 回填同名/同 id 卡片，不再重复 push
         if (dataPayload) {
           const toolCallId = dataPayload.tool_call_id as string | undefined
           const toolName = dataPayload.tool_name as string | undefined
-          const success = dataPayload.success !== false
+          const toolResult = dataPayload.tool_result as ChatMessage | undefined
+          const hasResult = !!toolResult && typeof toolResult === 'object'
           const duration = dataPayload.duration as number | undefined
-          
+
           log('[Agent Step]', {
             tool_call_id: toolCallId,
             tool_name: toolName,
-            success,
+            has_result: hasResult,
             duration,
           })
 
           if (!message.agentEventStream) message.agentEventStream = []
+          if (!message._pendingToolCalls) message._pendingToolCalls = new Map()
           const stream = message.agentEventStream as ChatMessage[]
-          
-          // 创建或更新步骤事件
-          // 工具结果从 tool_result 提取：Agent 模式（kb_search 等）为 output 字符串，
-          // quick-answer（knowledge_search）为 data 对象；结构化结果解析后作为 tool_data（摘要展示用）
-          const toolResult = dataPayload.tool_result as ChatMessage | undefined
-          const toolOutput =
-            toolResult?.data !== undefined
-              ? JSON.stringify(toolResult.data)
-              : (toolResult?.output as string | undefined)
-          const parsedToolData = tryParseJsonObject(toolOutput)
-          const stepEvent: ChatMessage = {
-            type: 'tool_call',
-            tool_call_id: toolCallId || `step_${Date.now()}`,
-            tool_name: toolName,
-            pending: false,
-            success,
-            duration,
-            duration_ms: duration,
-            output: toolOutput || undefined,
-            tool_data: parsedToolData || undefined,
-            timestamp: Date.now(),
+          const pending = message._pendingToolCalls as Map<string, ChatMessage>
+
+          // ---- 工具声明（无 tool_result）：同步"正在调用 xxx"状态 ----
+          if (!hasResult) {
+            const key = toolCallId || toolName
+            if (!key) break
+            let stepEvent = pending.get(key)
+            if (!stepEvent) {
+              stepEvent = stream.find(
+                (e) => e.type === 'tool_call' && e.tool_call_id === key,
+              )
+            }
+            if (!stepEvent) {
+              stepEvent = {
+                type: 'tool_call',
+                tool_call_id: key,
+                tool_name: toolName,
+                timestamp: Date.now(),
+                pending: true,
+              }
+              stream.push(stepEvent)
+            } else {
+              if (toolName) stepEvent.tool_name = toolName
+              stepEvent.pending = true
+              if (!stepEvent.timestamp) stepEvent.timestamp = Date.now()
+            }
+            // 参数（Agent 模式为截断的 JSON 字符串，解析失败保留原文）
+            if (dataPayload.tool_args) {
+              try {
+                stepEvent.arguments = JSON.parse(String(dataPayload.tool_args))
+              } catch {
+                stepEvent.arguments = dataPayload.tool_args
+              }
+            }
+            pending.set(key, stepEvent)
+            break
           }
-          stream.push(stepEvent)
+
+          // ---- 工具结果（有 tool_result）：回填进行中卡片 ----
+          const success = toolResult.success !== false
+          const toolOutput =
+            toolResult.data !== undefined
+              ? JSON.stringify(toolResult.data)
+              : (toolResult.output as string | undefined)
+          const parsedToolData = tryParseJsonObject(toolOutput)
+
+          let stepEvent: ChatMessage | undefined
+          if (toolCallId) {
+            stepEvent =
+              pending.get(toolCallId) ||
+              stream.find((e) => e.type === 'tool_call' && e.tool_call_id === toolCallId)
+          }
+          // Agent 模式声明/结果均无 tool_call_id：按工具名匹配最早的同名进行中卡片
+          if (!stepEvent && toolName) {
+            stepEvent = stream.find(
+              (e) => e.type === 'tool_call' && e.pending && e.tool_name === toolName,
+            )
+          }
+          if (stepEvent) {
+            stepEvent.pending = false
+            stepEvent.success = success
+            if (toolOutput !== undefined) stepEvent.output = toolOutput
+            stepEvent.tool_data =
+              toolResult.data !== undefined ? toolResult.data : parsedToolData || undefined
+            stepEvent.duration = duration
+            stepEvent.duration_ms = duration
+            if (stepEvent.tool_call_id) {
+              pending.delete(String(stepEvent.tool_call_id))
+            } else {
+              Array.from(pending.keys()).forEach((k) => {
+                if (pending.get(k) === stepEvent) pending.delete(k)
+              })
+            }
+          } else {
+            // 兜底：无进行中卡片（如流中断重连），直接创建已完成卡片
+            stream.push({
+              type: 'tool_call',
+              tool_call_id: toolCallId || `step_${Date.now()}`,
+              tool_name: toolName,
+              pending: false,
+              success,
+              duration,
+              duration_ms: duration,
+              output: toolOutput || undefined,
+              tool_data: toolResult.data !== undefined ? toolResult.data : parsedToolData || undefined,
+              timestamp: Date.now(),
+            })
+          }
         }
         break
       }
@@ -1072,6 +1164,10 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
             if (ev.type === 'answer' && !ev.done && !ev.superseded) {
               ev.done = true
             }
+            // 状态机事件收尾：结束"进行中"展示
+            if (ev.type === 'state') {
+              ev.pending = false
+            }
           }
           stream.push({
             type: 'agent_complete',
@@ -1095,6 +1191,10 @@ export function useChatStreamHandler(options: UseChatStreamHandlerOptions) {
           if (ev.type === 'tool_call' && ev.pending) {
             ev.pending = false
             ev.canceled = true
+          }
+          // 状态机事件收尾：结束"进行中"展示
+          if (ev.type === 'state') {
+            ev.pending = false
           }
         }
         stopStream.push({

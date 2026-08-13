@@ -170,9 +170,9 @@ func (a *App) initDatabase() error {
 	}
 	a.pgDB = pgDB
 
-	if err := a.pgDB.Exec("CREATE EXTENSION IF NOT EXISTS vector").Error; err != nil {
-		logger.Warn("启用 pgvector 扩展失败", zap.Error(err))
-	}
+	//if err := a.pgDB.Exec("CREATE EXTENSION IF NOT EXISTS vector").Error; err != nil {
+	//	logger.Warn("启用 pgvector 扩展失败", zap.Error(err))
+	//}
 
 	// 自动迁移数据库表
 	logger.Info("开始数据库迁移...")

@@ -61,10 +61,6 @@
           <t-icon name="tools" class="menu-icon" />
           <span>{{ $t('settings.mcpService') }}</span>
         </div>
-        <div v-if="canSeeQuickNav('integration-api')" class="menu-item" @click="handleQuickNav('integration-api')">
-          <t-icon name="secured" class="menu-icon" />
-          <span>{{ $t('integrations.tabs.api') }}</span>
-        </div>
         <div class="menu-divider"></div>
         <div class="menu-item" @click="handleSettings">
           <t-icon name="setting" class="menu-icon" />
@@ -118,7 +114,6 @@ const QUICKNAV_MIN_ROLE: Record<string, 'viewer' | 'contributor' | 'admin' | 'ow
   models: 'viewer',
   websearch: 'admin',
   mcp: 'admin',
-  'integration-api': 'owner',
 }
 
 const canSeeQuickNav = (key: string): boolean => {
@@ -149,11 +144,7 @@ const toggleMenu = () => {
 const handleQuickNav = (section: string) => {
   menuVisible.value = false
   uiStore.openSettings()
-  if (section === 'integration-api') {
-    router.push({ path: '/platform/settings', query: { section: 'integrations', tab: 'api' } })
-  } else {
-    router.push('/platform/settings')
-  }
+  router.push('/platform/settings')
 
   setTimeout(() => {
     const event = new CustomEvent('settings-nav', { detail: { section } })
@@ -180,7 +171,7 @@ const reopenGuide = () => {
 
 const openGithub = () => {
   menuVisible.value = false
-  window.open('https://github.com/Tencent/DocMind', '_blank')
+  window.open('https://github.com/LuckWzx/DocMind', '_blank')
 }
 
 const handleLogout = async () => {

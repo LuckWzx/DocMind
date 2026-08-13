@@ -226,6 +226,18 @@
               </div>
             </div>
 
+            <!-- 状态机事件（thinking/searching/generating：实时同步 Agent 执行状态） -->
+            <div v-else-if="event.type === 'state'" class="tool-event">
+              <div class="action-card" :class="{ 'action-pending': event.pending }">
+                <div class="action-header no-results">
+                  <div class="action-title">
+                    <t-icon class="action-title-icon" name="lightbulb" />
+                    <span class="action-name">{{ getAgentStateLabel(event.state) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <!-- Thinking Event (streaming / merged). A folded preamble (retracted
              from the answer area) is shown as the card title; the reasoning is
              the expandable body. -->
@@ -1069,6 +1081,22 @@ const activeThinkingIds = ref<Set<string>>(new Set());
 // Reactive version number to force template re-evaluation when activeThinkingIds changes
 const activeThinkingVersion = ref(0);
 
+// 状态机事件文案（thinking/searching/generating/cancelled，对应后端 state 事件）
+const getAgentStateLabel = (state?: string): string => {
+  switch (state) {
+    case 'thinking':
+      return t('chat.agentStateThinking')
+    case 'searching':
+      return t('chat.agentStateSearching')
+    case 'generating':
+      return t('chat.agentStateGenerating')
+    case 'cancelled':
+      return t('chat.agentStateCancelled')
+    default:
+      return t('chat.thinkingAlt')
+  }
+}
+
 const isThinkingActive = (eventId: string): boolean => {
   // Reference version to create reactive dependency
   void activeThinkingVersion.value;
@@ -1661,6 +1689,8 @@ const intermediateEvents = computed(() => {
   const hidden = hiddenThinkingEventIds.value;
   return result.filter((e: any) => {
     if (e.type === 'answer' || e.type === 'agent_complete') return false;
+    // 状态机事件仅在流式阶段展示（非树模式），完成后的树中不重复显示
+    if (e.type === 'state') return false;
     if (e.type === 'thinking' && e.event_id && hidden.has(e.event_id)) return false;
     return true;
   });

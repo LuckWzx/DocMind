@@ -19,23 +19,6 @@
         </div>
         <IMChannelPanel v-model:filter-agent-id="filterAgentId" />
       </div>
-
-      <div v-if="tab === 'embed'" class="section">
-        <div class="section-header">
-          <h2>{{ $t('agentEditor.embed.title') }}</h2>
-          <p class="section-description">{{ $t('agentEditor.embed.description') }}</p>
-        </div>
-        <AgentEmbedChannelPanel v-model:filter-agent-id="filterAgentId" />
-      </div>
-
-      <div v-if="tab === 'api'" class="section">
-        <div class="section-header">
-          <h2>{{ $t('integrations.api.title') }}</h2>
-          <p class="section-description">{{ $t('integrations.api.subtitle') }}</p>
-        </div>
-        <ApiIntegrationSettings />
-      </div>
-
     </div>
   </div>
 </template>
@@ -44,8 +27,6 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import IMChannelPanel from '@/components/IMChannelPanel.vue'
-import AgentEmbedChannelPanel from '@/components/AgentEmbedChannelPanel.vue'
-import ApiIntegrationSettings from '@/views/integrations/ApiIntegrationSettings.vue'
 import type { IntegrationTab } from '@/config/integrations'
 
 const filterAgentId = ref('')
