@@ -44,6 +44,8 @@ type AppConfig struct {
 	Version string `mapstructure:"version"`
 	Mode    string `mapstructure:"mode"` // debug, release, test
 	Port    int    `mapstructure:"port"`
+	// Edition 版本形态：standard | lite（系统信息接口透出，前端据此显示徽标并切换精简模式）
+	Edition string `mapstructure:"edition"`
 }
 
 // DatabaseConfig 数据库配置
