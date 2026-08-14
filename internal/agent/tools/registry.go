@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -236,15 +237,22 @@ func (r *Registry) buildMCPTools(agent *entity.Agent, userID uint) ([]tool.BaseT
 	for _, svc := range svcs {
 		prefix := "mcp_" + sanitizeToolName(svc.Name)
 		if _, ok := seen[prefix]; ok {
-			continue
+			// 同名前缀冲突（如多个中文名服务都兜底为 mcp_svc）：追加服务 ID 区分，
+			// 避免后注册服务被误判为重复而静默丢失
+			prefix = fmt.Sprintf("%s%d", prefix, svc.ID)
+			if _, ok2 := seen[prefix]; ok2 {
+				continue
+			}
 		}
 		cli, err := r.mcpManager.GetClient(ctx, svc)
 		if err != nil {
+			fmt.Printf("[MCP] 服务[%d]%s 连接失败: %v\n", svc.ID, svc.Name, err)
 			// 单个服务连接失败不影响其他服务挂载
 			continue
 		}
 		einoTools, err := mcp.GetEinoTools(ctx, cli, mcp.BuildHeaders(svc))
 		if err != nil {
+			fmt.Printf("[MCP] 服务[%d]%s 工具列表拉取失败: %v\n", svc.ID, svc.Name, err)
 			continue
 		}
 		seen[prefix] = struct{}{}

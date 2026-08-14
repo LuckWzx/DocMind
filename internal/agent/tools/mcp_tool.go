@@ -27,7 +27,9 @@ func (p *prefixedTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 		return nil, err
 	}
 	cp := *info // 浅拷贝：Name 为值类型字符串，独立修改不影响共享对象
-	cp.Name = p.prefix + "_" + info.Name
+	// 工具名也需清洗：MCP 工具名可能含点号/空格等非法字符（如 weather.search_local），
+	// 模型端要求函数名仅 [a-zA-Z0-9_-]，统一转为下划线（与服务名前缀同规则）
+	cp.Name = p.prefix + "_" + sanitizeToolName(info.Name)
 	return &cp, nil
 }
 
