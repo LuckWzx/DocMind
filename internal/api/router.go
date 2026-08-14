@@ -11,6 +11,7 @@ import (
 	"docmind/internal/api/v1/knowledgebase"
 	"docmind/internal/api/v1/mcp"
 	"docmind/internal/api/v1/models"
+	"docmind/internal/api/v1/system"
 	"docmind/internal/api/v1/tag"
 	"docmind/internal/api/v1/vectorstore"
 	"docmind/internal/api/v1/websearch"
@@ -43,6 +44,7 @@ type Router struct {
 	mcpCtrl            *mcp.Controller
 	webSearchCtrl      *websearch.Controller
 	filesCtrl          *files.Controller
+	systemCtrl         *system.Controller
 }
 
 // NewRouter 创建路由
@@ -60,6 +62,7 @@ func NewRouter(
 	agentService service.AgentService,
 	mcpService service.MCPServiceService,
 	webSearchService service.WebSearchService,
+	systemService service.SystemService,
 	sseRegistry *sse.Registry,
 	redis *redis.Client,
 	sseCfg config.SSEConfig,
@@ -80,6 +83,7 @@ func NewRouter(
 		mcpCtrl:            mcp.NewController(mcpService),
 		webSearchCtrl:      websearch.NewController(webSearchService),
 		filesCtrl:          files.NewController(storageRoot),
+		systemCtrl:         system.NewController(systemService),
 	}
 }
 
@@ -149,5 +153,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 		// 网页搜索提供方路由
 		r.webSearchCtrl.RegisterRoutes(v1)
+
+		// 系统信息路由
+		r.systemCtrl.RegisterRoutes(v1)
 	}
 }

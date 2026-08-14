@@ -34,6 +34,13 @@ import (
 	"gorm.io/gorm"
 )
 
+// BuildInfo 构建期信息（cmd/server/main.go 通过 ldflags 注入后传入；本地运行时保持默认值）
+type BuildInfo struct {
+	Version   string // 应用版本号（未注入时回退 config.app.version）
+	CommitID  string // Git 提交短哈希
+	BuildTime string // 构建时间
+}
+
 // App 应用结构体
 type App struct {
 	cfg             *config.Config
@@ -47,11 +54,20 @@ type App struct {
 	cozeLoopTracer  *tracing.CozeLoopTracer
 	// mcpManager MCP 连接管理器（外部 MCP Server 连接池，优雅关闭时断开全部）
 	mcpManager *mcp.Manager
+	// startedAt 进程启动时间（系统信息接口展示）
+	startedAt time.Time
+	// buildInfo 构建期版本信息（系统信息接口展示）
+	buildInfo BuildInfo
+	// dbMigrationErr 启动时数据库迁移失败信息（非空时系统信息页展示排障横幅）
+	dbMigrationErr string
 }
 
 // NewApp 创建应用实例
-func NewApp() *App {
-	return &App{}
+func NewApp(buildInfo BuildInfo) *App {
+	return &App{
+		startedAt: time.Now(),
+		buildInfo: buildInfo,
+	}
 }
 
 // Initialize 初始化应用
@@ -200,6 +216,8 @@ func (a *App) initDatabase() error {
 	//&entity.MCPToolApproval{},
 	); err != nil {
 		logger.Warn("数据库迁移警告", zap.Error(err))
+		// 保留迁移失败信息，供系统信息接口展示排障横幅
+		a.dbMigrationErr = err.Error()
 	} else {
 		logger.Info("数据库迁移完成")
 	}
@@ -401,7 +419,11 @@ func (a *App) initDependencies() error {
 	// SSE 活跃连接注册表（优雅关闭时向活跃连接广播 SERVER_SHUTDOWN）
 	sseRegistry := sse.NewRegistry()
 	a.sseRegistry = sseRegistry
-	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc, mcpSvc, webSearchSvc, sseRegistry, a.redis, a.cfg.SSE, memorySvc, a.cfg.Storage.LocalRoot)
+
+	// 系统信息服务（设置页系统信息视图：版本/引擎/运行状态）
+	systemSvc := service.NewSystemService(a.pgDB, a.cfg, a.buildInfo.Version, a.buildInfo.CommitID, a.buildInfo.BuildTime, a.startedAt, a.dbMigrationErr)
+
+	a.router = api.NewRouter(userSvc, authSvc, chunkerSvc, knowledgeSvc, vectorStoreSvc, modelSvc, knowledgeBaseSvc, faqSvc, tagSvc, chatSvc, agentSvc, mcpSvc, webSearchSvc, systemSvc, sseRegistry, a.redis, a.cfg.SSE, memorySvc, a.cfg.Storage.LocalRoot)
 
 	return nil
 }
