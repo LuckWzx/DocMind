@@ -116,7 +116,32 @@ func (s *mcpService) Update(userID, id uint, req *request.UpdateMCPServiceReques
 		if err := validateAuthType(req.AuthConfig); err != nil {
 			return nil, err
 		}
-		svc.AuthConfig = marshalAuthConfig(req.AuthConfig)
+		// 方案 B：主 PUT 仅更新非敏感认证字段（auth_type / api_key_header / custom_headers），
+		// api_key / token 只由 /credentials 子资源管理——req 中空值时保留原配置，
+		// 避免前端编辑保存（body 不含密钥）整体覆盖清空已存凭据
+		old, oldErr := mcp.AuthConfig(svc)
+		if oldErr != nil {
+			old = nil
+		}
+		merged := &entity.MCPServiceAuthConfig{
+			AuthType:      req.AuthConfig.AuthType,
+			APIKeyHeader:  req.AuthConfig.APIKeyHeader,
+			CustomHeaders: req.AuthConfig.CustomHeaders,
+		}
+		if old != nil {
+			merged.APIKey = old.APIKey
+			merged.Token = old.Token
+			if merged.AuthType == "" {
+				merged.AuthType = old.AuthType
+			}
+			if merged.APIKeyHeader == "" {
+				merged.APIKeyHeader = old.APIKeyHeader
+			}
+			if merged.CustomHeaders == nil {
+				merged.CustomHeaders = old.CustomHeaders
+			}
+		}
+		svc.AuthConfig = marshalJSONOrNil(merged)
 	}
 	if req.AdvancedConfig != nil {
 		svc.AdvancedConfig = marshalJSONOrNil(req.AdvancedConfig)
