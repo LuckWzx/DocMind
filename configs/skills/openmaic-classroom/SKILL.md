@@ -20,9 +20,10 @@ description: 将 RAG 检索结果或文档块转换为 OpenMAIC 互动课程。�
 > **必须**使用该 MCP 工具调用 API。如果 MCP 工具未配置或不可用，引导用户先部署 mcp-api-requester，不提供 curl 命令。
 
 > **⚠️ MCP 可用性检查（每次读取此文件后必须执行）：**
-> 在开始工作前，检查可用的 MCP 工具列表中是否存在名称包含 `mcp_api_requester` 的工具。
-> - **如果未找到**：必须提醒用户：“未检测到 `mcp_api_requester` MCP 服务。请先从 https://github.com/yryuu/mcp-api-requester 下载代码并部署，然后在 DocMind 中注册该 MCP 服务。”
-> - **如果已找到**：继续后续流程，使用该 MCP 工具调用 API。
+> 1. **逐项枚举**你当前可见的全部工具名称（逐条列出，不要凭印象判断）。
+> 2. 在其中查找名称**以 `mcp_mcp_api_requester` 开头**的工具（如 `mcp_mcp_api_requester_make_request`，注意前缀是 `mcp_mcp_`，不是 `mcp_api_requester`）。
+> 3. **如果找到**：立即用该工具调用 OpenMAIC API（先执行 `GET <BASE_URL>/api/health` 健康检查确认连通），然后继续后续流程。
+> 4. **仅当你逐项枚举后确实不存在该工具时**，才提醒用户：“当前会话未挂载 mcp_api_requester MCP 工具，无法调用 OpenMAIC API”，并且**把你枚举到的完整工具名列表原样展示给用户**，以便排查挂载问题。
 
 ## 模式选择
 

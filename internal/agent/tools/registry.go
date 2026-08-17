@@ -143,7 +143,9 @@ func (r *Registry) Build(agent *entity.Agent, userID uint) ([]tool.BaseTool, *Re
 	}
 	built = append(built, mcpTools...)
 
-	// AllowedTools 白名单统一过滤（内置与 MCP 工具一并按名过滤）
+	// AllowedTools 白名单统一过滤（仅过滤内置工具，MCP 工具豁免）
+	// MCP 工具由 mcp_services 白名单（MCPSelectionMode）独立管理，工具选择器不含 MCP 工具名，
+	// 若一并按名过滤，只要 allowed_tools 非空 MCP 工具必然被误伤（如 allowed_tools=["web_search"] 时 mcp_* 全灭）
 	if len(cfg.AllowedTools) > 0 {
 		allow := make(map[string]struct{}, len(cfg.AllowedTools))
 		for _, name := range cfg.AllowedTools {
@@ -155,7 +157,7 @@ func (r *Registry) Build(agent *entity.Agent, userID uint) ([]tool.BaseTool, *Re
 			if err != nil {
 				continue
 			}
-			if _, ok := allow[info.Name]; ok {
+			if _, ok := allow[info.Name]; ok || strings.HasPrefix(info.Name, "mcp_") {
 				filtered = append(filtered, t)
 			}
 		}
