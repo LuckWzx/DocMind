@@ -6,7 +6,7 @@
 
 DocMind 是一个现代化的智能知识管理平台，提供文档解析、语义检索、自主推理等核心功能。项目采用前后端分离架构，并引入 **Eino** 框架实现强大的智能体（Agent）编排能力：
 
-- **后端**：Go + Gin + GORM，引入 **Eino** 框架作为 AI 编排引擎，支持复杂的 Agent 流程编排与 RAG 管道设计
+- **后端**：Go + Gin + GORM，引入 **Eino** 框架作为 AI 编排引擎，支持复杂的 ReactAgent 流程编排与 RAG 管道设计
 - **文档解析**：Python gRPC 微服务，支持 PDF / DOCX / Markdown / Excel / Web 等多格式
 - **前端**：Vue 3 + TypeScript + Vite，TDesign 组件库
 
