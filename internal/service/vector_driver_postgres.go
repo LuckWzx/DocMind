@@ -90,35 +90,44 @@ func (d *postgresVectorDriver) Search(ctx context.Context, params VectorSearchPa
 		params.TopK = 5
 	}
 
-	query := d.db.WithContext(ctx).
-		Table("chunk_vectors AS cv").
-		Select("cv.chunk_id, cv.knowledge_id, cv.knowledge_base_id, c.content, k.title AS knowledge_title, "+scoreSQL+" AS score", queryVector).
-		Joins("LEFT JOIN chunks AS c ON cv.chunk_id = c.id").
-		Joins("LEFT JOIN knowledges AS k ON cv.knowledge_id = k.id").
-		Where("cv.user_id = ? AND cv.vector_store_id = ? AND cv.is_enabled = ?", params.UserID, params.VectorStoreID, true)
-
-	if len(params.KnowledgeBaseIDs) > 0 {
-		query = query.Where("cv.knowledge_base_id IN ?", params.KnowledgeBaseIDs)
-	}
-	if len(params.KnowledgeIDs) > 0 {
-		query = query.Where("cv.knowledge_id IN ?", params.KnowledgeIDs)
-	}
-	if len(params.ExcludeChunkIDs) > 0 {
-		query = query.Where("cv.chunk_id NOT IN ?", params.ExcludeChunkIDs)
-	}
-	if params.Threshold > 0 {
-		query = query.Where(thresholdSQL, queryVector, params.Threshold)
-	}
-
-	var results []VectorSearchResult
+	// 阶段一：仅在 chunk_vectors 本表（轻量列）上做向量距离排序并取 TopK，
+	// 只投影 chunk_id / knowledge_id / knowledge_base_id 与 score，
+	// 避免先 JOIN chunks（含 TOAST 大字段 content）再排序——否则排序前就要把全部候选正文搬进内存。
 	// 注意：gorm 的 Order() 仅支持 clause.OrderBy / clause.OrderByColumn / string，
 	// 直接传 clause.Expr 会被静默忽略导致不生成 ORDER BY（结果退化为物理顺序）。
 	// 必须包一层 clause.OrderBy{Expression: ...} 才能正确生成带参数绑定的排序子句。
-	err := query.
+	ranked := d.db.WithContext(ctx).
+		Table("chunk_vectors AS cv").
+		Select("cv.chunk_id, cv.knowledge_id, cv.knowledge_base_id, "+scoreSQL+" AS score", queryVector).
+		Where("cv.user_id = ? AND cv.vector_store_id = ? AND cv.is_enabled = ?", params.UserID, params.VectorStoreID, true)
+
+	if len(params.KnowledgeBaseIDs) > 0 {
+		ranked = ranked.Where("cv.knowledge_base_id IN ?", params.KnowledgeBaseIDs)
+	}
+	if len(params.KnowledgeIDs) > 0 {
+		ranked = ranked.Where("cv.knowledge_id IN ?", params.KnowledgeIDs)
+	}
+	if len(params.ExcludeChunkIDs) > 0 {
+		ranked = ranked.Where("cv.chunk_id NOT IN ?", params.ExcludeChunkIDs)
+	}
+	if params.Threshold > 0 {
+		ranked = ranked.Where(thresholdSQL, queryVector, params.Threshold)
+	}
+
+	ranked = ranked.
 		Order(clause.OrderBy{
 			Expression: clause.Expr{SQL: orderSQL, Vars: []interface{}{queryVector}},
 		}).
-		Limit(params.TopK).
+		Limit(params.TopK)
+
+	// 阶段二：仅对 TopK 结果回表取正文与标题，score 语义为「越大越相似」，保持降序
+	var results []VectorSearchResult
+	err := d.db.WithContext(ctx).
+		Table("(?) AS ranked", ranked).
+		Select("ranked.chunk_id, ranked.knowledge_id, ranked.knowledge_base_id, c.content, k.title AS knowledge_title, ranked.score").
+		Joins("LEFT JOIN chunks AS c ON ranked.chunk_id = c.id").
+		Joins("LEFT JOIN knowledges AS k ON ranked.knowledge_id = k.id").
+		Order("ranked.score DESC").
 		Scan(&results).Error
 	if err != nil {
 		return nil, err

@@ -18,7 +18,13 @@ type SessionRepository interface {
 	UpdateModeState(id uint, agentID string, enabled bool, state *entity.SessionLastRequestState) error
 	IncrementMessageCount(id uint) error
 	UpdateLastMessage(id uint, preview string) error
+	// TouchAfterMessage 合并 message_count+1 与 last_message 更新为单条 UPDATE
+	TouchAfterMessage(id uint, preview string) error
 	CountBySession(sessionID uint) (int64, error)
+	// ListOwnedIDs 返回属于该用户的会话 ID（ids 非空时过滤归属，用于越权校验）
+	ListOwnedIDs(userID uint, ids []uint) ([]uint, error)
+	// DeleteByIDs 批量删除会话
+	DeleteByIDs(ids []uint) error
 }
 
 // MessageRepository 消息仓储接口
@@ -30,6 +36,8 @@ type MessageRepository interface {
 	// ListAfterID 加载 ID 大于 afterID 的消息（增量加载：短期记忆压缩边界之后的消息）
 	ListAfterID(sessionID uint, afterID uint, limit int) ([]*entity.Message, error)
 	DeleteBySession(sessionID uint) error
+	// DeleteBySessionIDs 批量删除多个会话的消息
+	DeleteBySessionIDs(sessionIDs []uint) error
 	CountBySession(sessionID uint) (int64, error)
 	// CountUserTurnsBySession 统计会话中的对话轮数（user 角色消息数，短期记忆状态展示用）
 	CountUserTurnsBySession(sessionID uint) (int64, error)

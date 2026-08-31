@@ -41,3 +41,11 @@ func (r *summaryRepository) Upsert(summary *entity.SessionSummary) error {
 func (r *summaryRepository) DeleteBySession(sessionID uint) error {
 	return r.db.Where("session_id = ?", sessionID).Delete(&entity.SessionSummary{}).Error
 }
+
+// DeleteBySessionIDs 批量删除多个会话的摘要
+func (r *summaryRepository) DeleteBySessionIDs(sessionIDs []uint) error {
+	if len(sessionIDs) == 0 {
+		return nil
+	}
+	return r.db.Where("session_id IN ?", sessionIDs).Delete(&entity.SessionSummary{}).Error
+}

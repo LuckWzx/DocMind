@@ -109,6 +109,7 @@ func (s *knowledgeService) persistVectors(userID uint, knowledge *entity.Knowled
 		vectorStoreID = &id
 	}
 
+	records := make([]*entity.ChunkVector, 0, len(chunks))
 	for i, chunk := range chunks {
 		if i >= len(vectors2D) {
 			break
@@ -117,7 +118,7 @@ func (s *knowledgeService) persistVectors(userID uint, knowledge *entity.Knowled
 		for j, v := range vectors2D[i] {
 			vec32[j] = float32(v)
 		}
-		record := &entity.ChunkVector{
+		records = append(records, &entity.ChunkVector{
 			UserID:          userID,
 			VectorStoreID:   *vectorStoreID,
 			KnowledgeBaseID: knowledge.KnowledgeBaseID,
@@ -126,13 +127,25 @@ func (s *knowledgeService) persistVectors(userID uint, knowledge *entity.Knowled
 			Embedding:       pgvector.NewVector(vec32),
 			ContentHash:     chunk.ContentHash,
 			IsEnabled:       true,
-		}
-		if err := s.db.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "chunk_id"}},
-			UpdateAll: true,
-		}).Create(record).Error; err != nil {
-			return fmt.Errorf("保存向量失败: %w", err)
-		}
+		})
 	}
-	return nil
+	if len(records) == 0 {
+		return nil
+	}
+	// 批量写入：一次 INSERT 多行，替代循环逐条 Create 的网络往返。
+	// 冲突时按 chunk_id 更新业务列（显式列出，不含 created_at），
+	// 避免 UpdateAll 把新建对象零值的 created_at 刷成 0001-01-01。
+	return s.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "chunk_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"user_id",
+			"vector_store_id",
+			"knowledge_base_id",
+			"knowledge_id",
+			"embedding",
+			"content_hash",
+			"is_enabled",
+			"updated_at",
+		}),
+	}).Create(&records).Error
 }

@@ -70,6 +70,14 @@ func (r *messageRepository) DeleteBySession(sessionID uint) error {
 	return r.db.Where("session_id = ?", sessionID).Delete(&entity.Message{}).Error
 }
 
+// DeleteBySessionIDs 批量删除多个会话的消息
+func (r *messageRepository) DeleteBySessionIDs(sessionIDs []uint) error {
+	if len(sessionIDs) == 0 {
+		return nil
+	}
+	return r.db.Where("session_id IN ?", sessionIDs).Delete(&entity.Message{}).Error
+}
+
 func (r *messageRepository) CountBySession(sessionID uint) (int64, error) {
 	var count int64
 	err := r.db.Model(&entity.Message{}).Where("session_id = ?", sessionID).Count(&count).Error

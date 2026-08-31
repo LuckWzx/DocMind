@@ -92,8 +92,40 @@ func (r *sessionRepository) UpdateLastMessage(id uint, preview string) error {
 		Update("last_message", preview).Error
 }
 
+// TouchAfterMessage 消息落库后同步更新会话：message_count+1 与 last_message 合并为单条 UPDATE，
+// 替代原先 IncrementMessageCount + UpdateLastMessage 两次数据库往返。
+func (r *sessionRepository) TouchAfterMessage(id uint, preview string) error {
+	runes := []rune(preview)
+	if len(runes) > 200 {
+		preview = string(runes[:200])
+	}
+	return r.db.Model(&entity.Session{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"message_count": gorm.Expr("message_count + 1"),
+		"last_message":  preview,
+	}).Error
+}
+
 func (r *sessionRepository) CountBySession(sessionID uint) (int64, error) {
 	var count int64
 	err := r.db.Model(&entity.Message{}).Where("session_id = ?", sessionID).Count(&count).Error
 	return count, err
+}
+
+// ListOwnedIDs 返回属于该用户的会话 ID；ids 非空时仅返回其中归属于该用户的（用于越权校验）。
+func (r *sessionRepository) ListOwnedIDs(userID uint, ids []uint) ([]uint, error) {
+	q := r.db.Model(&entity.Session{}).Where("user_id = ?", userID)
+	if len(ids) > 0 {
+		q = q.Where("id IN ?", ids)
+	}
+	var owned []uint
+	err := q.Pluck("id", &owned).Error
+	return owned, err
+}
+
+// DeleteByIDs 批量删除会话
+func (r *sessionRepository) DeleteByIDs(ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return r.db.Where("id IN ?", ids).Delete(&entity.Session{}).Error
 }

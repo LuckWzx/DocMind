@@ -191,8 +191,7 @@ func (s *chatService) KnowledgeChat(ctx context.Context, sessionID uint, userID 
 	if err := s.messageRepo.Create(userMsg); err != nil {
 		return nil, nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "保存用户消息失败", err)
 	}
-	s.sessionRepo.IncrementMessageCount(sessionID)
-	s.sessionRepo.UpdateLastMessage(sessionID, req.Query)
+	s.sessionRepo.TouchAfterMessage(sessionID, req.Query)
 
 	// 3. 从 Agent 解析配置（提前，用于确定历史轮数）
 	// 请求级 agent_id 优先覆盖会话绑定（与 AgentChat 一致），
@@ -378,8 +377,7 @@ func (s *chatService) AgentChat(ctx context.Context, sessionID uint, userID uint
 	if err := s.messageRepo.Create(userMsg); err != nil {
 		return nil, bizerrors.NewWithErr(bizerrors.CodeInternalError, "保存用户消息失败", err)
 	}
-	s.sessionRepo.IncrementMessageCount(sessionID)
-	s.sessionRepo.UpdateLastMessage(sessionID, req.Query)
+	s.sessionRepo.TouchAfterMessage(sessionID, req.Query)
 
 	// 3. 解析 Agent 实体（请求级 agent_id 优先覆盖会话绑定，内置模板 + 用户覆盖 / 会话内嵌配置）
 	// 仅临时覆盖内存中的 session 副本，不落库（会话绑定由前端切换会话/智能体接口维护）
@@ -888,22 +886,29 @@ func (s *chatService) DeleteSession(ctx context.Context, sessionID uint, userID 
 
 // BatchDeleteSessions 批量删除会话
 func (s *chatService) BatchDeleteSessions(ctx context.Context, userID uint, sessionIDs []uint, deleteAll bool) error {
+	var owned []uint
+	var err error
 	if deleteAll {
-		sessions, _, err := s.sessionRepo.ListByUser(userID, "", 1, 10000)
-		if err != nil {
-			return err
-		}
-		sessionIDs = make([]uint, 0, len(sessions))
-		for _, sess := range sessions {
-			sessionIDs = append(sessionIDs, sess.ID)
-		}
+		// 全删：取该用户全部会话 ID，不再受原先 10000 条上限限制（超限会导致删不干净）
+		owned, err = s.sessionRepo.ListOwnedIDs(userID, nil)
+	} else {
+		// 指定删：校验归属，仅保留属于该用户的会话，避免越权删除他人会话
+		owned, err = s.sessionRepo.ListOwnedIDs(userID, sessionIDs)
 	}
-	for _, id := range sessionIDs {
-		_ = s.messageRepo.DeleteBySession(id)
-		_ = s.summaryRepo.DeleteBySession(id)
-		_ = s.sessionRepo.Delete(id)
+	if err != nil {
+		return err
 	}
-	return nil
+	if len(owned) == 0 {
+		return nil
+	}
+	// 批量删除：3 条 SQL 完成（原为 N 个会话 × 3 次逐条删除，最多 3N 条 SQL）
+	if err := s.messageRepo.DeleteBySessionIDs(owned); err != nil {
+		return bizerrors.NewWithErr(bizerrors.CodeInternalError, "批量删除消息失败", err)
+	}
+	if err := s.summaryRepo.DeleteBySessionIDs(owned); err != nil {
+		return bizerrors.NewWithErr(bizerrors.CodeInternalError, "批量删除摘要失败", err)
+	}
+	return s.sessionRepo.DeleteByIDs(owned)
 }
 
 // PinSession 置顶/取消置顶
@@ -989,8 +994,7 @@ func (s *chatService) SaveAssistantMessage(ctx context.Context, sessionID uint, 
 	if err := s.messageRepo.Create(msg); err != nil {
 		return err
 	}
-	s.sessionRepo.IncrementMessageCount(sessionID)
-	s.sessionRepo.UpdateLastMessage(sessionID, content)
+	s.sessionRepo.TouchAfterMessage(sessionID, content)
 	return nil
 }
 

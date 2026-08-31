@@ -10,4 +10,6 @@ type SummaryRepository interface {
 	Upsert(summary *entity.SessionSummary) error
 	// DeleteBySession 删除会话摘要（删除/清空会话时联动清理）
 	DeleteBySession(sessionID uint) error
+	// DeleteBySessionIDs 批量删除多个会话的摘要
+	DeleteBySessionIDs(sessionIDs []uint) error
 }
